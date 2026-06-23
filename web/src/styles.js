@@ -1,0 +1,81 @@
+export const C = {
+  paper: "#EEEDE6",
+  card: "#FBFAF7",
+  ink: "#1E2430",
+  inkSoft: "#5B6373",
+  line: "#E2DFD5",
+  seal: "#C0392B",
+  sealSoft: "#F3DAD6",
+  amber: "#B9820F",
+  amberSoft: "#F6EBCF",
+  blue: "#2F6E8F",
+  blueSoft: "#DCE9F0",
+  green: "#3E7C5A",
+  greenSoft: "#DCEBE1",
+};
+
+export const S = {
+  root: { margin: "0 auto", background: C.card, minHeight: "100vh", display: "flex", flexDirection: "column" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: `1px solid ${C.line}`, position: "sticky", top: 0, background: C.card, zIndex: 5 },
+  brand: { fontSize: 17, fontWeight: 800, color: C.ink, letterSpacing: "-0.02em" },
+  brandSub: { fontSize: 11, color: C.inkSoft },
+  toggle: { border: "1px solid", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 700 },
+  ghost: { border: `1px solid ${C.line}`, background: "transparent", borderRadius: 999, padding: "6px 12px", fontSize: 12, color: C.inkSoft },
+  body: { padding: 16, flex: 1, background: C.paper },
+  loading: { padding: 50, textAlign: "center", color: C.inkSoft, background: C.paper, flex: 1 },
+  foot: { fontSize: 11, color: C.inkSoft, textAlign: "center", padding: "12px 16px 20px", lineHeight: 1.5, background: C.paper },
+
+  loginCard: { maxWidth: 380, margin: "10px auto", background: C.card, border: `1px solid ${C.line}`, borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 10 },
+  h1: { fontSize: 20, fontWeight: 800, color: C.ink, margin: 0 },
+  muted: { fontSize: 13, color: C.inkSoft, margin: "0 0 4px" },
+  firstNote: { fontSize: 12, color: C.seal, background: C.sealSoft, padding: "8px 10px", borderRadius: 8 },
+  hint: { fontSize: 11, color: C.inkSoft, lineHeight: 1.6, margin: "2px 0 0" },
+  err: { fontSize: 12, color: C.seal, fontWeight: 600 },
+
+  input: { border: `1px solid ${C.line}`, borderRadius: 10, padding: "12px 14px", fontSize: 15, color: C.ink, background: "#fff", width: "100%", boxSizing: "border-box" },
+  textarea: { border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, fontSize: 14, color: C.ink, minHeight: 64, resize: "vertical", background: "#fff", width: "100%", boxSizing: "border-box" },
+  fieldLabel: { fontSize: 12, fontWeight: 700, color: C.inkSoft },
+  primary: { border: "none", borderRadius: 10, padding: 13, fontSize: 15, fontWeight: 700, color: "#fff", background: C.seal },
+
+  timecard: { position: "relative", border: `1px solid ${C.line}`, borderRadius: 16, padding: "18px 18px 20px", background: "linear-gradient(180deg,#FFFDF8,#F6F4EC)", overflow: "hidden" },
+  cardHole: { position: "absolute", top: 14, width: 10, height: 10, borderRadius: "50%", background: C.paper, boxShadow: `inset 0 0 0 1px ${C.line}` },
+  cardDate: { fontSize: 12, color: C.inkSoft, letterSpacing: "0.06em" },
+  bigClock: { fontSize: 46, fontWeight: 800, color: C.ink, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", marginTop: 4, lineHeight: 1 },
+  vline: { width: 1, background: C.line },
+  badge: { display: "inline-block", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 999 },
+  stampWrap: { position: "absolute", top: 22, right: 16, zIndex: 2 },
+  busy: { marginTop: 12, fontSize: 13, color: C.blue, textAlign: "center", background: C.blueSoft, padding: "8px", borderRadius: 8 },
+
+  bigBtn: { width: "100%", border: "1px solid", borderRadius: 14, padding: "18px 0", fontSize: 18, fontWeight: 800, letterSpacing: "0.1em", marginTop: 14 },
+  sectionLabel: { fontSize: 12, fontWeight: 700, color: C.inkSoft, letterSpacing: "0.04em", margin: "0 0 10px" },
+  centerMuted: { fontSize: 11, color: C.inkSoft, textAlign: "center", marginTop: 14 },
+
+  formCard: { border: `1px solid ${C.line}`, borderRadius: 14, padding: 14, background: C.card, marginTop: 14, display: "flex", flexDirection: "column", gap: 9 },
+  formTitle: { fontSize: 15, fontWeight: 800, color: C.ink, margin: 0 },
+  subGhost: { flex: 1, border: `1px solid ${C.line}`, background: "transparent", borderRadius: 10, padding: 12, fontSize: 14, color: C.inkSoft },
+  subPrimary: { flex: 2, border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, color: "#fff" },
+
+  tlRow: { display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", border: `1px solid ${C.line}`, borderRadius: 12, background: C.card },
+  tlDot: { width: 8, height: 8, borderRadius: "50%", marginTop: 5, flexShrink: 0 },
+
+  journalCard: { marginTop: 16, border: `1px solid ${C.line}`, borderRadius: 14, padding: 14, background: C.card },
+  jRow: { display: "flex", gap: 10, fontSize: 13, color: C.ink, padding: "4px 0", alignItems: "flex-start" },
+  jTag: { flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.inkSoft, width: 30 },
+
+  tabBar: { display: "flex", gap: 6, background: C.card, padding: 4, borderRadius: 12, marginBottom: 16, border: `1px solid ${C.line}` },
+  tab: { flex: 1, border: "none", background: "transparent", borderRadius: 9, padding: 9, fontSize: 14, fontWeight: 700, color: C.inkSoft },
+  tabOn: { background: C.ink, color: "#fff" },
+
+  kpiRow: { display: "flex", gap: 8, marginBottom: 14 },
+  kpi: { flex: 1, border: `1px solid ${C.line}`, borderRadius: 12, padding: "12px 6px", textAlign: "center", background: C.card },
+  hrRow: { display: "flex", alignItems: "center", padding: "12px 14px", border: `1px solid ${C.line}`, borderRadius: 12, background: C.card },
+  detail: { padding: "10px 12px", margin: "-2px 0 0", border: `1px solid ${C.line}`, borderTop: "none", borderRadius: "0 0 12px 12px", background: "#FCFBF8" },
+  detailEmpty: { padding: "12px", fontSize: 13, color: C.inkSoft, textAlign: "center" },
+  miniBtn: { border: `1px solid ${C.line}`, background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 11, color: C.inkSoft, marginLeft: 6 },
+
+  select: { flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 10, padding: "11px 12px", fontSize: 14, color: C.ink, background: "#fff" },
+  totalCard: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", border: `1px solid ${C.line}`, borderRadius: 12, background: "linear-gradient(180deg,#FFFDF8,#F6F4EC)" },
+  dayRow: { display: "flex", alignItems: "center", padding: "9px 12px", borderBottom: `1px solid ${C.line}` },
+  empty: { padding: 30, textAlign: "center", color: C.inkSoft, fontSize: 14 },
+  reset: { width: "100%", marginTop: 20, border: `1px solid ${C.line}`, background: "transparent", borderRadius: 10, padding: 10, fontSize: 12, color: C.inkSoft },
+};

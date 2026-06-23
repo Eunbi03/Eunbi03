@@ -1,0 +1,24 @@
+# Environment
+.env
+*.env.local
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Build output
+dist/
+build/
+
+# Data volumes
+data/postgres/*
+data/redis/*
+!data/postgres/.gitkeep
+!data/redis/.gitkeep
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.DS_Store
+*.log
