@@ -9,13 +9,16 @@ const THEMES = {
     pageBg: C.paper,
     cardBg: C.card,
     cardBorder: C.line,
+    cardShadow: "0 6px 24px rgba(30,36,48,0.08)",
     title: "근태 관리",
-    subtitle: "출퇴근 체크",
+    subtitle: null,
     titleColor: C.ink,
     subColor: C.inkSoft,
-    icon: "🕐",
-    iconBg: C.greenSoft,
+    icon: null,            // 직원용은 아이콘 없음
     badge: null,
+    titleSize: 22,
+    labelSize: 12,
+    inputSize: 15,
     inputBg: "#fff",
     inputBorder: C.line,
     inputColor: C.ink,
@@ -28,20 +31,23 @@ const THEMES = {
     crossHref: "/admin",
   },
   admin: {
-    pageBg: "#10141d",
-    cardBg: "#1a1f2e",
-    cardBorder: "#2b3242",
+    pageBg: "#070a10",            // 더 어둡게 — 카드와 단차 강화
+    cardBg: "#1e2536",           // 더 밝게 — 떠 보이게
+    cardBorder: "#39435a",
+    cardShadow: "0 20px 60px rgba(0,0,0,0.6)",
     title: "관리자 콘솔",
     subtitle: "Admin Console",
     titleColor: "#fff",
-    subColor: "#7b8499",
+    subColor: "#8b94a8",
     icon: "🛡️",
-    iconBg: "#2b3242",
     badge: { text: "관리자·인사팀 전용", bg: "#2d4a7a", color: "#cfe0f5" },
+    titleSize: 28,               // 크게
+    labelSize: 14,               // 크게
+    inputSize: 16,               // 크게
     inputBg: "#10141d",
-    inputBorder: "#2b3242",
+    inputBorder: "#39435a",
     inputColor: "#fff",
-    labelColor: "#9aa3b5",
+    labelColor: "#aab3c5",
     btnBg: "#2d6cdf",
     btnColor: "#fff",
     linkColor: "#7fa8e8",
@@ -75,6 +81,13 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
     }
   };
 
+  const inputStyle = {
+    border: `1px solid ${t.inputBorder}`, borderRadius: 10, padding: "12px 14px",
+    fontSize: t.inputSize, color: t.inputColor, background: t.inputBg,
+    width: "100%", boxSizing: "border-box",
+  };
+  const labelStyle = { fontSize: t.labelSize, fontWeight: 700, color: t.labelColor };
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: t.pageBg, padding: 20, transition: "background 0.2s" }}>
       <form
@@ -82,42 +95,46 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
           width: "100%", maxWidth: 360, background: t.cardBg,
           border: `1px solid ${t.cardBorder}`, borderRadius: 18,
           padding: "28px 24px", display: "flex", flexDirection: "column", gap: 12,
-          boxShadow: mode === "admin" ? "0 12px 40px rgba(0,0,0,0.45)" : "0 6px 24px rgba(30,36,48,0.08)",
+          boxShadow: t.cardShadow,
         }}
         onSubmit={submit}
       >
-        {/* 아이콘 + 타이틀 */}
+        {/* 헤더 */}
         <div style={{ textAlign: "center", marginBottom: 4 }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 16, background: t.iconBg,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 26, margin: "0 auto 12px",
-          }}>{t.icon}</div>
+          {t.icon && (
+            <div style={{
+              width: 56, height: 56, borderRadius: 16, background: "#2b3242",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 26, margin: "0 auto 12px",
+            }}>{t.icon}</div>
+          )}
 
           {t.badge && (
             <div style={{
               display: "inline-block", background: t.badge.bg, color: t.badge.color,
-              fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20,
-              marginBottom: 10, letterSpacing: 0.5,
+              fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 20,
+              marginBottom: 12, letterSpacing: 0.5,
             }}>{t.badge.text}</div>
           )}
 
-          <p style={{ fontSize: 22, fontWeight: 800, color: t.titleColor, margin: 0, letterSpacing: "-0.02em" }}>{t.title}</p>
-          <p style={{ fontSize: 12, color: t.subColor, margin: "4px 0 0", letterSpacing: "0.04em" }}>{t.subtitle}</p>
+          <p style={{ fontSize: t.titleSize, fontWeight: 800, color: t.titleColor, margin: 0, letterSpacing: "-0.02em" }}>{t.title}</p>
+          {t.subtitle && (
+            <p style={{ fontSize: 13, color: t.subColor, margin: "6px 0 0", letterSpacing: "0.06em" }}>{t.subtitle}</p>
+          )}
         </div>
 
-        <label style={{ fontSize: 12, fontWeight: 700, color: t.labelColor }}>이메일</label>
+        <label style={labelStyle}>이메일</label>
         <input
-          style={{ border: `1px solid ${t.inputBorder}`, borderRadius: 10, padding: "12px 14px", fontSize: 15, color: t.inputColor, background: t.inputBg, width: "100%", boxSizing: "border-box" }}
+          style={inputStyle}
           type="email"
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={busy}
         />
-        <label style={{ fontSize: 12, fontWeight: 700, color: t.labelColor }}>비밀번호</label>
+        <label style={labelStyle}>비밀번호</label>
         <input
-          style={{ border: `1px solid ${t.inputBorder}`, borderRadius: 10, padding: "12px 14px", fontSize: 15, color: t.inputColor, background: t.inputBg, width: "100%", boxSizing: "border-box" }}
+          style={inputStyle}
           type="password"
           autoComplete="current-password"
           value={password}
@@ -126,20 +143,20 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
         />
 
         {(err || extraError) && (
-          <div style={{ fontSize: 12, color: mode === "admin" ? "#ff8e84" : C.seal, fontWeight: 600 }}>
+          <div style={{ fontSize: 13, color: mode === "admin" ? "#ff8e84" : C.seal, fontWeight: 600 }}>
             {err || extraError}
           </div>
         )}
 
         <button
-          style={{ border: "none", borderRadius: 10, padding: 13, fontSize: 15, fontWeight: 700, color: t.btnColor, background: t.btnBg, marginTop: 4, opacity: busy ? 0.6 : 1, cursor: busy ? "default" : "pointer" }}
+          style={{ border: "none", borderRadius: 10, padding: 13, fontSize: 16, fontWeight: 700, color: t.btnColor, background: t.btnBg, marginTop: 4, opacity: busy ? 0.6 : 1, cursor: busy ? "default" : "pointer" }}
           type="submit"
           disabled={busy}
         >
           {busy ? "로그인 중…" : "로그인"}
         </button>
 
-        <div style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: t.subColor }}>
+        <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: t.subColor }}>
           {t.crossText}{" "}
           <a href={t.crossHref} style={{ color: t.linkColor, fontWeight: 700, textDecoration: "none" }}>{t.crossLabel}</a>
         </div>
