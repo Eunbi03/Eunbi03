@@ -78,6 +78,21 @@ router.delete('/workers/:id', async (req: Request, res: Response): Promise<void>
   res.json({ success: true });
 });
 
+// PUT /api/admin/workers/:id/reset-password — 임시 비밀번호 재설정 (HR 전용)
+router.put('/workers/:id/reset-password', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 4) {
+    res.status(400).json({ error: '새 비밀번호를 입력해주세요. (4자 이상)' }); return;
+  }
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  const { rows } = await pool.query(
+    'UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2 AND is_active=TRUE RETURNING id, name, email',
+    [passwordHash, req.params.id]
+  );
+  if (rows.length === 0) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
+  res.json({ success: true, worker: rows[0] });
+});
+
 // GET /api/admin/attendance?corp=&team=&date=&page=1&limit=50
 router.get('/attendance', async (req: Request, res: Response): Promise<void> => {
   const { corp, team, department, date, from, to, employeeId, page = '1', limit = '50' } = req.query;

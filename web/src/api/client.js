@@ -103,6 +103,7 @@ export const getWorkers = (params = {}) => {
 export const createWorker = (data) => request("/admin/workers", { method: "POST", body: data });
 export const updateWorker = (id, data) => request(`/admin/workers/${id}`, { method: "PUT", body: data });
 export const deleteWorker = (id) => request(`/admin/workers/${id}`, { method: "DELETE" });
+export const resetWorkerPassword = (id, newPassword) => request(`/admin/workers/${id}/reset-password`, { method: "PUT", body: { newPassword } });
 
 export const getAttendanceByDate = (params = {}) => {
   const qs = new URLSearchParams(params).toString();
