@@ -13,4 +13,5 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY migrations ./migrations
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+# 시작 시 마이그레이션 → 최초 관리자 시드 → 서버 실행
+CMD ["npm", "run", "start:prod"]
