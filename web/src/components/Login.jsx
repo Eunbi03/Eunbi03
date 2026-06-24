@@ -156,10 +156,12 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
           {busy ? "로그인 중…" : "로그인"}
         </button>
 
-        <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: t.subColor }}>
-          {t.crossText}{" "}
-          <a href={t.crossHref} style={{ color: t.linkColor, fontWeight: 700, textDecoration: "none" }}>{t.crossLabel}</a>
-        </div>
+        {mode === "admin" && (
+          <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: t.subColor }}>
+            {t.crossText}{" "}
+            <a href={t.crossHref} style={{ color: t.linkColor, fontWeight: 700, textDecoration: "none" }}>{t.crossLabel}</a>
+          </div>
+        )}
       </form>
     </div>
   );
