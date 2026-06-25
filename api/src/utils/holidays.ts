@@ -18,7 +18,8 @@ export function isHoliday(dateStr: string): boolean {
 }
 
 export function isWeekend(dateStr: string): boolean {
-  const day = new Date(dateStr + 'T00:00:00+09:00').getDay();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
   return day === 0 || day === 6;
 }
 
