@@ -13,12 +13,14 @@ function Field({ label, children, half }) {
 
 function WorkerModal({ worker, workplaces, onClose, onSaved }) {
   const isNew = !worker?.id;
+  const isAdminRole = !isNew && worker?.role && worker.role !== "worker";
+
   const [form, setForm] = useState({
     name: worker?.name || "",
     employeeId: worker?.employee_id || "",
     email: worker?.email || "",
     phone: worker?.phone || "",
-    workplaceId: worker?.workplace_id || "",
+    workplaceId: worker?.workplace_id ? String(worker.workplace_id) : "",
     corp: worker?.corp || "",
     division: worker?.division || "",
     team: worker?.team || "",
@@ -34,14 +36,33 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  const validate = () => {
+    if (!form.name.trim())        { setErr("이름을 입력해주세요."); return false; }
+    if (!form.email.trim())       { setErr("이메일을 입력해주세요."); return false; }
+    if (!form.phone.trim())       { setErr("전화번호를 입력해주세요."); return false; }
+    if (!form.corp.trim())        { setErr("법인을 입력해주세요."); return false; }
+    if (!form.division.trim())    { setErr("본부를 입력해주세요."); return false; }
+    if (!form.team.trim())        { setErr("팀을 입력해주세요."); return false; }
+    if (!form.jobTitle.trim())    { setErr("직무를 입력해주세요."); return false; }
+    if (!form.workplaceId)        { setErr("근무지를 선택해주세요."); return false; }
+    return true;
+  };
+
   const save = async () => {
-    setErr(""); setBusy(true);
+    setErr("");
+    if (!validate()) return;
+    setBusy(true);
     try {
-      const result = isNew ? await api.createWorker(form) : await api.updateWorker(worker.id, form);
+      const result = isNew
+        ? await api.createWorker(form)
+        : await api.updateWorker(worker.id, form);
       if (isNew && result.initPassword) setInitPw(result.initPassword);
       else onSaved();
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
+    } catch (e) {
+      setErr(e.message || "저장 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (initPw) {
@@ -53,8 +74,8 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
           <div style={{ background: C.paper, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
             <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 4 }}>이메일</div>
             <div style={{ fontWeight: 700, fontSize: 14, color: C.ink, marginBottom: 12 }}>{form.email}</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 4 }}>초기 비밀번호</div>
-            <div style={{ fontWeight: 800, fontSize: 22, color: C.seal, letterSpacing: 4 }}>{initPw}</div>
+            <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 4 }}>초기 비밀번호 (전화번호)</div>
+            <div style={{ fontWeight: 800, fontSize: 22, color: C.seal, letterSpacing: 2 }}>{initPw}</div>
           </div>
           <p style={{ fontSize: 11, color: C.inkSoft }}>직원이 첫 로그인 시 반드시 비밀번호를 변경합니다.</p>
           <button style={S.primary} onClick={onSaved}>확인</button>
@@ -75,37 +96,41 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
           <Field label="이름 *" half>
             <input style={S.input} value={form.name} onChange={(e) => set("name", e.target.value)} />
           </Field>
-          <Field label="사원번호" half>
-            <input style={S.input} value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
-          </Field>
+
+          {/* 관리자/인사팀 계정은 사원번호 숨김 */}
+          {!isAdminRole && (
+            <Field label="사원번호" half>
+              <input style={S.input} value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
+            </Field>
+          )}
 
           <Field label="이메일 *">
             <input style={S.input} type="email" value={form.email} onChange={(e) => set("email", e.target.value)} disabled={!isNew} />
             {!isNew && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>이메일은 변경할 수 없습니다.</div>}
           </Field>
 
-          <Field label={isNew ? "전화번호 * (초기 비밀번호로 사용)" : "전화번호"}>
+          <Field label={isNew ? "전화번호 * (초기 비밀번호로 사용)" : "전화번호 *"}>
             <input style={S.input} type="tel" placeholder="예: 01012345678" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
-            {isNew && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>전화번호 뒷 8자리가 초기 비밀번호가 됩니다.</div>}
+            {isNew && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>전화번호 전체가 초기 비밀번호가 됩니다.</div>}
           </Field>
 
-          <Field label="근무지">
+          <Field label="근무지 *">
             <select style={{ ...S.input, padding: "11px 12px" }} value={form.workplaceId} onChange={(e) => set("workplaceId", e.target.value)}>
-              <option value="">미지정</option>
-              {workplaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              <option value="">근무지 선택</option>
+              {workplaces.map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
             </select>
           </Field>
 
-          <Field label="법인" half>
+          <Field label="법인 *" half>
             <input style={S.input} value={form.corp} onChange={(e) => set("corp", e.target.value)} />
           </Field>
-          <Field label="본부" half>
+          <Field label="본부 *" half>
             <input style={S.input} value={form.division} onChange={(e) => set("division", e.target.value)} />
           </Field>
-          <Field label="팀" half>
+          <Field label="팀 *" half>
             <input style={S.input} value={form.team} onChange={(e) => set("team", e.target.value)} />
           </Field>
-          <Field label="직무" half>
+          <Field label="직무 *" half>
             <input style={S.input} value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} />
           </Field>
 
@@ -123,7 +148,7 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
           </Field>
         </div>
 
-        {err && <div style={S.err}>{err}</div>}
+        {err && <div style={{ ...S.err, padding: "8px 10px", background: C.sealSoft, borderRadius: 8 }}>{err}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <button style={S.subGhost} onClick={onClose} disabled={busy}>취소</button>
           <button style={{ ...S.subPrimary, background: C.ink, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={save}>
@@ -150,7 +175,7 @@ function ResetPasswordModal({ worker, onClose, onDone }) {
       <p style={S.h1}>비밀번호 초기화</p>
       <p style={{ fontSize: 13, color: C.inkSoft }}><b style={{ color: C.ink }}>{worker.name}</b> ({worker.email})</p>
       <label style={S.fieldLabel}>새 임시 비밀번호</label>
-      <input style={S.input} value={pw} placeholder="전화번호 뒷 8자리 권장" onChange={(e) => setPw(e.target.value)} />
+      <input style={S.input} value={pw} placeholder="전화번호 전체 권장" onChange={(e) => setPw(e.target.value)} />
       {err && <div style={S.err}>{err}</div>}
       <div style={{ display: "flex", gap: 8 }}>
         <button style={S.subGhost} onClick={onClose} disabled={busy}>취소</button>
@@ -183,7 +208,9 @@ export default function AdminStaff({ filters, isHR }) {
     try {
       const [w, wp] = await Promise.all([api.getWorkers({}), api.getWorkplaces()]);
       setWorkers(w.workers);
-      setWorkplaces(wp.workplaces);
+      setWorkplaces(wp.workplaces || []);
+    } catch (e) {
+      setMsg(e.message);
     } finally { setLoading(false); }
   };
 
@@ -196,7 +223,6 @@ export default function AdminStaff({ filters, isHR }) {
     return true;
   });
 
-  // 관리자 계정은 항상 최상단
   const sorted = [...visible].sort((a, b) => {
     const aAdmin = a.role !== "worker" ? 0 : 1;
     const bAdmin = b.role !== "worker" ? 0 : 1;
@@ -241,7 +267,7 @@ export default function AdminStaff({ filters, isHR }) {
                 <div style={{ fontWeight: 700, color: C.ink, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
                   {w.name}
                   {isAdminRole && <span style={{ ...S.badge, background: "#e8eaf6", color: "#2d4a7a", fontSize: 10 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>}
-                  {w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: 12 }}>#{w.employee_id}</span>}
+                  {!isAdminRole && w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: 12 }}>#{w.employee_id}</span>}
                 </div>
                 <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>
                   {[w.corp, w.division, w.team, w.job_title].filter(Boolean).join(" · ")}

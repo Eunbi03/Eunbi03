@@ -4,24 +4,24 @@ import * as api from "../../api/client.js";
 
 function WpForm({ initial, onSave, onCancel, busy }) {
   const [form, setForm] = useState(
-    initial || { description: "", lat: "", lng: "", radius_meters: 200 }
+    initial || { name: "", lat: "", lng: "", radius_m: 200 }
   );
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-      <label style={S.fieldLabel}>근무지 이름</label>
-      <input style={S.input} placeholder="예: 서울 본사" value={form.description}
-        onChange={(e) => set("description", e.target.value)} />
-      <label style={S.fieldLabel}>위도 (Latitude)</label>
+      <label style={S.fieldLabel}>근무지 이름 *</label>
+      <input style={S.input} placeholder="예: 서울 본사" value={form.name}
+        onChange={(e) => set("name", e.target.value)} />
+      <label style={S.fieldLabel}>위도 (Latitude) *</label>
       <input style={S.input} placeholder="예: 37.5665" type="number" step="any" value={form.lat}
         onChange={(e) => set("lat", e.target.value)} />
-      <label style={S.fieldLabel}>경도 (Longitude)</label>
+      <label style={S.fieldLabel}>경도 (Longitude) *</label>
       <input style={S.input} placeholder="예: 126.9780" type="number" step="any" value={form.lng}
         onChange={(e) => set("lng", e.target.value)} />
       <label style={S.fieldLabel}>참고 반경 (미터)</label>
-      <input style={S.input} type="number" min="50" max="5000" value={form.radius_meters}
-        onChange={(e) => set("radius_meters", e.target.value)} />
+      <input style={S.input} type="number" min="50" max="5000" value={form.radius_m}
+        onChange={(e) => set("radius_m", e.target.value)} />
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
         <button style={S.subGhost} onClick={onCancel} disabled={busy}>취소</button>
         <button
@@ -56,16 +56,15 @@ export default function AdminSettings() {
   const fail = (text) => setMsg({ text, ok: false });
 
   const handleCreate = async (form) => {
-    if (!form.description.trim() || !form.lat || !form.lng) {
-      fail("이름, 위도, 경도는 필수입니다."); return;
-    }
+    if (!form.name.trim()) { fail("이름을 입력해주세요."); return; }
+    if (!form.lat || !form.lng) { fail("위도와 경도를 입력해주세요."); return; }
     setBusy(true); setMsg({ text: "", ok: true });
     try {
       await api.createWorkplace({
-        description: form.description.trim(),
+        name: form.name.trim(),
         lat: parseFloat(form.lat),
         lng: parseFloat(form.lng),
-        radiusMeters: parseInt(form.radius_meters, 10) || 200,
+        radiusM: parseInt(form.radius_m, 10) || 200,
       });
       setAdding(false);
       ok("근무지가 추가되었습니다.");
@@ -74,16 +73,15 @@ export default function AdminSettings() {
   };
 
   const handleUpdate = async (form) => {
-    if (!form.description.trim() || !form.lat || !form.lng) {
-      fail("이름, 위도, 경도는 필수입니다."); return;
-    }
+    if (!form.name.trim()) { fail("이름을 입력해주세요."); return; }
+    if (!form.lat || !form.lng) { fail("위도와 경도를 입력해주세요."); return; }
     setBusy(true); setMsg({ text: "", ok: true });
     try {
       await api.updateWorkplace(editing, {
-        description: form.description.trim(),
+        name: form.name.trim(),
         lat: parseFloat(form.lat),
         lng: parseFloat(form.lng),
-        radiusMeters: parseInt(form.radius_meters, 10) || 200,
+        radiusM: parseInt(form.radius_m, 10) || 200,
       });
       setEditing(null);
       ok("수정되었습니다.");
@@ -143,10 +141,10 @@ export default function AdminSettings() {
               <p style={{ ...S.formTitle, marginBottom: 12 }}>근무지 수정</p>
               <WpForm
                 initial={{
-                  description: wp.description || wp.name || "",
+                  name: wp.name || "",
                   lat: wp.lat,
                   lng: wp.lng,
-                  radius_meters: wp.radius_meters || 200,
+                  radius_m: wp.radius_m || 200,
                 }}
                 onSave={handleUpdate}
                 onCancel={() => { setEditing(null); setMsg({ text: "", ok: true }); }}
@@ -156,11 +154,9 @@ export default function AdminSettings() {
           ) : (
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontWeight: 700, fontSize: 14, color: C.ink, margin: "0 0 4px" }}>
-                  {wp.description || wp.name || "이름 없음"}
-                </p>
+                <p style={{ fontWeight: 700, fontSize: 14, color: C.ink, margin: "0 0 4px" }}>{wp.name || "이름 없음"}</p>
                 <p style={{ fontSize: 12, color: C.inkSoft, margin: 0 }}>
-                  위도 {wp.lat} · 경도 {wp.lng} · 반경 {wp.radius_meters || 200}m
+                  위도 {wp.lat} · 경도 {wp.lng} · 반경 {wp.radius_m || 200}m
                 </p>
               </div>
               <button
@@ -179,7 +175,7 @@ export default function AdminSettings() {
 
       <div style={{ marginTop: 20, padding: "12px 16px", background: "#f8f9fc", borderRadius: 12, fontSize: 12, color: C.inkSoft, lineHeight: 1.8 }}>
         <p style={{ fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>안내</p>
-        반경은 참고용이며 출퇴근 제한에 사용되지 않습니다. 직원이 출퇴근 시 GPS 거리가 기록되어 개별 리포트에서 확인할 수 있습니다.
+        반경은 참고용이며 출퇴근 제한에 사용되지 않습니다. 출퇴근 시 GPS 거리가 기록되어 개별 리포트에서 확인할 수 있습니다.
       </div>
     </div>
   );

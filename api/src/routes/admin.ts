@@ -79,8 +79,8 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
   const { email, name, phone, corp, division, team, jobTitle, employeeId,
           scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId } = req.body;
   if (!email || !name) { res.status(400).json({ error: 'email, name은 필수입니다.' }); return; }
-  // 초기 비번: 전화번호 (없으면 기본값)
-  const initPw = (phone || '').replace(/\D/g, '').slice(-8) || '초기비밀번호1';
+  // 초기 비번: 전화번호 전체 (없으면 기본값)
+  const initPw = (phone || '').replace(/\D/g, '') || '초기비밀번호1';
   const passwordHash = await bcrypt.hash(initPw, 12);
   const { rows } = await pool.query(
     `INSERT INTO users (email, employee_id, password_hash, name, phone,

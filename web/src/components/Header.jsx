@@ -30,7 +30,7 @@ export default function Header({ user, onLogout }) {
       </div>
       <button
         onClick={logout}
-        style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.35)", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer", flexShrink: 0 }}
+        style={{ background: "rgba(255,255,255,0.25)", border: "2px solid rgba(255,255,255,0.6)", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 800, color: "#ffffff", cursor: "pointer", flexShrink: 0, letterSpacing: 0 }}
       >
         로그아웃
       </button>
