@@ -168,7 +168,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
 
   // 해당 기간 출퇴근 기록
   const { rows: records } = await pool.query(
-    `SELECT ar.user_id, ar.date, ar.check_in_time, ar.check_out_time,
+    `SELECT ar.user_id, ar.date::text AS date, ar.check_in_time, ar.check_out_time,
             ar.status, ar.work_note_today, ar.daily_report, ar.leave_type
      FROM attendance_records ar
      WHERE ar.user_id=ANY($1) AND ar.date>=$2 AND ar.date<=$3`,
@@ -230,8 +230,12 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   // 출퇴근 기록
   const { rows: records } = await pool.query(
-    `SELECT ar.*, ar.work_note_in, ar.work_note_out, ar.work_note_field, ar.work_note_today,
-            ar.check_in_distance_m, ar.check_out_distance_m, ar.leave_type
+    `SELECT ar.id, ar.user_id, ar.date::text AS date,
+            ar.check_in_time, ar.check_in_lat, ar.check_in_lng,
+            ar.check_out_time, ar.check_out_lat, ar.check_out_lng, ar.check_out_is_field,
+            ar.work_minutes, ar.status, ar.daily_report, ar.leave_type,
+            ar.work_note_in, ar.work_note_out, ar.work_note_field, ar.work_note_today,
+            ar.check_in_distance_m, ar.check_out_distance_m
      FROM attendance_records ar
      WHERE ar.user_id=$1 AND ar.date>=$2 AND ar.date<=$3 ORDER BY ar.date`,
     [userId, from, to]
@@ -245,7 +249,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   // 랜덤 위치 기록
   const { rows: randomChecks } = await pool.query(
-    `SELECT * FROM random_location_checks WHERE user_id=$1 AND date>=$2 AND date<=$3 ORDER BY scheduled_time`,
+    `SELECT *, date::text AS date FROM random_location_checks WHERE user_id=$1 AND date>=$2 AND date<=$3 ORDER BY scheduled_time`,
     [userId, from, to]
   );
 
