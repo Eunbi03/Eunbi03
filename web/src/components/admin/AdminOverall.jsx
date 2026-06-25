@@ -12,21 +12,39 @@ export default function AdminOverall({ filters }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  useEffect(() => {
     setLoading(true);
     api.getOverview({ from, to }).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, [from, to]);
+  }, [from, to]);
 
   const filterWorker = (w) => {
-    if (filters.corp && w.corp !== filters.corp) return false;
-    if (filters.team && w.team !== filters.team) return false;
-    if (filters.jobTitle && w.job_title !== filters.jobTitle) return false;
+    if (filters.corp     && w.corp     !== filters.corp)     return false;
+    if (filters.division && w.division !== filters.division) return false;
+    if (filters.team     && w.team     !== filters.team)     return false;
     return true;
   };
 
+  // 법인 → 본부 → 팀 계층 구조로 변환
+  const buildHierarchy = () => {
+    if (!data?.teams) return {};
+    const corps = {};
+    for (const team of data.teams) {
+      const members = team.members.filter(filterWorker);
+      if (!members.length) continue;
+      const corp     = team.corp     || "(미지정)";
+      const division = team.division || "(미지정)";
+      const teamName = team.team     || "(미지정)";
+      if (!corps[corp]) corps[corp] = {};
+      if (!corps[corp][division]) corps[corp][division] = {};
+      corps[corp][division][teamName] = members;
+    }
+    return corps;
+  };
+
   if (loading) return <div style={S.empty}>불러오는 중…</div>;
+
+  const hierarchy = buildHierarchy();
+  const corpEntries = Object.entries(hierarchy);
 
   return (
     <div>
@@ -41,58 +59,76 @@ export default function AdminOverall({ filters }) {
         <span style={{ fontSize: 11, color: C.inkSoft }}>근무일 {data?.period?.workdays ?? "—"}일</span>
       </div>
 
-      {!data?.teams?.length && <div style={S.empty}>직원 데이터가 없습니다.</div>}
+      {!corpEntries.length && <div style={S.empty}>직원 데이터가 없습니다.</div>}
 
-      {data?.teams?.map((team) => {
-        const members = team.members.filter(filterWorker);
-        if (!members.length) return null;
-        const violators = members.filter((m) => m.total > 5);
+      {corpEntries.map(([corp, divisions]) => (
+        <div key={corp} style={{ marginBottom: 20 }}>
+          {/* 법인 헤더 */}
+          <div style={{
+            textAlign: "center", fontWeight: 800, fontSize: 15, color: C.green,
+            background: C.greenSoft, borderRadius: 12, padding: "10px 16px", marginBottom: 10,
+          }}>
+            {corp}
+          </div>
 
-        return (
-          <div key={team.label} style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
-              <p style={{ fontWeight: 800, fontSize: 14, color: C.ink, margin: 0 }}>{team.label}</p>
-              <span style={{ fontSize: 12, color: C.inkSoft }}>총 {members.length}명</span>
-              {violators.length > 0 && (
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 8px", borderRadius: 12 }}>
-                  5회 초과 {violators.length}명
-                </span>
-              )}
-            </div>
+          {Object.entries(divisions).map(([division, teams]) => (
+            <div key={division} style={{ marginBottom: 8 }}>
+              {/* 본부 헤더 */}
+              <p style={{ fontWeight: 800, fontSize: 13, color: C.ink, margin: "0 0 4px 2px" }}>
+                &gt; {division}
+              </p>
 
-            <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden" }}>
-              {/* 헤더 */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 60px 60px 60px", gap: 4, padding: "7px 12px", background: C.paper, fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
-                <span>이름</span>
-                <span style={{ textAlign: "center" }}>지각</span>
-                <span style={{ textAlign: "center" }}>출근누락</span>
-                <span style={{ textAlign: "center" }}>퇴근누락</span>
-                <span style={{ textAlign: "center" }}>노트누락</span>
-              </div>
-
-              {members.map((m) => {
-                const over = m.total > 5;
+              {Object.entries(teams).map(([teamName, members]) => {
+                const violators = members.filter((m) => m.total > 5);
                 return (
-                  <div key={m.id} style={{
-                    display: "grid", gridTemplateColumns: "1fr 60px 60px 60px 60px", gap: 4,
-                    padding: "8px 12px", borderTop: `1px solid ${C.line}`,
-                    background: over ? "#fff5f5" : "#fff",
-                  }}>
-                    <span style={{ fontSize: 13, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>
-                      {m.name}
-                      {m.job_title && <span style={{ fontSize: 11, color: C.inkSoft, marginLeft: 4 }}>{m.job_title}</span>}
-                    </span>
-                    <Cell v={m.lateCount} over={over} />
-                    <Cell v={m.missingIn} over={over} />
-                    <Cell v={m.missingOut} over={over} />
-                    <Cell v={m.missingNote} over={over} />
+                  <div key={teamName} style={{ marginLeft: 10, marginBottom: 12 }}>
+                    {/* 팀 헤더 */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0" }}>
+                      <p style={{ fontWeight: 700, fontSize: 12, color: C.inkSoft, margin: 0 }}>
+                        &gt; {teamName}
+                      </p>
+                      {violators.length > 0 && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 8px", borderRadius: 12 }}>
+                          5회 초과 {violators.length}명
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 테이블 */}
+                    <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px", padding: "6px 12px", background: C.paper, fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
+                        <span>이름</span>
+                        <span style={{ textAlign: "center" }}>지각</span>
+                        <span style={{ textAlign: "center" }}>출근누락</span>
+                        <span style={{ textAlign: "center" }}>퇴근누락</span>
+                        <span style={{ textAlign: "center" }}>노트누락</span>
+                      </div>
+                      {members.map((m) => {
+                        const over = m.total > 5;
+                        return (
+                          <div key={m.id} style={{
+                            display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px",
+                            padding: "7px 12px", borderTop: `1px solid ${C.line}`,
+                            background: over ? "#fff5f5" : "#fff",
+                          }}>
+                            <span style={{ fontSize: 13, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>
+                              {m.name}
+                            </span>
+                            <Cell v={m.lateCount} over={over} />
+                            <Cell v={m.missingIn} over={over} />
+                            <Cell v={m.missingOut} over={over} />
+                            <Cell v={m.missingNote} over={over} />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </div>
-        );
-      })}
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

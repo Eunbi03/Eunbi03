@@ -470,8 +470,9 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   };
 
   const visible = workers.filter((w) => {
-    if (filters.corp && w.corp !== filters.corp) return false;
-    if (filters.team && w.team !== filters.team) return false;
+    if (filters.corp     && w.corp     !== filters.corp)     return false;
+    if (filters.division && w.division !== filters.division) return false;
+    if (filters.team     && w.team     !== filters.team)     return false;
     return true;
   });
 

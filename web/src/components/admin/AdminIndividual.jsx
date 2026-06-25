@@ -207,8 +207,9 @@ export default function AdminIndividual({ filters }) {
   const visibleWorkers = workers
     .filter((w) => {
       if (w.role === 'admin' || w.role === 'hr') return false;
-      if (filters.corp && w.corp !== filters.corp) return false;
-      if (filters.team && w.team !== filters.team) return false;
+      if (filters.corp     && w.corp     !== filters.corp)     return false;
+      if (filters.division && w.division !== filters.division) return false;
+      if (filters.team     && w.team     !== filters.team)     return false;
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));

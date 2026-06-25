@@ -18,14 +18,15 @@ export default function AdminApp({ user }) {
   const [tab, setTab] = useState("overall");
 
   // 공통 필터: 직원 목록에서 동적으로 추출
-  const [filterOptions, setFilterOptions] = useState({ corps: [], teams: [] });
-  const [filters, setFilters] = useState({ corp: "", team: "" });
+  const [filterOptions, setFilterOptions] = useState({ corps: [], divisions: [], teams: [] });
+  const [filters, setFilters] = useState({ corp: "", division: "", team: "" });
 
   useEffect(() => {
     api.getWorkers({}).then((d) => {
-      const corps = [...new Set(d.workers.map((w) => w.corp).filter(Boolean))].sort();
-      const teams = [...new Set(d.workers.map((w) => w.team).filter(Boolean))].sort();
-      setFilterOptions({ corps, teams });
+      const corps     = [...new Set(d.workers.map((w) => w.corp).filter(Boolean))].sort();
+      const divisions = [...new Set(d.workers.map((w) => w.division).filter(Boolean))].sort();
+      const teams     = [...new Set(d.workers.map((w) => w.team).filter(Boolean))].sort();
+      setFilterOptions({ corps, divisions, teams });
     }).catch(() => {});
   }, []);
 
@@ -49,11 +50,15 @@ export default function AdminApp({ user }) {
       {/* 필터 */}
       {showFilter && (
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-          <select style={{ ...S.select, flex: "1 1 120px", padding: "7px 10px", fontSize: 12 }} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
+          <select style={{ ...S.select, flex: "1 1 100px", padding: "7px 10px", fontSize: 12 }} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
             <option value="">전체 법인</option>
             {filterOptions.corps.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select style={{ ...S.select, flex: "1 1 120px", padding: "7px 10px", fontSize: 12 }} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
+          <select style={{ ...S.select, flex: "1 1 100px", padding: "7px 10px", fontSize: 12 }} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
+            <option value="">전체 본부</option>
+            {filterOptions.divisions.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select style={{ ...S.select, flex: "1 1 100px", padding: "7px 10px", fontSize: 12 }} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
             <option value="">전체 팀</option>
             {filterOptions.teams.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
