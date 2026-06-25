@@ -1,70 +1,74 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C, S } from "../styles.js";
-import AdminDashboard from "./admin/AdminDashboard.jsx";
-import AdminToday from "./admin/AdminToday.jsx";
+import AdminOverall from "./admin/AdminOverall.jsx";
 import AdminStaff from "./admin/AdminStaff.jsx";
-import AdminMonth from "./admin/AdminMonth.jsx";
+import AdminIndividual from "./admin/AdminIndividual.jsx";
 import AdminSettings from "./admin/AdminSettings.jsx";
+import * as api from "../api/client.js";
 
 const TABS = [
-  { key: "dashboard", label: "대시보드" },
-  { key: "today", label: "오늘 현황" },
-  { key: "staff", label: "직원 관리" },
-  { key: "month", label: "월별 리포트" },
-  { key: "settings", label: "설정" },
+  { key: "overall",    label: "전체 현황" },
+  { key: "staff",      label: "직원 관리" },
+  { key: "individual", label: "개별 리포트" },
+  { key: "settings",   label: "설정" },
 ];
 
 export default function AdminApp({ user }) {
-  const isHR = user?.role === "hr";
-  const [tab, setTab] = useState("dashboard");
-  const [corp, setCorp] = useState("");
-  const [team, setTeam] = useState("");
+  const isHR = user?.role === "hr" || user?.role === "admin";
+  const [tab, setTab] = useState("overall");
+
+  // 공통 필터: 직원 목록에서 동적으로 추출
+  const [filterOptions, setFilterOptions] = useState({ corps: [], teams: [], jobTitles: [] });
+  const [filters, setFilters] = useState({ corp: "", team: "", jobTitle: "" });
+
+  useEffect(() => {
+    api.getWorkers({}).then((d) => {
+      const corps    = [...new Set(d.workers.map((w) => w.corp).filter(Boolean))].sort();
+      const teams    = [...new Set(d.workers.map((w) => w.team).filter(Boolean))].sort();
+      const jobTitles= [...new Set(d.workers.map((w) => w.job_title).filter(Boolean))].sort();
+      setFilterOptions({ corps, teams, jobTitles });
+    }).catch(() => {});
+  }, []);
+
+  const setF = (key, val) => setFilters((f) => ({ ...f, [key]: val }));
+
+  const showFilter = tab !== "settings";
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto", padding: "0 0 40px" }}>
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2, marginBottom: 4 }}>
+    <div style={{ maxWidth: 780, margin: "0 auto", padding: "0 0 60px" }}>
+      {/* 탭 */}
+      <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "12px 0 6px", borderBottom: `1px solid ${C.line}`, marginBottom: 12 }}>
         {TABS.map((t) => (
-          <button
-            key={t.key}
-            style={{
-              ...S.miniBtn,
-              flexShrink: 0,
-              fontWeight: tab === t.key ? 700 : 400,
-              background: tab === t.key ? C.ink : "transparent",
-              color: tab === t.key ? "#fff" : C.ink,
-              borderColor: tab === t.key ? C.ink : C.line,
-              padding: "6px 14px",
-              fontSize: 13,
-            }}
+          <button key={t.key}
+            style={{ flexShrink: 0, border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: tab === t.key ? 800 : 400,
+              background: tab === t.key ? C.ink : "transparent", color: tab === t.key ? "#fff" : C.inkSoft, cursor: "pointer" }}
             onClick={() => setTab(t.key)}
-          >
-            {t.label}
-          </button>
+          >{t.label}</button>
         ))}
       </div>
 
-      {tab !== "dashboard" && tab !== "settings" && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-          <input
-            style={{ ...S.input, flex: 1, padding: "7px 10px", fontSize: 12 }}
-            placeholder="법인 필터"
-            value={corp}
-            onChange={(e) => setCorp(e.target.value)}
-          />
-          <input
-            style={{ ...S.input, flex: 1, padding: "7px 10px", fontSize: 12 }}
-            placeholder="팀 필터"
-            value={team}
-            onChange={(e) => setTeam(e.target.value)}
-          />
+      {/* 필터 */}
+      {showFilter && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+          <select style={{ ...S.select, flex: "1 1 120px", padding: "7px 10px", fontSize: 12 }} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
+            <option value="">전체 법인</option>
+            {filterOptions.corps.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select style={{ ...S.select, flex: "1 1 120px", padding: "7px 10px", fontSize: 12 }} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
+            <option value="">전체 팀</option>
+            {filterOptions.teams.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select style={{ ...S.select, flex: "1 1 120px", padding: "7px 10px", fontSize: 12 }} value={filters.jobTitle} onChange={(e) => setF("jobTitle", e.target.value)}>
+            <option value="">전체 직무</option>
+            {filterOptions.jobTitles.map((j) => <option key={j} value={j}>{j}</option>)}
+          </select>
         </div>
       )}
 
-      {tab === "dashboard" && <AdminDashboard corp={corp} team={team} />}
-      {tab === "today" && <AdminToday corp={corp} team={team} />}
-      {tab === "staff" && <AdminStaff corp={corp} team={team} isHR={isHR} />}
-      {tab === "month" && <AdminMonth corp={corp} team={team} />}
-      {tab === "settings" && <AdminSettings />}
+      {tab === "overall"    && <AdminOverall    filters={filters} />}
+      {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} onRefreshFilters={() => {}} />}
+      {tab === "individual" && <AdminIndividual filters={filters} />}
+      {tab === "settings"   && <AdminSettings />}
     </div>
   );
 }
