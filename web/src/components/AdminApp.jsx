@@ -66,7 +66,7 @@ export default function AdminApp({ user }) {
       )}
 
       {tab === "overall"    && <AdminOverall    filters={filters} />}
-      {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} onRefreshFilters={() => {}} />}
+      {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={user} onRefreshFilters={() => {}} />}
       {tab === "individual" && <AdminIndividual filters={filters} />}
       {tab === "settings"   && <AdminSettings />}
     </div>

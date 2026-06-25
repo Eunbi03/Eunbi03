@@ -96,6 +96,13 @@ export const approveDeviceChange = (id) => request(`/admin/device-change-request
 export const rejectDeviceChange = (id) => request(`/admin/device-change-requests/${id}/reject`, { method: "POST" });
 export const approveTimeChange = (recordId, approve) => request(`/admin/attendance/${recordId}/approve-time-change`, { method: "POST", body: { approve } });
 
+/* 관리자 — 관리자 기기 관리 */
+export const getMyAdminDevices = () => request("/admin/my-devices");
+export const getAdminDevices = (userId) => request(`/admin/admin-devices/${userId}`);
+export const approveAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}/approve`, { method: "POST" });
+export const removeAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}`, { method: "DELETE" });
+export const transferAuthority = (targetUserId) => request("/admin/authority/transfer", { method: "PUT", body: { targetUserId } });
+
 /* 관리자 — 설정 */
 export const getCompanySettings = () => request("/admin/company-settings");
 export const saveCompanySettings = (data) => request("/admin/company-settings", { method: "POST", body: data });

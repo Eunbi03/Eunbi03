@@ -31,7 +31,7 @@ router.post('/login',
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
 
-    const { email, password, deviceId } = req.body;
+    const { email, password, deviceId, deviceName } = req.body;
     const { rows } = await pool.query('SELECT * FROM users WHERE email = $1 AND is_active = TRUE', [email]);
     if (rows.length === 0) {
       await logAttempt({ email, deviceId, success: false, failReason: 'USER_NOT_FOUND', req });
@@ -45,30 +45,87 @@ router.post('/login',
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
-    const isDeviceMismatch = Boolean(user.device_id) && user.device_id !== deviceId;
-
-    if (!passwordMatch || isDeviceMismatch) {
+    if (!passwordMatch) {
       const newFailCount = user.failed_login_attempts + 1;
       const shouldLock = newFailCount >= MAX_FAILED;
-      const failReason = isDeviceMismatch ? 'DEVICE_MISMATCH' : 'WRONG_PASSWORD';
-
       await pool.query(
         `UPDATE users SET failed_login_attempts=$1, is_locked=$2, locked_reason=$3,
          locked_at=CASE WHEN $2 THEN now() ELSE locked_at END WHERE id=$4`,
         [newFailCount, shouldLock, shouldLock ? '5회 이상 로그인 실패' : null, user.id]
       );
-      await logAttempt({ userId: user.id, email, deviceId, success: false, failReason, req });
+      await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'WRONG_PASSWORD', req });
       if (shouldLock) await notifyHRTeam(user.id, user.name, '5회 이상 로그인 실패로 계정이 잠겼습니다.');
-
-      if (isDeviceMismatch) {
-        res.status(403).json({ error: '등록되지 않은 기기입니다.', remainingAttempts: Math.max(0, MAX_FAILED - newFailCount) }); return;
-      }
       res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.', remainingAttempts: Math.max(0, MAX_FAILED - newFailCount) }); return;
     }
 
-    if (!user.device_id) {
-      await pool.query('UPDATE users SET device_id=$1, device_registered_at=now() WHERE id=$2', [deviceId, user.id]);
+    const isAdminUser = user.role === 'admin' || user.role === 'hr';
+
+    if (isAdminUser) {
+      // 관리자: admin_devices 테이블에서 기기 확인
+      const { rows: deviceRows } = await pool.query(
+        'SELECT * FROM admin_devices WHERE user_id=$1 AND device_id=$2',
+        [user.id, deviceId]
+      );
+
+      if (deviceRows.length > 0) {
+        // 기기가 등록되어 있음
+        if (!deviceRows[0].is_approved) {
+          await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DEVICE_PENDING', req });
+          res.status(403).json({ error: '이 기기는 권한자의 승인을 기다리고 있습니다.', pendingApproval: true }); return;
+        }
+        // 승인된 기기 — 정상 진행
+      } else {
+        // 기기가 admin_devices에 없음
+        const { rows: approvedDevices } = await pool.query(
+          'SELECT id FROM admin_devices WHERE user_id=$1 AND is_approved=TRUE',
+          [user.id]
+        );
+
+        if (approvedDevices.length === 0) {
+          // 첫 번째 기기: 자동 승인
+          await pool.query(
+            'INSERT INTO admin_devices (user_id, device_id, device_name, is_approved, approved_at) VALUES ($1,$2,$3,TRUE,now())',
+            [user.id, deviceId, deviceName || '첫 번째 기기']
+          );
+          // 전체 권한자가 없으면 이 계정을 권한자로 설정
+          const { rows: holderRows } = await pool.query(
+            'SELECT id FROM users WHERE is_authority_holder=TRUE AND is_active=TRUE LIMIT 1'
+          );
+          if (holderRows.length === 0) {
+            await pool.query('UPDATE users SET is_authority_holder=TRUE WHERE id=$1', [user.id]);
+          }
+        } else {
+          // 추가 기기: 승인 대기 등록
+          await pool.query(
+            'INSERT INTO admin_devices (user_id, device_id, device_name, is_approved) VALUES ($1,$2,$3,FALSE) ON CONFLICT (user_id, device_id) DO NOTHING',
+            [user.id, deviceId, deviceName || '새 기기']
+          );
+          await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_PENDING', req });
+          res.status(403).json({ error: '새 기기 등록 요청이 전송되었습니다. 권한자의 승인 후 로그인할 수 있습니다.', pendingApproval: true }); return;
+        }
+      }
+    } else {
+      // 일반 직원: users.device_id 확인
+      const isDeviceMismatch = Boolean(user.device_id) && user.device_id !== deviceId;
+      if (isDeviceMismatch) {
+        const newFailCount = user.failed_login_attempts + 1;
+        const shouldLock = newFailCount >= MAX_FAILED;
+        await pool.query(
+          `UPDATE users SET failed_login_attempts=$1, is_locked=$2, locked_reason=$3,
+           locked_at=CASE WHEN $2 THEN now() ELSE locked_at END WHERE id=$4`,
+          [newFailCount, shouldLock, shouldLock ? '5회 이상 로그인 실패' : null, user.id]
+        );
+        await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DEVICE_MISMATCH', req });
+        if (shouldLock) await notifyHRTeam(user.id, user.name, '5회 이상 로그인 실패로 계정이 잠겼습니다.');
+        res.status(403).json({ error: '등록되지 않은 기기입니다.', remainingAttempts: Math.max(0, MAX_FAILED - newFailCount) }); return;
+      }
+      if (!user.device_id) {
+        await pool.query('UPDATE users SET device_id=$1, device_registered_at=now() WHERE id=$2', [deviceId, user.id]);
+      }
     }
+
+    // 최신 is_authority_holder 값 조회
+    const { rows: freshUser } = await pool.query('SELECT is_authority_holder FROM users WHERE id=$1', [user.id]);
 
     const { plainToken, tokenHash } = generateRefreshToken();
     await pool.query(
@@ -80,7 +137,12 @@ router.post('/login',
     res.json({
       accessToken: generateAccessToken({ userId: user.id, role: user.role }),
       refreshToken: plainToken,
-      user: { id: user.id, name: user.name, role: user.role, mustChangePassword: user.must_change_password, locationConsentGiven: user.location_consent_given },
+      user: {
+        id: user.id, name: user.name, role: user.role,
+        mustChangePassword: user.must_change_password,
+        locationConsentGiven: user.location_consent_given,
+        isAuthorityHolder: freshUser[0]?.is_authority_holder || false,
+      },
     });
   }
 );
@@ -98,7 +160,18 @@ router.post('/auto-login',
     const user = rows[0];
 
     if (user.is_locked) { res.status(403).json({ error: '계정이 잠겨 있습니다.' }); return; }
-    if (!user.device_id || user.device_id !== deviceId) { res.status(403).json({ error: '기기 정보가 일치하지 않습니다.' }); return; }
+
+    const isAdminUser = user.role === 'admin' || user.role === 'hr';
+    if (isAdminUser) {
+      // 관리자: admin_devices에서 승인 여부 확인
+      const { rows: deviceRows } = await pool.query(
+        'SELECT * FROM admin_devices WHERE user_id=$1 AND device_id=$2 AND is_approved=TRUE',
+        [userId, deviceId]
+      );
+      if (deviceRows.length === 0) { res.status(403).json({ error: '기기 정보가 일치하지 않거나 승인되지 않았습니다.' }); return; }
+    } else {
+      if (!user.device_id || user.device_id !== deviceId) { res.status(403).json({ error: '기기 정보가 일치하지 않습니다.' }); return; }
+    }
 
     const tokenHash = hashToken(refreshToken);
     const isExpired = user.refresh_token_expires_at && new Date(user.refresh_token_expires_at) < new Date();
@@ -108,7 +181,12 @@ router.post('/auto-login',
 
     res.json({
       accessToken: generateAccessToken({ userId: user.id, role: user.role }),
-      user: { id: user.id, name: user.name, role: user.role, mustChangePassword: user.must_change_password, locationConsentGiven: user.location_consent_given },
+      user: {
+        id: user.id, name: user.name, role: user.role,
+        mustChangePassword: user.must_change_password,
+        locationConsentGiven: user.location_consent_given,
+        isAuthorityHolder: user.is_authority_holder || false,
+      },
     });
   }
 );

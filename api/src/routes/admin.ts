@@ -66,9 +66,9 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
     `SELECT u.id, u.employee_id, u.corp, u.division, u.team, u.job_title, u.name, u.phone,
             u.workplace_id, w.name AS workplace_name, w.lat AS wp_lat, w.lng AS wp_lng,
             u.scheduled_start, u.scheduled_end, u.lunch_start, u.lunch_end,
-            u.email, u.device_id, u.is_locked, u.must_change_password, u.role, u.created_at
+            u.email, u.device_id, u.is_locked, u.must_change_password, u.role, u.is_authority_holder, u.created_at
      FROM users u LEFT JOIN workplaces w ON u.workplace_id = w.id
-     ${where} ORDER BY u.role DESC, u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST, u.name
+     ${where} ORDER BY u.is_authority_holder DESC NULLS LAST, u.role DESC, u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST, u.name
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
@@ -433,6 +433,93 @@ router.get('/dashboard', async (req: Request, res: Response): Promise<void> => {
   );
   const { rows: staffCount } = await pool.query("SELECT COUNT(*) as count FROM users WHERE role='worker' AND is_active=TRUE");
   res.json({ today: todayRows[0], totalStaff: parseInt(staffCount[0].count, 10) });
+});
+
+// ── 관리자 기기 관리 ──────────────────────────────────────────
+
+// 내 기기 목록 + 권한자면 전체 대기 기기 목록
+router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
+  const { rows: userRows } = await pool.query(
+    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
+  );
+  const isHolder = userRows[0]?.is_authority_holder || false;
+
+  const { rows: myDevices } = await pool.query(
+    'SELECT id, device_id, device_name, is_approved, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    [req.user.userId]
+  );
+
+  let pendingDevices: any[] = [];
+  if (isHolder) {
+    const { rows } = await pool.query(
+      `SELECT ad.id, ad.device_id, ad.device_name, ad.created_at, u.name AS owner_name, u.email AS owner_email, u.id AS owner_id
+       FROM admin_devices ad JOIN users u ON u.id = ad.user_id
+       WHERE ad.is_approved = FALSE ORDER BY ad.created_at`
+    );
+    pendingDevices = rows;
+  }
+
+  res.json({ myDevices, pendingDevices, isAuthorityHolder: isHolder });
+});
+
+// 특정 관리자의 기기 목록 (권한자 전용)
+router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
+  const { rows: holderRows } = await pool.query(
+    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
+  );
+  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 조회할 수 있습니다.' }); return; }
+
+  const { rows } = await pool.query(
+    'SELECT id, device_id, device_name, is_approved, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    [req.params.userId]
+  );
+  res.json({ devices: rows });
+});
+
+// 기기 승인 (권한자 전용)
+router.post('/devices/:id/approve', async (req: Request, res: Response): Promise<void> => {
+  const { rows: holderRows } = await pool.query(
+    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
+  );
+  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 승인할 수 있습니다.' }); return; }
+
+  const { rows } = await pool.query(
+    'UPDATE admin_devices SET is_approved=TRUE, approved_by=$1, approved_at=now() WHERE id=$2 AND is_approved=FALSE RETURNING id',
+    [req.user.userId, req.params.id]
+  );
+  if (!rows[0]) { res.status(404).json({ error: '승인할 기기를 찾을 수 없습니다.' }); return; }
+  res.json({ success: true });
+});
+
+// 기기 삭제 (권한자 전용)
+router.delete('/devices/:id', async (req: Request, res: Response): Promise<void> => {
+  const { rows: holderRows } = await pool.query(
+    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
+  );
+  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
+
+  await pool.query('DELETE FROM admin_devices WHERE id=$1', [req.params.id]);
+  res.json({ success: true });
+});
+
+// 권한자 이전 (현재 권한자만 가능)
+router.put('/authority/transfer', async (req: Request, res: Response): Promise<void> => {
+  const { targetUserId } = req.body;
+  if (!targetUserId) { res.status(400).json({ error: 'targetUserId가 필요합니다.' }); return; }
+
+  const { rows: holderRows } = await pool.query(
+    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
+  );
+  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 이전할 수 있습니다.' }); return; }
+
+  const { rows: targetRows } = await pool.query(
+    "SELECT id FROM users WHERE id=$1 AND is_active=TRUE AND role IN ('admin','hr')", [targetUserId]
+  );
+  if (!targetRows[0]) { res.status(400).json({ error: '대상 관리자를 찾을 수 없습니다.' }); return; }
+
+  await pool.query('UPDATE users SET is_authority_holder=FALSE WHERE is_authority_holder=TRUE');
+  await pool.query('UPDATE users SET is_authority_holder=TRUE WHERE id=$1', [targetUserId]);
+  res.json({ success: true });
 });
 
 // ── 설정 (회사 지오펜스 — 레거시, 근무지로 대체 권장) ──────────
