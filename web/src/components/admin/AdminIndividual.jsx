@@ -204,12 +204,14 @@ export default function AdminIndividual({ filters }) {
     api.getWorkers({}).then((d) => { setWorkers(d.workers); }).finally(() => setListLoading(false));
   }, []);
 
-  const visibleWorkers = workers.filter((w) => {
-    if (w.role === 'admin' || w.role === 'hr') return false;
-    if (filters.corp && w.corp !== filters.corp) return false;
-    if (filters.team && w.team !== filters.team) return false;
-    return true;
-  });
+  const visibleWorkers = workers
+    .filter((w) => {
+      if (w.role === 'admin' || w.role === 'hr') return false;
+      if (filters.corp && w.corp !== filters.corp) return false;
+      if (filters.team && w.team !== filters.team) return false;
+      return true;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
   const toggle = async (w) => {
     if (openId === w.id) { setOpenId(null); return; }
