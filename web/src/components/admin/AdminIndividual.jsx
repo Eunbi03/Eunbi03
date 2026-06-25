@@ -179,14 +179,26 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
 }
 
 function LocRow({ label, time, lat, lng, dist, note, isField }) {
+  const distBadge = dist != null ? (
+    <span style={{
+      fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 7, flexShrink: 0,
+      background: dist > 200 ? C.sealSoft : C.greenSoft,
+      color: dist > 200 ? C.seal : C.green,
+    }}>
+      {dist > 200 ? "⚠ " : ""}{fmtDist(dist)}
+    </span>
+  ) : null;
+
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-      <span style={{ fontWeight: 700, color: C.inkSoft, width: 44, flexShrink: 0 }}>{label}</span>
-      <span style={{ color: C.ink }}>{fmtTime(time)}</span>
-      {note && <span style={{ color: C.inkSoft }}>{note}</span>}
-      {dist != null && <span style={{ color: dist > 200 ? C.seal : C.green, fontWeight: 700 }}>({fmtDist(dist)})</span>}
-      {isField && <span style={{ ...S.badge, background: C.amberSoft, color: C.amber, fontSize: 10 }}>외근</span>}
-      {lat && <a href={mapsUrl(lat, lng)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.blue }}>지도</a>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 700, color: C.inkSoft, width: 44, flexShrink: 0 }}>{label}</span>
+        <span style={{ color: C.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(time)}</span>
+        {distBadge}
+        {isField && <span style={{ ...S.badge, background: C.amberSoft, color: C.amber, fontSize: 10 }}>외근</span>}
+        {lat && <a href={mapsUrl(lat, lng)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.blue, marginLeft: "auto" }}>지도</a>}
+      </div>
+      {note && <div style={{ paddingLeft: 50, fontSize: 11, color: C.inkSoft, lineHeight: 1.4 }}>{note}</div>}
     </div>
   );
 }
