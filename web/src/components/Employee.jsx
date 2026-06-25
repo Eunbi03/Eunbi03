@@ -167,6 +167,12 @@ export default function Employee({ user }) {
           <div style={{ fontSize: 13, color: C.inkSoft, textAlign: "center", padding: "16px 0" }}>아직 출근 전입니다.</div>
         )}
 
+        {today?.leaveType && (
+          <div style={{ marginTop: 8, padding: "6px 12px", background: C.greenSoft, borderRadius: 8, fontSize: 12, color: C.green, fontWeight: 700 }}>
+            {{연차: "연차 처리된 날입니다.", 출근: "출근 인정 처리된 날입니다.", 퇴근: "퇴근 인정 처리된 날입니다."}[today.leaveType] || `${today.leaveType} 처리됨`}
+          </div>
+        )}
+
         {today?.checkIn?.time && <Timeline record={today} />}
 
         {today?.timeChangeStatus === "pending" && (
@@ -178,7 +184,7 @@ export default function Employee({ user }) {
 
       {/* 버튼 영역 - 카드와 간격 */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
-        {!isCheckedIn && !isCheckedOut && (
+        {!isCheckedIn && !isCheckedOut && today?.leaveType !== '연차' && (
           <button style={{ ...S.primary, opacity: busy ? 0.6 : 1 }} onClick={checkIn} disabled={busy}>
             {busy ? "처리 중…" : "출근"}
           </button>
@@ -219,6 +225,7 @@ export default function Employee({ user }) {
             <p style={S.formTitle}>이번 주 요약</p>
             <div style={S.kpiRow}>
               <Kpi label="출근일" value={weekly.workedDays} color={C.green} />
+              {weekly.leaveDays > 0 && <Kpi label="연차" value={weekly.leaveDays} color={C.green} />}
               <Kpi label="지각" value={weekly.lateDays} color={C.amber} />
               <Kpi label="조퇴" value={weekly.earlyLeaveDays} color={C.seal} />
               <Kpi label="총 근무" value={weekly.totalWorkMinutes ? fmtDur(weekly.totalWorkMinutes) : "—"} color={C.ink} />
@@ -237,6 +244,7 @@ export default function Employee({ user }) {
             <p style={S.formTitle}>이번 달 요약</p>
             <div style={S.kpiRow}>
               <Kpi label="출근일" value={monthly.workedDays} color={C.green} />
+              {monthly.leaveDays > 0 && <Kpi label="연차" value={monthly.leaveDays} color={C.green} />}
               <Kpi label="지각" value={monthly.lateDays} color={C.amber} />
               <Kpi label="조퇴" value={monthly.earlyLeaveDays} color={C.seal} />
               <Kpi label="총 근무" value={monthly.totalWorkMinutes ? fmtDur(monthly.totalWorkMinutes) : "—"} color={C.ink} />
