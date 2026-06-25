@@ -17,7 +17,6 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
 
   const [form, setForm] = useState({
     name: worker?.name || "",
-    employeeId: worker?.employee_id || "",
     email: worker?.email || "",
     phone: worker?.phone || "",
     workplaceId: worker?.workplace_id ? String(worker.workplace_id) : "",
@@ -91,11 +90,8 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <Field label="이름 *" half>
+          <Field label="이름 *">
             <input style={S.input} value={form.name} onChange={(e) => set("name", e.target.value)} />
-          </Field>
-          <Field label="사원번호" half>
-            <input style={S.input} value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
           </Field>
           <Field label="이메일 *">
             <input style={S.input} type="email" value={form.email} onChange={(e) => set("email", e.target.value)} disabled={!isNew} />

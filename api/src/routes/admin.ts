@@ -76,39 +76,46 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
 });
 
 router.post('/workers', async (req: Request, res: Response): Promise<void> => {
-  const { email, name, phone, corp, division, team, jobTitle, employeeId,
-          scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId } = req.body;
-  if (!email || !name) { res.status(400).json({ error: 'email, name은 필수입니다.' }); return; }
-  // 초기 비번: 전화번호 전체 (없으면 기본값)
-  const initPw = (phone || '').replace(/\D/g, '') || '초기비밀번호1';
-  const passwordHash = await bcrypt.hash(initPw, 12);
-  const { rows } = await pool.query(
-    `INSERT INTO users (email, employee_id, password_hash, name, phone,
-       corp, division, team, job_title, scheduled_start, scheduled_end,
-       lunch_start, lunch_end, workplace_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, email, name`,
-    [email, employeeId || null, passwordHash, name, phone || null,
-     corp || null, division || null, team || null, jobTitle || null,
-     scheduledStart || '09:00', scheduledEnd || '18:00',
-     lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null]
-  );
-  res.status(201).json({ success: true, worker: rows[0], initPassword: initPw });
+  try {
+    const { email, name, phone, corp, division, team, jobTitle,
+            scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId } = req.body;
+    if (!email || !name) { res.status(400).json({ error: 'email, name은 필수입니다.' }); return; }
+    const initPw = (phone || '').replace(/\D/g, '') || '초기비밀번호1';
+    const passwordHash = await bcrypt.hash(initPw, 12);
+    const { rows } = await pool.query(
+      `INSERT INTO users (email, password_hash, name, phone,
+         corp, division, team, job_title, scheduled_start, scheduled_end,
+         lunch_start, lunch_end, workplace_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, email, name`,
+      [email, passwordHash, name, phone || null,
+       corp || null, division || null, team || null, jobTitle || null,
+       scheduledStart || '09:00', scheduledEnd || '18:00',
+       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null]
+    );
+    res.status(201).json({ success: true, worker: rows[0], initPassword: initPw });
+  } catch (e: any) {
+    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 이메일입니다.' });
+    else res.status(500).json({ error: e.message || '직원 추가 중 오류가 발생했습니다.' });
+  }
 });
 
 router.put('/workers/:id', async (req: Request, res: Response): Promise<void> => {
-  const { name, phone, corp, division, team, jobTitle, employeeId,
-          scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId } = req.body;
-  const { rows } = await pool.query(
-    `UPDATE users SET name=$1, phone=$2, corp=$3, division=$4, team=$5, job_title=$6,
-       employee_id=$7, scheduled_start=$8, scheduled_end=$9,
-       lunch_start=$10, lunch_end=$11, workplace_id=$12
-     WHERE id=$13 RETURNING id, name, email`,
-    [name, phone || null, corp || null, division || null, team || null, jobTitle || null,
-     employeeId || null, scheduledStart || '09:00', scheduledEnd || '18:00',
-     lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, req.params.id]
-  );
-  if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
-  res.json({ success: true, worker: rows[0] });
+  try {
+    const { name, phone, corp, division, team, jobTitle,
+            scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE users SET name=$1, phone=$2, corp=$3, division=$4, team=$5, job_title=$6,
+         scheduled_start=$7, scheduled_end=$8, lunch_start=$9, lunch_end=$10, workplace_id=$11
+       WHERE id=$12 RETURNING id, name, email`,
+      [name, phone || null, corp || null, division || null, team || null, jobTitle || null,
+       scheduledStart || '09:00', scheduledEnd || '18:00',
+       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, req.params.id]
+    );
+    if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
+    res.json({ success: true, worker: rows[0] });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || '직원 정보 수정 중 오류가 발생했습니다.' });
+  }
 });
 
 router.delete('/workers/:id', async (req: Request, res: Response): Promise<void> => {
