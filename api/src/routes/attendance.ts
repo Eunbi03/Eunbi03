@@ -159,19 +159,37 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
 // GET /api/attendance/weekly-summary
 router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    `SELECT date, check_in_time, check_out_time, work_minutes, status
+    `SELECT date::text AS date, check_in_time, check_out_time, work_minutes, status
      FROM attendance_records WHERE user_id=$1 AND date>=date_trunc('week',CURRENT_DATE) AND date<=CURRENT_DATE ORDER BY date`,
     [req.user.userId]
   );
-  let totalMinutes = 0;
-  let lateCount = 0;
+  let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0;
   const days = rows.map((r: any) => {
     const m = r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
-    totalMinutes += m;
-    if (r.status === '지각' || r.status === '지각조퇴') lateCount++;
+    totalWorkMinutes += m;
+    if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
+    if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
     return { date: r.date, minutesWorked: m, status: r.status };
   });
-  res.json({ totalHours: Math.floor(totalMinutes / 60), totalMinutes: totalMinutes % 60, lateCount, days });
+  res.json({ workedDays: rows.length, lateDays, earlyLeaveDays, totalWorkMinutes, days });
+});
+
+// GET /api/attendance/monthly-summary
+router.get('/monthly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+  const monthStart = today.slice(0, 7) + '-01';
+  const { rows } = await pool.query(
+    `SELECT work_minutes, status FROM attendance_records
+     WHERE user_id=$1 AND date>=$2 AND date<=$3`,
+    [req.user.userId, monthStart, today]
+  );
+  let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0;
+  for (const r of rows) {
+    totalWorkMinutes += r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
+    if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
+    if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
+  }
+  res.json({ workedDays: rows.length, lateDays, earlyLeaveDays, totalWorkMinutes });
 });
 
 // POST /api/attendance/time-change-request

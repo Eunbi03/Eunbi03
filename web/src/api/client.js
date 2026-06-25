@@ -54,6 +54,7 @@ export const checkOut = (location, { workNoteIn, workNoteOut, workNoteField, wor
 });
 export const getAttendanceToday = () => request("/attendance/today");
 export const getWeeklySummary = () => request("/attendance/weekly-summary");
+export const getMonthlySummary = () => request("/attendance/monthly-summary");
 export const requestTimeChange = (requestedEnd, reason) => request("/attendance/time-change-request", { method: "POST", body: { requestedEnd, reason } });
 
 /* 랜덤 체크 */

@@ -38,13 +38,37 @@ export function deviceLabel() {
   return `${os} · ${br}`;
 }
 
+// 출근 중 GPS 상시 감지 (랜덤 위치 확인용)
+let _watchId = null;
+let _lastPos = null;
+
+export function startLocationWatch() {
+  if (!navigator.geolocation || _watchId !== null) return;
+  _watchId = navigator.geolocation.watchPosition(
+    (p) => { _lastPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }; },
+    () => {},
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
+export function stopLocationWatch() {
+  if (_watchId !== null) { navigator.geolocation.clearWatch(_watchId); _watchId = null; _lastPos = null; }
+}
+
+export async function checkLocationPermission() {
+  if (!navigator.permissions) return 'unknown';
+  try { const r = await navigator.permissions.query({ name: 'geolocation' }); return r.state; }
+  catch { return 'unknown'; }
+}
+
 export function getLocation() {
   return new Promise((resolve) => {
+    if (_lastPos) { resolve({ ..._lastPos }); return; }
     if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }),
       () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   });
 }

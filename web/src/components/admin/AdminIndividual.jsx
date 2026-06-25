@@ -77,12 +77,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
   );
 
   const leaveBtn = onLeaveChange && (
-    <button
-      style={{ ...S.miniBtn, marginLeft: "auto", fontSize: 11, flexShrink: 0 }}
-      onClick={openPopup}
-    >
-      인정 ▾
-    </button>
+    <button style={{ ...S.miniBtn, fontSize: 11, flexShrink: 0 }} onClick={openPopup}>인정 ▾</button>
   );
 
   if (day.leaveType === '연차') {
@@ -90,9 +85,9 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
       <>
         {popup}
         <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, color: C.inkSoft, width: 52, flexShrink: 0 }}>{day.date.slice(5)}</span>
+          <span style={{ fontSize: 12, color: C.inkSoft, width: 44, flexShrink: 0 }}>{day.date.slice(5)}</span>
           <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>연차</span>
-          {leaveBtn}
+          <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
       </>
     );
@@ -103,33 +98,44 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
       <>
         {popup}
         <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8, background: "#fff5f5" }}>
-          <span style={{ fontSize: 12, color: C.seal, width: 52, flexShrink: 0 }}>{day.date.slice(5)}</span>
+          <span style={{ fontSize: 12, color: C.seal, width: 44, flexShrink: 0 }}>{day.date.slice(5)}</span>
           <span style={{ ...S.badge, background: C.sealSoft, color: C.seal, fontSize: 11 }}>출근 누락</span>
-          {leaveBtn}
+          <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
       </>
     );
   }
+
+  const hasBadges = day.leaveType === '출근' || day.leaveType === '퇴근' || day.isLate || day.noOut || day.noNote;
 
   return (
     <>
       {popup}
       <div style={{ borderBottom: `1px solid ${C.line}` }}>
         <div
-          style={{ padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", background: isAlert ? "#fff5f5" : "#fff" }}
+          style={{ padding: "8px 12px", cursor: "pointer", background: isAlert ? "#fff5f5" : "#fff" }}
           onClick={() => setOpen((o) => !o)}
         >
-          <span style={{ fontSize: 12, color: isAlert ? C.seal : C.inkSoft, width: 52, flexShrink: 0 }}>{day.date.slice(5)}</span>
-          <span style={{ flex: 1, fontSize: 13, color: isAlert ? C.seal : C.ink, fontVariantNumeric: "tabular-nums", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {fmtTime(day.checkIn?.time)} → {day.checkOut ? fmtTime(day.checkOut.time) : "퇴근 누락"}
-          </span>
-          {day.leaveType === '출근' && <Badge color={C.green} bg={C.greenSoft} text="출근인정" />}
-          {day.leaveType === '퇴근' && <Badge color={C.green} bg={C.greenSoft} text="퇴근인정" />}
-          {day.isLate  && <Badge color={C.amber}  bg={C.amberSoft} text="지각" />}
-          {day.noOut   && <Badge color={C.seal}   bg={C.sealSoft}  text="퇴근누락" />}
-          {day.noNote  && <Badge color={C.blue}   bg={C.blueSoft}  text="노트누락" />}
-          {leaveBtn}
-          <span style={{ fontSize: 11, color: C.inkSoft, flexShrink: 0 }}>{open ? "▲" : "▼"}</span>
+          {/* 날짜 + 시간 행 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, color: isAlert ? C.seal : C.inkSoft, width: 44, flexShrink: 0 }}>{day.date.slice(5)}</span>
+            <span style={{ flex: 1, fontSize: 13, color: isAlert ? C.seal : C.ink, fontVariantNumeric: "tabular-nums", minWidth: 0 }}>
+              {fmtTime(day.checkIn?.time)} → {day.checkOut ? fmtTime(day.checkOut.time) : "퇴근 누락"}
+            </span>
+            <span style={{ fontSize: 11, color: C.inkSoft, flexShrink: 0 }}>{open ? "▲" : "▼"}</span>
+          </div>
+          {/* 배지 + 인정 버튼 행 (내용 있을 때만) */}
+          {(hasBadges || leaveBtn) && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5, paddingLeft: 50, alignItems: "center" }}
+              onClick={(e) => e.stopPropagation()}>
+              {day.leaveType === '출근' && <Badge color={C.green} bg={C.greenSoft} text="출근인정" />}
+              {day.leaveType === '퇴근' && <Badge color={C.green} bg={C.greenSoft} text="퇴근인정" />}
+              {day.isLate && <Badge color={C.amber} bg={C.amberSoft} text="지각" />}
+              {day.noOut  && <Badge color={C.seal}  bg={C.sealSoft}  text="퇴근누락" />}
+              {day.noNote && <Badge color={C.blue}  bg={C.blueSoft}  text="노트누락" />}
+              <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
+            </div>
+          )}
         </div>
 
         {open && (
@@ -277,6 +283,12 @@ export default function AdminIndividual({ filters }) {
                     <KpiBadge label="퇴근누락" v={report.kpi.missingOut} color={C.seal} />
                     <KpiBadge label="노트누락" v={report.kpi.missingNote} color={C.blue} />
                   </div>
+                )}
+                {isOpen && (
+                  <button
+                    style={{ ...S.miniBtn, fontSize: 11, flexShrink: 0 }}
+                    onClick={(e) => { e.stopPropagation(); setLoadingId(w.id); api.getIndividualReport({ userId: w.id, from, to }).then((r) => setReportMap((m) => ({ ...m, [w.id]: { ...r, from, to } }))).catch((e) => setMsg(e.message)).finally(() => setLoadingId(null)); }}
+                  >↻</button>
                 )}
                 <span style={{ fontSize: 13, color: C.inkSoft, flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
               </div>
