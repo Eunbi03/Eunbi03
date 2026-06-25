@@ -117,7 +117,7 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
           <Field label="본부 *" half>
             <input style={S.input} value={form.division} onChange={(e) => set("division", e.target.value)} />
           </Field>
-          <Field label="팀 *" half>
+          <Field label="팀 *">
             <input style={S.input} value={form.team} onChange={(e) => set("team", e.target.value)} />
           </Field>
           <Field label="출근 시간" half>
