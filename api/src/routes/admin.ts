@@ -186,11 +186,14 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
     for (const day of workdays) {
       const r = recByDate[day];
-      if (!r || (!r.check_in_time && !r.leave_type)) { missingIn++; continue; }
-      if (r.leave_type) continue; // 연차/반차 제외
-      if (r.status === '지각' || r.status === '지각조퇴') lateCount++;
-      if (!r.check_out_time) missingOut++;
-      if (!r.work_note_today && !r.daily_report) missingNote++;
+      const lt = r?.leave_type;
+      if (lt === '연차') continue;
+      const hasIn = Boolean(r?.check_in_time);
+      const isLate = r?.status === '지각' || r?.status === '지각조퇴';
+      if (!hasIn && lt !== '출근') { missingIn++; continue; }
+      if (hasIn && isLate && lt !== '출근') lateCount++;
+      if (hasIn && !r.check_out_time && lt !== '퇴근') missingOut++;
+      if (hasIn && !r.work_note_today && !r.daily_report) missingNote++;
     }
     const total = lateCount + missingIn + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, total };
@@ -257,14 +260,21 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   const days = workdays.map((day) => {
     const r = recByDate[day];
-    if (!r) {
+    const lt = r?.leave_type;
+
+    if (lt === '연차') return { date: day, leaveType: '연차' };
+
+    // 출근 인정: 출근 기록 없어도 출근 누락/지각 면제
+    // 퇴근 인정: 퇴근 기록 없어도 퇴근 누락 면제
+    const hasIn = Boolean(r?.check_in_time);
+
+    if (!r || (!hasIn && lt !== '출근')) {
       missingIn++;
       return { date: day, missing: true };
     }
-    if (r.leave_type) return { date: day, leaveType: r.leave_type };
 
-    const isLate = r.status === '지각' || r.status === '지각조퇴';
-    const noOut  = !r.check_out_time;
+    const isLate = (r.status === '지각' || r.status === '지각조퇴') && lt !== '출근';
+    const noOut  = !r.check_out_time && lt !== '퇴근';
     const noNote = !r.work_note_today && !r.daily_report;
 
     if (isLate) lateCount++;
@@ -273,7 +283,8 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
     return {
       date: day,
-      checkIn: { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: r.check_in_distance_m, note: r.work_note_in },
+      leaveType: lt || undefined,
+      checkIn: hasIn ? { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: r.check_in_distance_m, note: r.work_note_in } : null,
       checkOut: r.check_out_time ? { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: r.check_out_distance_m, isField: r.check_out_is_field, note: r.work_note_out } : null,
       status: r.status,
       workMinutes: r.work_minutes,

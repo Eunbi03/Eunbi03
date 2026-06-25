@@ -9,31 +9,38 @@ function fmtDist(m) { if (m == null) return null; return m < 1000 ? `${Math.roun
 function mapsUrl(lat, lng) { return `https://maps.google.com/?q=${lat},${lng}`; }
 
 function LeavePopup({ day, onSelect, onClose }) {
+  const OPTIONS = [
+    { key: "연차", label: "연차", sub: "하루 전체 인정" },
+    { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
+    { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
+  ];
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}
       onClick={onClose}
     >
       <div
-        style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", minWidth: 220, textAlign: "center" }}
+        style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", minWidth: 240, textAlign: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
         <p style={{ fontWeight: 800, fontSize: 14, color: C.ink, marginBottom: 14 }}>
-          {day.date.slice(5)} 연차 설정
+          {day.date.slice(5)} 출퇴근 인정 설정
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {["연차", "반차", "반반차"].map((t) => (
+          {OPTIONS.map(({ key, label, sub }) => (
             <button
-              key={t}
+              key={key}
               style={{
-                padding: "11px", borderRadius: 10, border: `1px solid ${day.leaveType === t ? C.green : C.line}`,
-                background: day.leaveType === t ? C.greenSoft : "#fff",
-                color: day.leaveType === t ? C.green : C.ink,
-                fontWeight: 700, fontSize: 15, cursor: "pointer",
+                padding: "11px", borderRadius: 10, border: `1px solid ${day.leaveType === key ? C.green : C.line}`,
+                background: day.leaveType === key ? C.greenSoft : "#fff",
+                color: day.leaveType === key ? C.green : C.ink,
+                fontWeight: 700, fontSize: 14, cursor: "pointer", textAlign: "left",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
               }}
-              onClick={() => onSelect(t)}
+              onClick={() => onSelect(key)}
             >
-              {t} {day.leaveType === t && "✓"}
+              <span>{label}</span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: day.leaveType === key ? C.green : C.inkSoft }}>{sub}{day.leaveType === key ? " ✓" : ""}</span>
             </button>
           ))}
           {day.leaveType && (
@@ -41,7 +48,7 @@ function LeavePopup({ day, onSelect, onClose }) {
               style={{ padding: "10px", borderRadius: 10, border: `1px solid ${C.sealSoft}`, background: C.sealSoft, color: C.seal, fontWeight: 700, fontSize: 14, cursor: "pointer" }}
               onClick={() => onSelect(null)}
             >
-              연차 취소
+              설정 취소
             </button>
           )}
         </div>
@@ -74,17 +81,17 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
       style={{ ...S.miniBtn, marginLeft: "auto", fontSize: 11, flexShrink: 0 }}
       onClick={openPopup}
     >
-      연차 ▾
+      인정 ▾
     </button>
   );
 
-  if (day.leaveType) {
+  if (day.leaveType === '연차') {
     return (
       <>
         {popup}
         <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, color: C.inkSoft, width: 52, flexShrink: 0 }}>{day.date.slice(5)}</span>
-          <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>{day.leaveType}</span>
+          <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>연차</span>
           {leaveBtn}
         </div>
       </>
@@ -116,6 +123,8 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
           <span style={{ flex: 1, fontSize: 13, color: isAlert ? C.seal : C.ink, fontVariantNumeric: "tabular-nums", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {fmtTime(day.checkIn?.time)} → {day.checkOut ? fmtTime(day.checkOut.time) : "퇴근 누락"}
           </span>
+          {day.leaveType === '출근' && <Badge color={C.green} bg={C.greenSoft} text="출근인정" />}
+          {day.leaveType === '퇴근' && <Badge color={C.green} bg={C.greenSoft} text="퇴근인정" />}
           {day.isLate  && <Badge color={C.amber}  bg={C.amberSoft} text="지각" />}
           {day.noOut   && <Badge color={C.seal}   bg={C.sealSoft}  text="퇴근누락" />}
           {day.noNote  && <Badge color={C.blue}   bg={C.blueSoft}  text="노트누락" />}
@@ -217,7 +226,7 @@ export default function AdminIndividual({ filters }) {
   const handleLeave = async (worker, day, leaveType) => {
     try {
       await api.setLeaveDday({ userId: worker.id, date: day.date, leaveType });
-      setMsg(leaveType ? `${day.date} ${leaveType} 처리 완료` : `${day.date} 연차 취소`);
+      setMsg(leaveType ? `${day.date} ${leaveType} 인정 처리 완료` : `${day.date} 인정 설정 취소`);
       const r = await api.getIndividualReport({ userId: worker.id, from, to });
       setReportMap((m) => ({ ...m, [worker.id]: { ...r, from, to } }));
     } catch (e) { setMsg(e.message); }
