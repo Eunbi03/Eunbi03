@@ -24,7 +24,6 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
     corp: worker?.corp || "",
     division: worker?.division || "",
     team: worker?.team || "",
-    jobTitle: worker?.job_title || "",
     scheduledStart: worker?.scheduled_start?.slice(0, 5) || "09:00",
     scheduledEnd: worker?.scheduled_end?.slice(0, 5) || "18:00",
     lunchStart: worker?.lunch_start?.slice(0, 5) || "12:00",
@@ -43,7 +42,6 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
     if (!form.corp.trim())     { setErr("법인을 입력해주세요."); return false; }
     if (!form.division.trim()) { setErr("본부를 입력해주세요."); return false; }
     if (!form.team.trim())     { setErr("팀을 입력해주세요."); return false; }
-    if (!form.jobTitle.trim()) { setErr("직무를 입력해주세요."); return false; }
     if (!form.workplaceId)     { setErr("근무지를 선택해주세요."); return false; }
     return true;
   };
@@ -121,9 +119,6 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
           </Field>
           <Field label="팀 *" half>
             <input style={S.input} value={form.team} onChange={(e) => set("team", e.target.value)} />
-          </Field>
-          <Field label="직무 *" half>
-            <input style={S.input} value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} />
           </Field>
           <Field label="출근 시간" half>
             <input style={S.input} type="time" value={form.scheduledStart} onChange={(e) => set("scheduledStart", e.target.value)} />
@@ -464,7 +459,6 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
       corp: w?.corp || "",
       division: w?.division || "",
       team: w?.team || "",
-      jobTitle: w?.job_title || "",
       employeeId: w?.employee_id || "",
       scheduledStart: w?.scheduled_start?.slice(0, 5) || "09:00",
       scheduledEnd: w?.scheduled_end?.slice(0, 5) || "18:00",
@@ -482,7 +476,6 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const visible = workers.filter((w) => {
     if (filters.corp && w.corp !== filters.corp) return false;
     if (filters.team && w.team !== filters.team) return false;
-    if (filters.jobTitle && w.job_title !== filters.jobTitle) return false;
     return true;
   });
 
@@ -549,7 +542,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                   {!isAdminRole && w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: 12 }}>#{w.employee_id}</span>}
                 </div>
                 <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>
-                  {[w.corp, w.division, w.team, w.job_title].filter(Boolean).join(" · ")}
+                  {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
                 </div>
                 <div style={{ fontSize: 11, color: C.inkSoft }}>{w.email}{w.phone && ` · ${w.phone}`}</div>
                 {!isAdminRole && (

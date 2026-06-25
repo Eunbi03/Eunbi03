@@ -18,15 +18,14 @@ export default function AdminApp({ user }) {
   const [tab, setTab] = useState("overall");
 
   // 공통 필터: 직원 목록에서 동적으로 추출
-  const [filterOptions, setFilterOptions] = useState({ corps: [], teams: [], jobTitles: [] });
-  const [filters, setFilters] = useState({ corp: "", team: "", jobTitle: "" });
+  const [filterOptions, setFilterOptions] = useState({ corps: [], teams: [] });
+  const [filters, setFilters] = useState({ corp: "", team: "" });
 
   useEffect(() => {
     api.getWorkers({}).then((d) => {
-      const corps    = [...new Set(d.workers.map((w) => w.corp).filter(Boolean))].sort();
-      const teams    = [...new Set(d.workers.map((w) => w.team).filter(Boolean))].sort();
-      const jobTitles= [...new Set(d.workers.map((w) => w.job_title).filter(Boolean))].sort();
-      setFilterOptions({ corps, teams, jobTitles });
+      const corps = [...new Set(d.workers.map((w) => w.corp).filter(Boolean))].sort();
+      const teams = [...new Set(d.workers.map((w) => w.team).filter(Boolean))].sort();
+      setFilterOptions({ corps, teams });
     }).catch(() => {});
   }, []);
 
@@ -57,10 +56,6 @@ export default function AdminApp({ user }) {
           <select style={{ ...S.select, flex: "1 1 120px", padding: "7px 10px", fontSize: 12 }} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
             <option value="">전체 팀</option>
             {filterOptions.teams.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select style={{ ...S.select, flex: "1 1 120px", padding: "7px 10px", fontSize: 12 }} value={filters.jobTitle} onChange={(e) => setF("jobTitle", e.target.value)}>
-            <option value="">전체 직무</option>
-            {filterOptions.jobTitles.map((j) => <option key={j} value={j}>{j}</option>)}
           </select>
         </div>
       )}

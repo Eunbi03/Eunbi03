@@ -97,7 +97,7 @@ export default function App() {
   return (
     <div>
       <Header user={user} onLogout={handleLogout} />
-      <div style={{ padding: "12px 0" }}>
+      <div style={{ padding: "12px 12px" }}>
         {isAdmin ? <AdminApp user={user} /> : <Employee user={user} />}
       </div>
     </div>
