@@ -1,4 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, [breakpoint]);
+  return isMobile;
+}
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 
@@ -195,6 +205,7 @@ function Badge({ color, bg, text }) {
 }
 
 export default function AdminIndividual({ filters }) {
+  const isMobile = useIsMobile();
   const today = todayStr();
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today);
@@ -266,31 +277,44 @@ export default function AdminIndividual({ filters }) {
           return (
             <div key={w.id} style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
               <div
-                style={{ padding: "10px 14px", display: "flex", alignItems: "center", cursor: "pointer", gap: 10 }}
+                style={{ padding: "10px 14px", cursor: "pointer" }}
                 onClick={() => toggle(w)}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontWeight: 700, fontSize: 14, color: C.ink }}>{w.name}</span>
-                  <span style={{ fontSize: 12, color: C.inkSoft, marginLeft: 8 }}>
-                    {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
-                    {w.job_title && <span style={{ marginLeft: 6 }}>| {w.job_title}</span>}
-                  </span>
+                {/* 이름 + 소속 + (데스크탑: KPI + 버튼들) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: C.ink }}>{w.name}</span>
+                    <span style={{ fontSize: 12, color: C.inkSoft, marginLeft: 8 }}>
+                      {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
+                      {w.job_title && <span style={{ marginLeft: 6 }}>| {w.job_title}</span>}
+                    </span>
+                  </div>
+                  {!isMobile && isOpen && report && (
+                    <div style={{ display: "flex", gap: 8, fontSize: 11, flexShrink: 0 }}>
+                      <KpiBadge label="지각" v={report.kpi.lateCount} color={C.amber} />
+                      <KpiBadge label="출근누락" v={report.kpi.missingIn} color={C.seal} />
+                      <KpiBadge label="퇴근누락" v={report.kpi.missingOut} color={C.seal} />
+                      <KpiBadge label="노트누락" v={report.kpi.missingNote} color={C.blue} />
+                    </div>
+                  )}
+                  {isOpen && (
+                    <button
+                      style={{ ...S.miniBtn, fontSize: 11, flexShrink: 0 }}
+                      onClick={(e) => { e.stopPropagation(); setLoadingId(w.id); api.getIndividualReport({ userId: w.id, from, to }).then((r) => setReportMap((m) => ({ ...m, [w.id]: { ...r, from, to } }))).catch((e) => setMsg(e.message)).finally(() => setLoadingId(null)); }}
+                    >↻</button>
+                  )}
+                  <span style={{ fontSize: 13, color: C.inkSoft, flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
                 </div>
-                {isOpen && report && (
-                  <div style={{ display: "flex", gap: 8, fontSize: 11, flexWrap: "wrap" }}>
+                {/* 모바일: KPI 두 번째 줄 */}
+                {isMobile && isOpen && report && (
+                  <div style={{ display: "flex", gap: 10, fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.line}` }}
+                    onClick={(e) => e.stopPropagation()}>
                     <KpiBadge label="지각" v={report.kpi.lateCount} color={C.amber} />
                     <KpiBadge label="출근누락" v={report.kpi.missingIn} color={C.seal} />
                     <KpiBadge label="퇴근누락" v={report.kpi.missingOut} color={C.seal} />
                     <KpiBadge label="노트누락" v={report.kpi.missingNote} color={C.blue} />
                   </div>
                 )}
-                {isOpen && (
-                  <button
-                    style={{ ...S.miniBtn, fontSize: 11, flexShrink: 0 }}
-                    onClick={(e) => { e.stopPropagation(); setLoadingId(w.id); api.getIndividualReport({ userId: w.id, from, to }).then((r) => setReportMap((m) => ({ ...m, [w.id]: { ...r, from, to } }))).catch((e) => setMsg(e.message)).finally(() => setLoadingId(null)); }}
-                  >↻</button>
-                )}
-                <span style={{ fontSize: 13, color: C.inkSoft, flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
               </div>
 
               {isOpen && (
