@@ -146,11 +146,18 @@ router.post('/check-out', requireAuth,
 // GET /api/attendance/today
 router.get('/today', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const date = todayKST();
-  const { rows: attRows } = await pool.query(
-    `SELECT * FROM attendance_records WHERE user_id=$1 AND date=$2`, [req.user.userId, date]
-  );
+  const [{ rows: attRows }, { rows: userRows }] = await Promise.all([
+    pool.query(`SELECT * FROM attendance_records WHERE user_id=$1 AND date=$2`, [req.user.userId, date]),
+    pool.query(`SELECT scheduled_start, scheduled_end FROM users WHERE id=$1`, [req.user.userId]),
+  ]);
+
+  const schedule = {
+    start: userRows[0]?.scheduled_start?.slice(0, 5) || '09:00',
+    end: userRows[0]?.scheduled_end?.slice(0, 5) || '18:00',
+  };
+
   const att = attRows[0];
-  if (!att) { res.json({ record: null }); return; }
+  if (!att) { res.json({ record: null, schedule }); return; }
 
   const { rows: outingRows } = await pool.query(
     `SELECT id, start_time, end_time, destination, reason, start_lat, start_lng
@@ -184,7 +191,7 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
     leaveType: att.leave_type,
     timeChangeStatus: att.temp_time_change_status,
   };
-  res.json({ record });
+  res.json({ record, schedule });
 });
 
 // GET /api/attendance/weekly-summary
@@ -224,6 +231,38 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
     if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
   }
   res.json({ workedDays: rows.length, leaveDays, lateDays, earlyLeaveDays, totalWorkMinutes });
+});
+
+// GET /api/attendance/history
+router.get('/history', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user.userId;
+  const toDate = (req.query.to as string) || todayKST();
+  const d = new Date(toDate + 'T00:00:00+09:00');
+  d.setDate(d.getDate() - 89);
+  const fromDate = (req.query.from as string) || d.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+
+  const { rows } = await pool.query(
+    `SELECT date::text AS date, check_in_time, check_out_time, work_minutes, status,
+            leave_type, work_note_in, work_note_out, work_note_field, work_note_today,
+            check_in_distance_m, check_out_distance_m
+     FROM attendance_records WHERE user_id=$1 AND date>=$2 AND date<=$3
+     ORDER BY date DESC`,
+    [userId, fromDate, toDate]
+  );
+
+  const records = rows.map((r: any) => ({
+    date: r.date,
+    checkIn: r.check_in_time ? { time: r.check_in_time, distanceM: r.check_in_distance_m } : null,
+    checkOut: r.check_out_time ? { time: r.check_out_time, distanceM: r.check_out_distance_m } : null,
+    workMinutes: r.work_minutes ? Math.round(Number(r.work_minutes)) : null,
+    status: r.status,
+    leaveType: r.leave_type,
+    noteIn: r.work_note_in,
+    noteOut: r.work_note_out,
+    noteField: r.work_note_field,
+    noteToday: r.work_note_today,
+  }));
+  res.json({ records });
 });
 
 // POST /api/attendance/time-change-request

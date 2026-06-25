@@ -56,6 +56,7 @@ export const getAttendanceToday = () => request("/attendance/today");
 export const getWeeklySummary = () => request("/attendance/weekly-summary");
 export const getMonthlySummary = () => request("/attendance/monthly-summary");
 export const requestTimeChange = (requestedEnd, reason) => request("/attendance/time-change-request", { method: "POST", body: { requestedEnd, reason } });
+export const getAttendanceHistory = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/attendance/history${qs ? `?${qs}` : ""}`); };
 
 /* 랜덤 체크 */
 export const getPendingRandomCheck = () => request("/random-check/pending");
