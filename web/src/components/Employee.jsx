@@ -178,11 +178,6 @@ export default function Employee({ user }) {
                 {today.leaveType === "연차" ? "연차 처리된 날입니다." : today.leaveType === "출근" ? "출근 인정 처리되었습니다." : "퇴근 인정 처리되었습니다."}
               </div>
             )}
-            {today.timeChangeStatus === "pending" && (
-              <div style={{ marginTop: 10, padding: "8px 12px", background: C.amberSoft, borderRadius: 8, fontSize: 12, color: C.amber, fontWeight: 700 }}>
-                퇴근 시간 변경 요청 검토 중…
-              </div>
-            )}
           </div>
         ) : (
           <div style={{ padding: "22px 18px", textAlign: "center", color: C.inkSoft, fontSize: 13 }}>
