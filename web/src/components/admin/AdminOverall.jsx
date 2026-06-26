@@ -65,8 +65,8 @@ export default function AdminOverall({ filters }) {
         <div key={corp} style={{ marginBottom: 20 }}>
           {/* 법인 헤더 */}
           <div style={{
-            textAlign: "center", fontWeight: 800, fontSize: 15, color: C.green,
-            background: C.greenSoft, borderRadius: 12, padding: "10px 16px", marginBottom: 10,
+            textAlign: "center", fontWeight: 800, fontSize: 15, color: C.amber,
+            background: "#f5f0e8", border: `1px solid ${C.amber}`, borderRadius: 12, padding: "10px 16px", marginBottom: 10,
           }}>
             {corp}
           </div>

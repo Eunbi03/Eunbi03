@@ -3,9 +3,9 @@ import { C, S } from "../styles.js";
 import { getLocation } from "../utils/device.js";
 import * as api from "../api/client.js";
 
-export default function OutForm({ onClose, onDone }) {
-  const [workNoteIn, setWorkNoteIn] = useState("");
-  const [workNoteOut, setWorkNoteOut] = useState("");
+export default function OutForm({ onClose, onDone, workplaceName }) {
+  const [workNoteIn, setWorkNoteIn] = useState(workplaceName || "");
+  const [workNoteOut, setWorkNoteOut] = useState(workplaceName || "");
   const [workNoteField, setWorkNoteField] = useState("");
   const [workNoteToday, setWorkNoteToday] = useState("");
   const [busy, setBusy] = useState(false);

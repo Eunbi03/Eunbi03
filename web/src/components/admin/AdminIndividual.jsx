@@ -71,10 +71,17 @@ function LeavePopup({ day, onSelect, onClose }) {
   );
 }
 
+function dayOfWeek(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return ["일", "월", "화", "수", "목", "금", "토"][new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()];
+}
+
 function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
   const [open, setOpen] = useState(false);
   const [leavePopup, setLeavePopup] = useState(false);
   const isAlert = day.isLate || day.noOut || day.missing;
+  const dow = dayOfWeek(day.date);
+  const isWeekend = dow === "토" || dow === "일";
 
   const openPopup = (e) => { e.stopPropagation(); setLeavePopup(true); };
 
@@ -90,12 +97,19 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     <button style={{ ...S.miniBtn, fontSize: 11, flexShrink: 0 }} onClick={openPopup}>인정 ▾</button>
   );
 
+  const DateCell = ({ alert }) => (
+    <div style={{ width: 44, flexShrink: 0, textAlign: "center" }}>
+      <div style={{ fontSize: 12, color: alert ? C.seal : isWeekend ? C.seal : C.inkSoft, fontWeight: isWeekend ? 700 : 400 }}>{day.date.slice(5)}</div>
+      <div style={{ fontSize: 10, color: alert ? C.seal : isWeekend ? C.seal : C.inkSoft, marginTop: 1 }}>{dow}</div>
+    </div>
+  );
+
   if (day.leaveType === '연차') {
     return (
       <>
         {popup}
         <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, color: C.inkSoft, width: 44, flexShrink: 0 }}>{day.date.slice(5)}</span>
+          <DateCell />
           <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>연차</span>
           <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
@@ -108,7 +122,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
       <>
         {popup}
         <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8, background: "#fff5f5" }}>
-          <span style={{ fontSize: 12, color: C.seal, width: 44, flexShrink: 0 }}>{day.date.slice(5)}</span>
+          <DateCell alert />
           <span style={{ ...S.badge, background: C.sealSoft, color: C.seal, fontSize: 11 }}>출근 누락</span>
           <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
@@ -128,7 +142,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
         >
           {/* 날짜 + 시간 행 */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12, color: isAlert ? C.seal : C.inkSoft, width: 44, flexShrink: 0 }}>{day.date.slice(5)}</span>
+            <DateCell alert={isAlert} />
             <span style={{ flex: 1, fontSize: 13, color: isAlert ? C.seal : C.ink, fontVariantNumeric: "tabular-nums", minWidth: 0 }}>
               {fmtTime(day.checkIn?.time)} → {day.checkOut ? fmtTime(day.checkOut.time) : "퇴근 누락"}
             </span>

@@ -2,6 +2,16 @@ import { useState, useEffect } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 function Field({ label, children, half }) {
   return (
     <div style={{ flex: half ? "0 0 calc(50% - 4px)" : "1 1 100%" }}>
@@ -353,6 +363,7 @@ function ResetPasswordModal({ worker, onClose, onDone }) {
 }
 
 export default function AdminStaff({ filters, isHR, currentUser }) {
+  const isMobile = useIsMobile();
   const [workers, setWorkers] = useState([]);
   const [workplaces, setWorkplaces] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -532,22 +543,22 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
               borderColor: isThisHolder ? C.amber : C.line,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: C.ink, fontSize: 14, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 700, color: C.ink, fontSize: isMobile ? 14 : 16, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {w.name}
                   {isThisHolder && <span style={{ ...S.badge, background: C.amberSoft, color: C.amber, fontSize: 10 }}>권한자</span>}
                   {isAdminRole && <span style={{ ...S.badge, background: "#e8eaf6", color: "#2d4a7a", fontSize: 10 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>}
-                  {!isAdminRole && w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: 12 }}>#{w.employee_id}</span>}
+                  {!isAdminRole && w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 13 }}>#{w.employee_id}</span>}
                 </div>
-                <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>
+                <div style={{ fontSize: isMobile ? 11 : 13, color: C.inkSoft, marginTop: 2 }}>
                   {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
                 </div>
-                <div style={{ fontSize: 11, color: C.inkSoft }}>{w.email}{w.phone && ` · ${w.phone}`}</div>
+                <div style={{ fontSize: isMobile ? 11 : 13, color: C.inkSoft }}>{w.email}{w.phone && ` · ${w.phone}`}</div>
                 {!isAdminRole && (
-                  <div style={{ fontSize: 11, color: C.inkSoft }}>
+                  <div style={{ fontSize: isMobile ? 11 : 13, color: C.inkSoft }}>
                     근무지: {w.workplace_name || "미지정"} · {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600 }}>
+                <div style={{ fontSize: isMobile ? 11 : 13, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600 }}>
                   기기: {isAdminRole ? "다중 기기 관리" : (w.device_id ? "등록됨" : "미등록")}
                 </div>
               </div>
@@ -559,21 +570,45 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                 </span>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {isAdminRole ? (
-                  <button style={S.miniBtn} onClick={() => openAdminProfile(w)}>수정</button>
-                ) : (
-                  <button style={S.miniBtn} onClick={() => setEditTarget(w)}>수정</button>
-                )}
-                {isHR && !isAdminRole && (
-                  <>
-                    <button style={{ ...S.miniBtn, color: C.amber, borderColor: C.amberSoft }} onClick={() => setResetTarget(w)}>비번초기화</button>
-                    <button style={{ ...S.miniBtn, color: C.blue, borderColor: C.blueSoft }} onClick={() => resetDevice(w)}>기기변경</button>
-                    {w.is_locked && <button style={{ ...S.miniBtn, color: C.green }} onClick={() => unlock(w)}>잠금해제</button>}
-                    <button style={{ ...S.miniBtn, color: C.seal }} onClick={() => deleteWorker(w)}>삭제</button>
-                  </>
-                )}
-              </div>
+              {isMobile ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  {isAdminRole ? (
+                    <button style={S.miniBtn} onClick={() => openAdminProfile(w)}>수정</button>
+                  ) : (
+                    <button style={S.miniBtn} onClick={() => setEditTarget(w)}>수정</button>
+                  )}
+                  {isHR && !isAdminRole && (
+                    <>
+                      <button style={{ ...S.miniBtn, color: C.amber, borderColor: C.amberSoft }} onClick={() => setResetTarget(w)}>비번초기화</button>
+                      <button style={{ ...S.miniBtn, color: C.blue, borderColor: C.blueSoft }} onClick={() => resetDevice(w)}>기기변경</button>
+                      {w.is_locked && <button style={{ ...S.miniBtn, color: C.green }} onClick={() => unlock(w)}>잠금해제</button>}
+                      <button style={{ ...S.miniBtn, color: C.seal }} onClick={() => deleteWorker(w)}>삭제</button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {isAdminRole ? (
+                    <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px" }} onClick={() => openAdminProfile(w)}>수정</button>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px" }} onClick={() => setEditTarget(w)}>수정</button>
+                        {isHR && <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.amber, borderColor: C.amberSoft }} onClick={() => setResetTarget(w)}>비번초기화</button>}
+                      </div>
+                      {isHR && (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.blue, borderColor: C.blueSoft }} onClick={() => resetDevice(w)}>기기변경</button>
+                          <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.seal }} onClick={() => deleteWorker(w)}>삭제</button>
+                        </div>
+                      )}
+                      {w.is_locked && isHR && (
+                        <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.green }} onClick={() => unlock(w)}>잠금해제</button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

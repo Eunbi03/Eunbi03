@@ -4,7 +4,6 @@ import { fmtTime, fmtDur } from "../utils/format.js";
 import { getLocation, startLocationWatch, stopLocationWatch, checkLocationPermission } from "../utils/device.js";
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
-import TimeChangeForm from "./TimeChangeForm.jsx";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
 import RandomCheckModal from "./RandomCheckModal.jsx";
 import * as api from "../api/client.js";
@@ -130,12 +129,7 @@ export default function Employee({ user }) {
   );
   if (view === "out") return (
     <div style={{ padding: "16px 16px 40px" }}>
-      <OutForm user={user} workplaceId={user.workplaceId} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
-    </div>
-  );
-  if (view === "timechange") return (
-    <div style={{ padding: "16px 16px 40px" }}>
-      <TimeChangeForm onClose={() => setView("main")} onDone={() => { setView("main"); setMsg("퇴근 시간 변경 요청이 전송되었습니다."); load(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
     </div>
   );
   if (view === "history") return (
@@ -247,13 +241,6 @@ export default function Employee({ user }) {
         )}
       </div>
 
-      {/* 퇴근 시간 변경 요청 */}
-      {isCheckedIn && !isCheckedOut && !today?.timeChangeStatus && (
-        <button style={{ ...S.subGhost, width: "100%", marginBottom: 8 }} onClick={() => setView("timechange")}>
-          퇴근 시간 변경 요청
-        </button>
-      )}
-
       {/* ── 이번 주 요약 ── */}
       <div style={{ marginBottom: 8 }}>
         <button style={{ ...S.subGhost, width: "100%" }} onClick={() => setShowWeekly(!showWeekly)}>
@@ -269,13 +256,15 @@ export default function Employee({ user }) {
         </button>
         {showMonthly && monthly && (
           <SummaryCard title="이번 달 요약">
-            <SummaryGrid items={[
-              { label: "출근일", value: monthly.workedDays, color: C.green },
-              ...(monthly.leaveDays > 0 ? [{ label: "연차", value: monthly.leaveDays, color: C.green }] : []),
-              { label: "지각", value: monthly.lateDays, color: C.amber },
-              { label: "조퇴", value: monthly.earlyLeaveDays, color: C.seal },
-              { label: "총 근무", value: monthly.totalWorkMinutes ? fmtDur(monthly.totalWorkMinutes) : "—", color: C.ink },
-            ]} />
+            <SummaryGrid
+              main={[
+                { label: "출근일", value: monthly.workedDays ?? 0, color: C.green },
+                { label: "지각", value: monthly.lateDays ?? 0, color: C.amber },
+                { label: "누락", value: monthly.missingIn ?? 0, color: C.seal },
+                { label: "노트누락", value: monthly.missingNote ?? 0, color: C.blue },
+              ]}
+              sub={{ label: "총 근무", value: monthly.totalWorkMinutes ? fmtDur(monthly.totalWorkMinutes) : "—", color: C.ink }}
+            />
           </SummaryCard>
         )}
       </div>
@@ -318,16 +307,17 @@ function WeeklyCard({ weekly }) {
             const isToday = d.date === new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
             const isLeave = d.leaveType === "연차";
             const hasWork = d.minutesWorked > 0;
+            const isMissing = !d.leaveType && !d.minutesWorked && !d.status;
             return (
               <div key={i} style={{ flex: 1, textAlign: "center" }}>
                 <div style={{ fontSize: 10, color: C.inkSoft, marginBottom: 4 }}>{dow}</div>
                 <div style={{
                   width: 32, height: 32, borderRadius: "50%", margin: "0 auto",
-                  background: isToday ? C.ink : isLeave ? C.greenSoft : hasWork ? C.greenSoft : "#f0f0f0",
+                  background: isToday ? C.ink : isLeave ? C.greenSoft : hasWork ? C.greenSoft : isMissing ? C.sealSoft : "#f0f0f0",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: isToday ? "#fff" : isLeave || hasWork ? C.green : C.inkSoft }}>
-                    {isLeave ? "연" : hasWork ? "✓" : "—"}
+                  <span style={{ fontSize: 11, fontWeight: 800, color: isToday ? "#fff" : isLeave || hasWork ? C.green : isMissing ? C.seal : C.inkSoft }}>
+                    {isLeave ? "연" : hasWork ? "✓" : isMissing ? "!" : "—"}
                   </span>
                 </div>
               </div>
@@ -335,26 +325,49 @@ function WeeklyCard({ weekly }) {
           })}
         </div>
       )}
-      <SummaryGrid items={[
-        { label: "출근일", value: weekly.workedDays, color: C.green },
-        ...(weekly.leaveDays > 0 ? [{ label: "연차", value: weekly.leaveDays, color: C.green }] : []),
-        { label: "지각", value: weekly.lateDays, color: C.amber },
-        { label: "조퇴", value: weekly.earlyLeaveDays, color: C.seal },
-        { label: "총 근무", value: weekly.totalWorkMinutes ? fmtDur(weekly.totalWorkMinutes) : "—", color: C.ink },
-      ]} />
+      <SummaryGrid
+        main={[
+          { label: "출근일", value: weekly.workedDays ?? 0, color: C.green },
+          { label: "지각", value: weekly.lateDays ?? 0, color: C.amber },
+          { label: "누락", value: weekly.missingIn ?? 0, color: C.seal },
+          { label: "노트누락", value: weekly.missingNote ?? 0, color: C.blue },
+        ]}
+        sub={{ label: "총 근무", value: weekly.totalWorkMinutes ? fmtDur(weekly.totalWorkMinutes) : "—", color: C.ink }}
+      />
     </SummaryCard>
   );
 }
 
-function SummaryGrid({ items }) {
+function SummaryGrid({ main, sub, items }) {
+  // Support both old-style {items} and new-style {main, sub}
+  if (items) {
+    return (
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ flex: "1 1 auto", minWidth: 56, textAlign: "center", padding: "10px 6px", background: C.paper, borderRadius: 10 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: item.color, lineHeight: 1 }}>{item.value}</div>
+            <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 4 }}>{item.label}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {items.map((item, i) => (
-        <div key={i} style={{ flex: "1 1 auto", minWidth: 56, textAlign: "center", padding: "10px 6px", background: C.paper, borderRadius: 10 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: item.color, lineHeight: 1 }}>{item.value}</div>
-          <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 4 }}>{item.label}</div>
+    <div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {(main || []).map((item, i) => (
+          <div key={i} style={{ flex: 1, textAlign: "center", padding: "10px 4px", background: C.paper, borderRadius: 10 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: item.color, lineHeight: 1 }}>{item.value}</div>
+            <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 4 }}>{item.label}</div>
+          </div>
+        ))}
+      </div>
+      {sub && (
+        <div style={{ marginTop: 6, textAlign: "center", padding: "10px 6px", background: C.paper, borderRadius: 10 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: sub.color, lineHeight: 1 }}>{sub.value}</div>
+          <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 4 }}>{sub.label}</div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -364,15 +377,20 @@ function SummaryGrid({ items }) {
 function HistoryView({ records, loading, onBack, onRefresh }) {
   const [expanded, setExpanded] = useState(null);
 
-  const statusBadge = (status, leaveType) => {
-    if (leaveType === "연차") return { text: "연차", color: C.green, bg: C.greenSoft };
-    if (leaveType === "출근") return { text: "출근인정", color: C.green, bg: C.greenSoft };
-    if (leaveType === "퇴근") return { text: "퇴근인정", color: C.green, bg: C.greenSoft };
-    if (!status) return null;
-    if (status === "지각") return { text: "지각", color: C.amber, bg: C.amberSoft };
-    if (status === "조퇴") return { text: "조퇴", color: C.seal, bg: C.sealSoft };
-    if (status === "지각조퇴") return { text: "지각·조퇴", color: C.seal, bg: C.sealSoft };
-    return { text: "정상", color: C.green, bg: C.greenSoft };
+  // Returns array of badges to show
+  const getBadges = (r) => {
+    const badges = [];
+    const { status, leaveType, checkOut } = r;
+    if (leaveType === "연차") { badges.push({ text: "연차", color: C.green, bg: C.greenSoft }); return badges; }
+    if (leaveType === "출근") badges.push({ text: "출근인정", color: C.green, bg: C.greenSoft });
+    else if (leaveType === "퇴근") badges.push({ text: "퇴근인정", color: C.green, bg: C.greenSoft });
+    else if (status === "지각") badges.push({ text: "지각", color: C.amber, bg: C.amberSoft });
+    else if (status === "조퇴") badges.push({ text: "조퇴", color: C.seal, bg: C.sealSoft });
+    else if (status === "지각조퇴") badges.push({ text: "지각·조퇴", color: C.seal, bg: C.sealSoft });
+    // Show 퇴근누락 if present and not excused
+    const noOut = !checkOut && leaveType !== "퇴근" && (r.checkIn || leaveType === "출근");
+    if (noOut) badges.push({ text: "퇴근누락", color: C.seal, bg: C.sealSoft });
+    return badges;
   };
 
   return (
@@ -393,7 +411,7 @@ function HistoryView({ records, loading, onBack, onRefresh }) {
           const dayIdx = new Date(r.date + "T12:00:00Z").getUTCDay();
           const dow = ["일", "월", "화", "수", "목", "금", "토"][dayIdx];
           const isWeekend = dayIdx === 0 || dayIdx === 6;
-          const badge = statusBadge(r.status, r.leaveType);
+          const badges = getBadges(r);
           const hasNotes = r.noteIn || r.noteOut || r.noteField || r.noteToday;
 
           return (
@@ -424,18 +442,20 @@ function HistoryView({ records, loading, onBack, onRefresh }) {
                         <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>{fmtDur(r.workMinutes)}</div>
                       )}
                     </div>
+                  ) : r.leaveType === "출근" ? (
+                    <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>출근인정</span>
                   ) : (
                     <span style={{ fontSize: 14, color: C.seal }}>출근 누락</span>
                   )}
                 </div>
 
                 {/* 배지 + 화살표 */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  {badge && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: badge.bg, color: badge.color }}>
-                      {badge.text}
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 120 }}>
+                  {badges.map((b, bi) => (
+                    <span key={bi} style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: b.bg, color: b.color }}>
+                      {b.text}
                     </span>
-                  )}
+                  ))}
                   {(hasNotes || r.checkIn) && (
                     <span style={{ fontSize: 11, color: C.inkSoft }}>{isOpen ? "▲" : "▼"}</span>
                   )}

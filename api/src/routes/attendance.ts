@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
 import { isWithinRadius, validateGpsReport, getGeofenceFromDB } from '../utils/geo';
 import { requireAuth } from '../middleware/auth';
+import { workdaysBetween } from '../utils/holidays';
 
 const router = Router();
 const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '200');
@@ -148,12 +149,14 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
   const date = todayKST();
   const [{ rows: attRows }, { rows: userRows }] = await Promise.all([
     pool.query(`SELECT * FROM attendance_records WHERE user_id=$1 AND date=$2`, [req.user.userId, date]),
-    pool.query(`SELECT scheduled_start, scheduled_end FROM users WHERE id=$1`, [req.user.userId]),
+    pool.query(`SELECT u.scheduled_start, u.scheduled_end, w.name AS workplace_name
+                FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [req.user.userId]),
   ]);
 
   const schedule = {
     start: userRows[0]?.scheduled_start?.slice(0, 5) || '09:00',
     end: userRows[0]?.scheduled_end?.slice(0, 5) || '18:00',
+    workplaceName: userRows[0]?.workplace_name || null,
   };
 
   const att = attRows[0];
@@ -196,41 +199,93 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
 
 // GET /api/attendance/weekly-summary
 router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const today = todayKST();
   const { rows } = await pool.query(
-    `SELECT date::text AS date, check_in_time, check_out_time, work_minutes, status, leave_type
-     FROM attendance_records WHERE user_id=$1 AND date>=date_trunc('week',CURRENT_DATE) AND date<=CURRENT_DATE ORDER BY date`,
+    `SELECT date::text AS date, check_in_time, check_out_time, work_minutes, status, leave_type, work_note_today, daily_report
+     FROM attendance_records WHERE user_id=$1 AND date>=date_trunc('week',CURRENT_DATE AT TIME ZONE 'Asia/Seoul') AND date<=CURRENT_DATE ORDER BY date`,
     [req.user.userId]
   );
+
+  const recByDate: Record<string, any> = {};
+  for (const r of rows) recByDate[r.date] = r;
+
+  // Compute Mon–Fri of the current KST week
+  const [y, mo, dy] = today.split('-').map(Number);
+  const todayDow = new Date(Date.UTC(y, mo - 1, dy, 12)).getUTCDay(); // 0=Sun
+  const daysFromMon = todayDow === 0 ? 6 : todayDow - 1;
+  const weekdays: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const d2 = new Date(Date.UTC(y, mo - 1, dy - daysFromMon + i, 12));
+    const ds = d2.toISOString().slice(0, 10);
+    if (ds <= today) weekdays.push(ds);
+  }
+
+  // Weekend days that actually have records
+  const weekendWithRecords = Object.keys(recByDate).filter(d => !weekdays.includes(d)).sort();
+  const allDays = [...weekdays, ...weekendWithRecords].sort();
+
   let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0, leaveDays = 0;
-  const days = rows.map((r: any) => {
-    const lt = r.leave_type;
+  let workedDays = 0, missingIn = 0, missingNote = 0;
+
+  const days = allDays.map((date) => {
+    const r = recByDate[date];
+    const lt = r?.leave_type;
+    if (lt === '연차') { leaveDays++; return { date, minutesWorked: 0, status: r.status, leaveType: lt }; }
+
+    const isWeekday = weekdays.includes(date);
+    const hasIn = Boolean(r?.check_in_time);
+    const countedAsPresent = hasIn || lt === '출근';
+
+    if (!r) {
+      if (isWeekday) missingIn++;
+      return { date, minutesWorked: 0, status: null, leaveType: null };
+    }
+    if (!countedAsPresent && isWeekday) { missingIn++; return { date, minutesWorked: 0, status: r.status, leaveType: lt }; }
+
     const m = r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
-    if (lt === '연차') { leaveDays++; return { date: r.date, minutesWorked: 0, status: r.status, leaveType: lt }; }
-    totalWorkMinutes += m;
-    if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
-    if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
-    return { date: r.date, minutesWorked: m, status: r.status, leaveType: lt };
+    if (countedAsPresent) {
+      workedDays++;
+      totalWorkMinutes += m;
+      if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
+      if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
+      if (!r.work_note_today && !r.daily_report) missingNote++;
+    }
+    return { date, minutesWorked: m, status: r.status, leaveType: lt };
   });
-  res.json({ workedDays: rows.length, leaveDays, lateDays, earlyLeaveDays, totalWorkMinutes, days });
+
+  res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingNote, totalWorkMinutes, days });
 });
 
 // GET /api/attendance/monthly-summary
 router.get('/monthly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+  const today = todayKST();
   const monthStart = today.slice(0, 7) + '-01';
   const { rows } = await pool.query(
-    `SELECT work_minutes, status, leave_type FROM attendance_records
+    `SELECT date::text AS date, work_minutes, status, leave_type, check_in_time, work_note_today, daily_report FROM attendance_records
      WHERE user_id=$1 AND date>=$2 AND date<=$3`,
     [req.user.userId, monthStart, today]
   );
+  const recByDate: Record<string, any> = {};
+  for (const r of rows) recByDate[r.date] = r;
+
+  const workdays = workdaysBetween(monthStart, today);
   let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0, leaveDays = 0;
-  for (const r of rows) {
-    if (r.leave_type === '연차') { leaveDays++; continue; }
+  let workedDays = 0, missingIn = 0, missingNote = 0;
+
+  for (const day of workdays) {
+    const r = recByDate[day];
+    const lt = r?.leave_type;
+    if (lt === '연차') { leaveDays++; continue; }
+    const hasIn = Boolean(r?.check_in_time);
+    const countedAsPresent = hasIn || lt === '출근';
+    if (!countedAsPresent) { missingIn++; continue; }
+    workedDays++;
     totalWorkMinutes += r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
     if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
     if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
+    if (!r.work_note_today && !r.daily_report) missingNote++;
   }
-  res.json({ workedDays: rows.length, leaveDays, lateDays, earlyLeaveDays, totalWorkMinutes });
+  res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingNote, totalWorkMinutes });
 });
 
 // GET /api/attendance/history

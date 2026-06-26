@@ -190,10 +190,11 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       if (lt === '연차') continue;
       const hasIn = Boolean(r?.check_in_time);
       const isLate = r?.status === '지각' || r?.status === '지각조퇴';
-      if (!hasIn && lt !== '출근') { missingIn++; continue; }
+      const countedAsPresent = hasIn || lt === '출근';
+      if (!countedAsPresent) { missingIn++; continue; }
       if (hasIn && isLate && lt !== '출근') lateCount++;
-      if (hasIn && !r.check_out_time && lt !== '퇴근') missingOut++;
-      if (hasIn && !r.work_note_today && !r.daily_report) missingNote++;
+      if (countedAsPresent && !r.check_out_time && lt !== '퇴근') missingOut++;
+      if (countedAsPresent && !r.work_note_today && !r.daily_report) missingNote++;
     }
     const total = lateCount + missingIn + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, total };
@@ -217,6 +218,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   if (!userId || !from || !to) { res.status(400).json({ error: 'userId, from, to가 필요합니다.' }); return; }
 
   const workdays = workdaysBetween(from as string, to as string);
+  const workdaySet = new Set(workdays);
 
   // 직원 정보
   const { rows: userRows } = await pool.query(
@@ -262,18 +264,32 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
 
-  const days = workdays.map((day) => {
+  // Weekend days that have actual records (not in workdays)
+  const weekendRecordDays = Object.keys(recByDate).filter(d => {
+    if (workdaySet.has(d)) return false;
+    const [dy, dm, dd2] = d.split('-').map(Number);
+    const dow = new Date(Date.UTC(dy, dm - 1, dd2, 12)).getUTCDay();
+    return dow === 0 || dow === 6;
+  }).sort();
+
+  const allDisplayDays = [...workdays, ...weekendRecordDays].sort();
+
+  const buildDayEntry = (day: string, isWorkday: boolean) => {
     const r = recByDate[day];
     const lt = r?.leave_type;
 
     if (lt === '연차') return { date: day, leaveType: '연차' };
 
-    // 출근 인정: 출근 기록 없어도 출근 누락/지각 면제
-    // 퇴근 인정: 퇴근 기록 없어도 퇴근 누락 면제
     const hasIn = Boolean(r?.check_in_time);
+    const countedAsPresent = hasIn || lt === '출근';
 
-    if (!r || (!hasIn && lt !== '출근')) {
-      missingIn++;
+    if (!r || (!countedAsPresent && isWorkday)) {
+      if (isWorkday) missingIn++;
+      return { date: day, missing: true };
+    }
+
+    // Weekend with a record but no check-in / no leave type → just show it
+    if (!countedAsPresent) {
       return { date: day, missing: true };
     }
 
@@ -281,9 +297,11 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     const noOut  = !r.check_out_time && lt !== '퇴근';
     const noNote = !r.work_note_today && !r.daily_report;
 
-    if (isLate) lateCount++;
-    if (noOut)  missingOut++;
-    if (noNote) missingNote++;
+    if (isWorkday) {
+      if (isLate) lateCount++;
+      if (noOut)  missingOut++;
+      if (noNote) missingNote++;
+    }
 
     return {
       date: day,
@@ -300,7 +318,9 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
       outings: (outByRecId[r.id] || []),
       randomChecks: (rcByDate[day] || []),
     };
-  });
+  };
+
+  const days = allDisplayDays.map(day => buildDayEntry(day, workdaySet.has(day)));
 
   res.json({
     user,
