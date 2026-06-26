@@ -82,7 +82,7 @@ function LeavePopup({ day, onSelect, onClose }) {
             </button>
           ))}
           {/* 구분선 */}
-          <div style={{ borderTop: `1px solid ${C.line}`, margin: "2px 0" }} />
+          <div style={{ borderTop: `1px solid ${C.lineAdmin}`, margin: "2px 0" }} />
           {/* 근무 노트 인정 — 단독 또는 중복 선택 가능 */}
           <button
             style={btnStyle(noteOn)}
@@ -140,7 +140,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     return (
       <>
         {popup}
-        <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ padding: isMobile ? "8px 12px" : "11px 16px", borderBottom: `1px solid ${C.lineAdmin}`, display: "flex", alignItems: "center", gap: 8 }}>
           <DateCell />
           <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>
             {day.leaveType === '연차' ? '연차' : '출퇴근인정'}
@@ -156,7 +156,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     return (
       <>
         {popup}
-        <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8, background: "#fff5f5" }}>
+        <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineAdmin}`, display: "flex", alignItems: "center", gap: 8, background: "#fff5f5" }}>
           <DateCell alert />
           <span style={{ ...S.badge, background: C.sealSoft, color: C.seal, fontSize: 11 }}>출근 누락</span>
           <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
@@ -171,9 +171,9 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
   return (
     <>
       {popup}
-      <div style={{ borderBottom: `1px solid ${C.line}` }}>
+      <div style={{ borderBottom: `1px solid ${C.lineAdmin}` }}>
         <div
-          style={{ padding: "8px 12px", cursor: "pointer", background: isAlert ? "#fff5f5" : "#fff" }}
+          style={{ padding: isMobile ? "8px 12px" : "11px 16px", cursor: "pointer", background: isAlert ? "#fff5f5" : "#fff" }}
           onClick={() => setOpen((o) => !o)}
         >
           {/* 날짜 + 시간 행 */}
@@ -339,9 +339,9 @@ export default function AdminIndividual({ filters }) {
           const report = reportMap[w.id];
 
           return (
-            <div key={w.id} style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+            <div key={w.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
               <div
-                style={{ padding: "10px 14px", cursor: "pointer" }}
+                style={{ padding: isMobile ? "10px 14px" : "14px 18px", cursor: "pointer" }}
                 onClick={() => toggle(w)}
               >
                 {/* 이름 + 소속 + (데스크탑: KPI + 버튼들) */}
@@ -374,7 +374,7 @@ export default function AdminIndividual({ filters }) {
                 </div>
                 {/* 모바일: KPI 두 번째 줄 */}
                 {isMobile && isOpen && report && (
-                  <div style={{ display: "flex", gap: 10, fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.line}` }}
+                  <div style={{ display: "flex", gap: 10, fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.lineAdmin}` }}
                     onClick={(e) => e.stopPropagation()}>
                     <KpiBadge label="지각" v={report.kpi.lateCount} color={C.amber} />
                     <KpiBadge label="출근누락" v={report.kpi.missingIn} color={C.seal} />
@@ -385,7 +385,7 @@ export default function AdminIndividual({ filters }) {
               </div>
 
               {isOpen && (
-                <div style={{ borderTop: `1px solid ${C.line}` }}>
+                <div style={{ borderTop: `1px solid ${C.lineAdmin}` }}>
                   {loadingId === w.id && <div style={S.empty}>불러오는 중…</div>}
                   {report && report.days.length === 0 && <div style={S.empty}>이 기간에 근무일이 없습니다.</div>}
                   {report && report.days.map((day, i) => (

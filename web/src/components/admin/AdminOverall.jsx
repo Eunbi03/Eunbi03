@@ -73,28 +73,28 @@ export default function AdminOverall({ filters }) {
       {!corpEntries.length && <div style={S.empty}>직원 데이터가 없습니다.</div>}
 
       {corpEntries.map(([corp, divisions]) => (
-        <div key={corp} style={{ marginBottom: 20 }}>
+        <div key={corp} style={{ marginBottom: 28 }}>
           {/* 법인 헤더 */}
           <div style={{
             textAlign: "center", fontWeight: 800, fontSize: isMobile ? 15 : 19, color: C.blue,
-            background: C.blueSoft, borderRadius: 12, padding: "10px 16px", marginBottom: 10,
+            background: C.blueSoft, borderRadius: 12, padding: isMobile ? "10px 16px" : "13px 20px", marginBottom: isMobile ? 10 : 16,
           }}>
             {corp}
           </div>
 
           {Object.entries(divisions).map(([division, teams]) => (
-            <div key={division} style={{ marginBottom: 8 }}>
+            <div key={division} style={{ marginBottom: isMobile ? 8 : 14 }}>
               {/* 본부 헤더 */}
-              <p style={{ fontWeight: 800, fontSize: isMobile ? 13 : 17, color: C.ink, margin: "0 0 4px 2px" }}>
+              <p style={{ fontWeight: 800, fontSize: isMobile ? 13 : 17, color: C.ink, margin: isMobile ? "0 0 4px 2px" : "0 0 8px 2px" }}>
                 &gt; {division}
               </p>
 
               {Object.entries(teams).map(([teamName, members]) => {
                 const violators = members.filter((m) => m.score >= 5);
                 return (
-                  <div key={teamName} style={{ marginLeft: 10, marginBottom: 12 }}>
+                  <div key={teamName} style={{ marginLeft: 10, marginBottom: isMobile ? 12 : 18 }}>
                     {/* 팀 헤더 */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: isMobile ? "4px 0" : "6px 0" }}>
                       <p style={{ fontWeight: 700, fontSize: isMobile ? 12 : 14, color: C.inkSoft, margin: 0 }}>
                         &gt; {teamName}
                       </p>
@@ -106,8 +106,8 @@ export default function AdminOverall({ filters }) {
                     </div>
 
                     {/* 테이블 */}
-                    <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px", padding: "6px 12px", background: C.paper, fontSize: isMobile ? 11 : 15, fontWeight: 700, color: C.inkSoft }}>
+                    <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 10, overflow: "hidden" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px", padding: isMobile ? "6px 12px" : "9px 16px", background: C.blueSoft, fontSize: isMobile ? 11 : 14, fontWeight: 700, color: C.blue }}>
                         <span>이름</span>
                         <span style={{ textAlign: "center" }}>지각</span>
                         <span style={{ textAlign: "center" }}>출근누락</span>
@@ -118,8 +118,8 @@ export default function AdminOverall({ filters }) {
                         const over = m.score >= 5;
                         return (
                           <div key={m.id} style={{
-                            display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px",
-                            padding: "7px 12px", borderTop: `1px solid ${C.line}`,
+                            display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px",
+                            padding: isMobile ? "7px 12px" : "11px 16px", borderTop: `1px solid ${C.lineAdmin}`,
                             background: over ? "#fff5f5" : "#fff",
                           }}>
                             <span style={{ fontSize: isMobile ? 13 : 17, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>

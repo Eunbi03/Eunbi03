@@ -540,25 +540,25 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
             <div key={w.id} style={{
               ...S.hrRow,
               background: isThisHolder ? C.blueSoft : isAdminRole ? "#f0f6fa" : "#fff",
-              borderColor: isThisHolder ? C.blue : isAdminRole ? C.blue : C.line,
+              borderColor: isThisHolder ? C.blue : isAdminRole ? C.blue : C.lineAdmin,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: C.ink, fontSize: isMobile ? 14 : 18, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {w.name}
-                  {isThisHolder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 10 }}>권한자</span>}
-                  {isAdminRole && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 10 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>}
+                  {isThisHolder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>권한자</span>}
+                  {isAdminRole && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>}
                   {!isAdminRole && w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 15 }}>#{w.employee_id}</span>}
                 </div>
-                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, marginTop: 2 }}>
+                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, marginTop: isMobile ? 2 : 5, lineHeight: 1.6 }}>
                   {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
                 </div>
-                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft }}>{w.email}{w.phone && ` · ${w.phone}`}</div>
+                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{w.email}{w.phone && ` · ${w.phone}`}</div>
                 {!isAdminRole && (
-                  <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft }}>
+                  <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>
                     근무지: {w.workplace_name || "미지정"} · {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
                   </div>
                 )}
-                <div style={{ fontSize: isMobile ? 11 : 14, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600 }}>
+                <div style={{ fontSize: isMobile ? 11 : 14, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600, lineHeight: 1.6 }}>
                   기기: {isAdminRole ? "다중 기기 관리" : (w.device_id ? "등록됨" : "미등록")}
                 </div>
               </div>

@@ -2,6 +2,16 @@ import { useState, useEffect } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 function WpForm({ initial, onSave, onCancel, busy }) {
   const [form, setForm] = useState(
     initial || { name: "", lat: "", lng: "", radius_m: 200 }
@@ -36,6 +46,7 @@ function WpForm({ initial, onSave, onCancel, busy }) {
 }
 
 function HolidaySection() {
+  const isMobile = useIsMobile();
   const [holidays, setHolidays] = useState([]);
   const [loading, setHLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -81,10 +92,10 @@ function HolidaySection() {
   return (
     <div style={{ marginTop: 28 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: 0 }}>공휴일 관리</p>
+        <p style={{ fontWeight: 800, fontSize: isMobile ? 15 : 18, color: C.ink, margin: 0 }}>공휴일 관리</p>
         {!adding && (
           <button
-            style={{ border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer" }}
+            style={{ border: "none", borderRadius: 8, padding: isMobile ? "7px 14px" : "9px 18px", fontSize: isMobile ? 12 : 14, fontWeight: 700, background: C.blue, color: "#fff", cursor: "pointer" }}
             onClick={() => { setAdding(true); setMsg({ text: "", ok: true }); }}
           >+ 공휴일 추가</button>
         )}
@@ -124,13 +135,13 @@ function HolidaySection() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {holidays.map((h) => (
-            <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 14px", background: "#fff" }}>
+            <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.lineAdmin}`, borderRadius: 10, padding: isMobile ? "10px 14px" : "12px 16px", background: "#fff" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: C.ink }}>{h.date}</span>
-                <span style={{ fontSize: 13, color: C.inkSoft, marginLeft: 10 }}>{h.name}</span>
+                <span style={{ fontWeight: 700, fontSize: isMobile ? 13 : 15, color: C.ink }}>{h.date}</span>
+                <span style={{ fontSize: isMobile ? 13 : 15, color: C.inkSoft, marginLeft: 10 }}>{h.name}</span>
               </div>
               <button
-                style={{ border: `1px solid ${C.sealSoft}`, background: C.sealSoft, borderRadius: 7, padding: "5px 10px", fontSize: 12, color: C.seal, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+                style={{ border: `1px solid ${C.sealSoft}`, background: C.sealSoft, borderRadius: 7, padding: isMobile ? "5px 10px" : "7px 14px", fontSize: isMobile ? 12 : 13, color: C.seal, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
                 onClick={() => handleDelete(h.id)} disabled={busy}
               >삭제</button>
             </div>
@@ -142,6 +153,7 @@ function HolidaySection() {
 }
 
 export default function AdminSettings() {
+  const isMobile = useIsMobile();
   const [workplaces, setWorkplaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -210,10 +222,10 @@ export default function AdminSettings() {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: 0 }}>근무지 관리</p>
+        <p style={{ fontWeight: 800, fontSize: isMobile ? 15 : 18, color: C.ink, margin: 0 }}>근무지 관리</p>
         {!adding && (
           <button
-            style={{ border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer" }}
+            style={{ border: "none", borderRadius: 8, padding: isMobile ? "7px 14px" : "9px 18px", fontSize: isMobile ? 12 : 14, fontWeight: 700, background: C.blue, color: "#fff", cursor: "pointer" }}
             onClick={() => { setAdding(true); setEditing(null); setMsg({ text: "", ok: true }); }}
           >+ 근무지 추가</button>
         )}
@@ -241,7 +253,7 @@ export default function AdminSettings() {
       )}
 
       {workplaces.map((wp) => (
-        <div key={wp.id} style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10, background: "#fff" }}>
+        <div key={wp.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, padding: isMobile ? "14px 16px" : "16px 20px", marginBottom: 10, background: "#fff" }}>
           {editing === wp.id ? (
             <>
               <p style={{ ...S.formTitle, marginBottom: 12 }}>근무지 수정</p>
@@ -260,17 +272,17 @@ export default function AdminSettings() {
           ) : (
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontWeight: 700, fontSize: 14, color: C.ink, margin: "0 0 4px" }}>{wp.name || "이름 없음"}</p>
-                <p style={{ fontSize: 12, color: C.inkSoft, margin: 0 }}>
+                <p style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16, color: C.ink, margin: "0 0 4px" }}>{wp.name || "이름 없음"}</p>
+                <p style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft, margin: 0 }}>
                   위도 {wp.lat} · 경도 {wp.lng} · 반경 {wp.radius_m || 200}m
                 </p>
               </div>
               <button
-                style={{ border: `1px solid ${C.line}`, background: "#fff", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.inkSoft, cursor: "pointer", flexShrink: 0 }}
+                style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: isMobile ? "6px 10px" : "8px 14px", fontSize: isMobile ? 12 : 13, color: C.inkSoft, cursor: "pointer", flexShrink: 0 }}
                 onClick={() => { setEditing(wp.id); setAdding(false); setMsg({ text: "", ok: true }); }}
               >수정</button>
               <button
-                style={{ border: `1px solid ${C.sealSoft}`, background: C.sealSoft, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.seal, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+                style={{ border: `1px solid ${C.sealSoft}`, background: C.sealSoft, borderRadius: 8, padding: isMobile ? "6px 10px" : "8px 14px", fontSize: isMobile ? 12 : 13, color: C.seal, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
                 onClick={() => handleDelete(wp.id)}
                 disabled={busy}
               >삭제</button>

@@ -10,6 +10,7 @@ export const C = {
   amberSoft: "#F6EBCF",
   blue: "#2F6E8F",
   blueSoft: "#DCE9F0",
+  lineAdmin: "#B8D0DC",
   green: "#3E7C5A",
   greenSoft: "#DCEBE1",
 };
