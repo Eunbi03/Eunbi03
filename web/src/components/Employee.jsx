@@ -41,8 +41,7 @@ export default function Employee({ user }) {
   const [showWeekly, setShowWeekly] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
   const [gpsBanner, setGpsBanner] = useState(false);
-  const [historyRecords, setHistoryRecords] = useState(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
+
 
   const isCheckedIn = !!today?.checkIn?.time;
   const isCheckedOut = !!today?.checkOut?.time;
@@ -109,16 +108,7 @@ export default function Employee({ user }) {
     } catch (e) { setErr(e.message); }
   };
 
-  const loadHistory = async () => {
-    setView("history");
-    if (historyRecords) return;
-    setHistoryLoading(true);
-    try {
-      const h = await api.getAttendanceHistory();
-      setHistoryRecords(h.records);
-    } catch (e) { setErr(e.message); }
-    finally { setHistoryLoading(false); }
-  };
+  const loadHistory = () => { setView("history"); };
 
   if (loading) return <div style={S.empty}>불러오는 중…</div>;
 
@@ -133,17 +123,7 @@ export default function Employee({ user }) {
     </div>
   );
   if (view === "history") return (
-    <HistoryView
-      records={historyRecords}
-      loading={historyLoading}
-      onBack={() => setView("main")}
-      onRefresh={async () => {
-        setHistoryLoading(true);
-        try { const h = await api.getAttendanceHistory(); setHistoryRecords(h.records); }
-        catch (e) { setErr(e.message); }
-        finally { setHistoryLoading(false); }
-      }}
-    />
+    <HistoryView onBack={() => setView("main")} />
   );
 
   return (
@@ -270,8 +250,8 @@ export default function Employee({ user }) {
       </div>
 
       {/* ── 근태 기록 보기 ── */}
-      <button style={{ ...S.subGhost, width: "100%", fontWeight: 700 }} onClick={loadHistory} disabled={historyLoading}>
-        {historyLoading ? "불러오는 중…" : "내 근태 기록 보기 →"}
+      <button style={{ ...S.subGhost, width: "100%", fontWeight: 700 }} onClick={loadHistory}>
+        내 근태 기록 보기 →
       </button>
     </div>
   );
@@ -374,21 +354,56 @@ function SummaryGrid({ main, sub, items }) {
 
 // ── 근태 기록 페이지 ──────────────────────────────────────────
 
-function HistoryView({ records, loading, onBack, onRefresh }) {
+function HistoryView({ onBack }) {
   const [expanded, setExpanded] = useState(null);
+  const [records, setRecords] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [month, setMonth] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }).slice(0, 7));
+
+  const todayKST = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const currentMonth = () => todayKST().slice(0, 7);
+
+  useEffect(() => {
+    const today = todayKST();
+    const from = `${month}-01`;
+    const [y, mo] = month.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const rawTo = `${month}-${String(lastDay).padStart(2, '0')}`;
+    const to = rawTo > today ? today : rawTo;
+    if (from > today) return;
+    setLoading(true);
+    setRecords(null);
+    api.getAttendanceHistory({ from, to })
+      .then((h) => setRecords(h.records))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [month]);
+
+  const changeMonth = (delta) => {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+    const next = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (next > currentMonth()) return;
+    setMonth(next);
+    setExpanded(null);
+  };
+
+  const canGoNext = month < currentMonth();
+  const [my, mm] = month.split('-');
 
   // Returns array of badges to show
   const getBadges = (r) => {
     const badges = [];
     const { status, leaveType, checkOut } = r;
     if (leaveType === "연차") { badges.push({ text: "연차", color: C.green, bg: C.greenSoft }); return badges; }
+    if (leaveType === "출퇴근") { badges.push({ text: "출퇴근인정", color: C.green, bg: C.greenSoft }); return badges; }
     if (leaveType === "출근") badges.push({ text: "출근인정", color: C.green, bg: C.greenSoft });
     else if (leaveType === "퇴근") badges.push({ text: "퇴근인정", color: C.green, bg: C.greenSoft });
     else if (status === "지각") badges.push({ text: "지각", color: C.amber, bg: C.amberSoft });
     else if (status === "조퇴") badges.push({ text: "조퇴", color: C.seal, bg: C.sealSoft });
     else if (status === "지각조퇴") badges.push({ text: "지각·조퇴", color: C.seal, bg: C.sealSoft });
     // Show 퇴근누락 if present and not excused
-    const noOut = !checkOut && leaveType !== "퇴근" && (r.checkIn || leaveType === "출근");
+    const noOut = !checkOut && leaveType !== "퇴근" && leaveType !== "출퇴근" && (r.checkIn || leaveType === "출근");
     if (noOut) badges.push({ text: "퇴근누락", color: C.seal, bg: C.sealSoft });
     return badges;
   };
@@ -396,10 +411,15 @@ function HistoryView({ records, loading, onBack, onRefresh }) {
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
       {/* 헤더 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <button style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.ink, padding: "0 4px 0 0", lineHeight: 1 }} onClick={onBack}>←</button>
         <h2 style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: 0, flex: 1 }}>내 근태 기록</h2>
-        <button style={{ ...S.miniBtn }} onClick={onRefresh}>↻</button>
+      </div>
+      {/* 월 선택 */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16, background: "#fff", borderRadius: 12, padding: "10px 0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+        <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: C.ink, padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(-1)}>‹</button>
+        <span style={{ fontWeight: 800, fontSize: 15, color: C.ink }}>{my}년 {parseInt(mm, 10)}월</span>
+        <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: canGoNext ? C.ink : C.line, padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(1)} disabled={!canGoNext}>›</button>
       </div>
 
       {loading && <div style={S.empty}>불러오는 중…</div>}
@@ -432,6 +452,8 @@ function HistoryView({ records, loading, onBack, onRefresh }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {r.leaveType === "연차" ? (
                     <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>연차</span>
+                  ) : r.leaveType === "출퇴근" && !r.checkIn ? (
+                    <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>출퇴근인정</span>
                   ) : r.checkIn ? (
                     <div>
                       <span style={{ fontSize: 14, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmtTime(r.checkIn.time)}</span>

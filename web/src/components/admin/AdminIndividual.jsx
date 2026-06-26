@@ -19,20 +19,27 @@ function fmtDist(m) { if (m == null) return null; return m < 1000 ? `${Math.roun
 function mapsUrl(lat, lng) { return `https://maps.google.com/?q=${lat},${lng}`; }
 
 function LeavePopup({ day, onSelect, onClose }) {
+  const [selected, setSelected] = useState(day.leaveType || null);
+  useEffect(() => { setSelected(day.leaveType || null); }, [day.leaveType]);
+
   const OPTIONS = [
     { key: "연차", label: "연차", sub: "하루 전체 인정" },
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
     { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
     { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
   ];
+
+  const handle = (key) => {
+    setSelected(key);
+    onSelect(key);
+  };
+
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}
-      onClick={onClose}
     >
       <div
         style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", minWidth: 240, textAlign: "center" }}
-        onClick={(e) => e.stopPropagation()}
       >
         <p style={{ fontWeight: 800, fontSize: 14, color: C.ink, marginBottom: 14 }}>
           {day.date.slice(5)} 출퇴근 인정 설정
@@ -42,26 +49,18 @@ function LeavePopup({ day, onSelect, onClose }) {
             <button
               key={key}
               style={{
-                padding: "11px", borderRadius: 10, border: `1px solid ${day.leaveType === key ? C.green : C.line}`,
-                background: day.leaveType === key ? C.greenSoft : "#fff",
-                color: day.leaveType === key ? C.green : C.ink,
+                padding: "11px", borderRadius: 10, border: `1px solid ${selected === key ? C.green : C.line}`,
+                background: selected === key ? C.greenSoft : "#fff",
+                color: selected === key ? C.green : C.ink,
                 fontWeight: 700, fontSize: 14, cursor: "pointer", textAlign: "left",
                 display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
               }}
-              onClick={() => onSelect(key)}
+              onClick={() => handle(key)}
             >
               <span>{label}</span>
-              <span style={{ fontSize: 11, fontWeight: 400, color: day.leaveType === key ? C.green : C.inkSoft }}>{sub}{day.leaveType === key ? " ✓" : ""}</span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: selected === key ? C.green : C.inkSoft }}>{sub}{selected === key ? " ✓" : ""}</span>
             </button>
           ))}
-          {day.leaveType && (
-            <button
-              style={{ padding: "10px", borderRadius: 10, border: `1px solid ${C.sealSoft}`, background: C.sealSoft, color: C.seal, fontWeight: 700, fontSize: 14, cursor: "pointer" }}
-              onClick={() => onSelect(null)}
-            >
-              설정 취소
-            </button>
-          )}
         </div>
         <button
           style={{ marginTop: 12, background: "none", border: "none", fontSize: 13, color: C.inkSoft, cursor: "pointer" }}
@@ -89,7 +88,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
   const popup = leavePopup && onLeaveChange && (
     <LeavePopup
       day={day}
-      onSelect={(t) => { onLeaveChange(day, t); setLeavePopup(false); }}
+      onSelect={(t) => { onLeaveChange(day, t); }}
       onClose={() => setLeavePopup(false)}
     />
   );

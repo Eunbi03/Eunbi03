@@ -184,17 +184,30 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     for (const r of recs) recByDate[r.date] = r;
 
     let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
+    // 평일 처리
     for (const day of workdays) {
       const r = recByDate[day];
       const lt = r?.leave_type;
-      if (lt === '연차' || lt === '출퇴근') continue;
+      if (lt === '연차') continue;
       const hasIn = Boolean(r?.check_in_time);
       const isLate = r?.status === '지각' || r?.status === '지각조퇴';
-      const countedAsPresent = hasIn || lt === '출근';
+      const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
       if (!countedAsPresent) { missingIn++; continue; }
-      if (hasIn && isLate && lt !== '출근') lateCount++;
-      if (countedAsPresent && !r.check_out_time && lt !== '퇴근') missingOut++;
+      if (hasIn && isLate && lt !== '출근' && lt !== '출퇴근') lateCount++;
+      if (countedAsPresent && !r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
       if (countedAsPresent && !r.work_note_today && !r.daily_report) missingNote++;
+    }
+    // 주말 출근 기록도 KPI에 반영
+    for (const r of recs) {
+      if (workdays.includes(r.date)) continue; // 평일은 위에서 처리
+      const lt = r.leave_type;
+      if (lt === '연차') continue;
+      const hasIn = Boolean(r.check_in_time);
+      if (!hasIn && lt !== '출근' && lt !== '출퇴근') continue; // 출근 기록 없으면 스킵
+      const isLate = r.status === '지각' || r.status === '지각조퇴';
+      if (hasIn && isLate && lt !== '출근' && lt !== '출퇴근') lateCount++;
+      if (!r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
+      if (!r.work_note_today && !r.daily_report) missingNote++;
     }
     const total = lateCount + missingIn + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, total };
@@ -279,10 +292,9 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     const lt = r?.leave_type;
 
     if (lt === '연차') return { date: day, leaveType: '연차' };
-    if (lt === '출퇴근') return { date: day, leaveType: '출퇴근' };
 
     const hasIn = Boolean(r?.check_in_time);
-    const countedAsPresent = hasIn || lt === '출근';
+    const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
 
     if (!r || (!countedAsPresent && isWorkday)) {
       if (isWorkday) missingIn++;
@@ -293,11 +305,12 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
       return { date: day, missing: true };
     }
 
-    const isLate = (r.status === '지각' || r.status === '지각조퇴') && lt !== '출근';
-    const noOut  = !r.check_out_time && lt !== '퇴근';
+    const isLate = (r.status === '지각' || r.status === '지각조퇴') && lt !== '출근' && lt !== '출퇴근';
+    const noOut  = !r.check_out_time && lt !== '퇴근' && lt !== '출퇴근';
     const noNote = !r.work_note_today && !r.daily_report;
 
-    if (isWorkday) {
+    // 평일 KPI + 주말 출근한 경우도 KPI 반영
+    if (isWorkday || hasIn) {
       if (isLate) lateCount++;
       if (noOut)  missingOut++;
       if (noNote) missingNote++;
