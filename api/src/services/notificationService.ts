@@ -4,11 +4,13 @@ let adminApp: any = null;
 
 function ensureInitialized() {
   if (adminApp) return;
-  const fcmPath = process.env.FCM_SERVICE_ACCOUNT_PATH;
-  if (!fcmPath) { console.warn('[알림] FCM_SERVICE_ACCOUNT_PATH 미설정 — 푸시 알림 비활성화'); return; }
+  const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!json) { console.warn('[알림] FIREBASE_SERVICE_ACCOUNT_JSON 미설정 — 푸시 알림 비활성화'); return; }
   try {
     const admin = require('firebase-admin');
-    adminApp = admin.initializeApp({ credential: admin.credential.cert(require(fcmPath)) });
+    const serviceAccount = JSON.parse(json);
+    adminApp = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    console.log('[알림] Firebase Admin 초기화 성공');
   } catch (err: any) {
     console.error('[알림] Firebase Admin 초기화 실패:', err.message);
   }
