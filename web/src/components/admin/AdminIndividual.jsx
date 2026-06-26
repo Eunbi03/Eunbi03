@@ -108,6 +108,7 @@ function dayOfWeek(dateStr) {
 }
 
 function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [leavePopup, setLeavePopup] = useState(false);
   const isAlert = day.isLate || day.noOut || day.missing;
