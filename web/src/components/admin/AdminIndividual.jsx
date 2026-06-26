@@ -135,7 +135,8 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     </div>
   );
 
-  if (day.leaveType === '연차' || day.leaveType === '출퇴근') {
+  const { primary: ltP2, noteOn: ltN2 } = parseLt(day.leaveType);
+  if (day.leaveType === '연차' || ltP2 === '출퇴근') {
     return (
       <>
         {popup}
@@ -144,6 +145,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
           <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>
             {day.leaveType === '연차' ? '연차' : '출퇴근인정'}
           </span>
+          {ltN2 && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 11 }}>노트인정</span>}
           <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
       </>
