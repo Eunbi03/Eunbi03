@@ -182,6 +182,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
 
             {day.noteField && <NoteRow label="외근장소" text={day.noteField} />}
             {day.noteToday && <NoteRow label="오늘업무" text={day.noteToday} />}
+            {day.timeChangeReason && <NoteRow label="근무시간변경사유" text={day.timeChangeReason} />}
 
             {day.randomChecks?.map((rc, i) => (
               <div key={i} style={{ fontSize: 11, color: C.inkSoft }}>
