@@ -61,15 +61,15 @@ export default function AdminApp({ user }) {
       {/* 필터 */}
       {showFilter && (
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin } value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
+          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin }} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
             <option value="">전체 법인</option>
             {filterOptions.corps.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin } value={filters.division} onChange={(e) => setF("division", e.target.value)}>
+          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin }} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
             <option value="">전체 본부</option>
             {filterOptions.divisions.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
-          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin } value={filters.team} onChange={(e) => setF("team", e.target.value)}>
+          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin }} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
             <option value="">전체 팀</option>
             {filterOptions.teams.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
