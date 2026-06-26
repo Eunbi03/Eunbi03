@@ -2,6 +2,7 @@ import 'dotenv/config';
 import app from './app';
 import { startScheduler } from './jobs/scheduler';
 import { startMonthlyReportScheduler } from './jobs/monthlyReport';
+import { loadHolidayCache } from './utils/holidays';
 
 const PORT = process.env.PORT || 3000;
 const REQUIRED_ENV = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'JWT_SECRET'];
@@ -11,8 +12,9 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`근태관리 API 서버 포트 ${PORT} 실행 중`);
+  await loadHolidayCache().catch((e) => console.warn('[공휴일 캐시 로드 실패]', e.message));
   startScheduler();
   startMonthlyReportScheduler();
 });

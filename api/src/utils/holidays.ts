@@ -1,20 +1,22 @@
-// 대한민국 법정 공휴일 (매년 갱신 필요)
-const HOLIDAYS = new Set([
-  // 2025
-  '2025-01-01','2025-01-28','2025-01-29','2025-01-30',
-  '2025-03-01','2025-05-05','2025-06-06','2025-08-15',
-  '2025-10-03','2025-10-05','2025-10-06','2025-10-07','2025-10-09',
-  '2025-12-25',
-  // 2026
-  '2026-01-01','2026-02-16','2026-02-17','2026-02-18',
-  '2026-03-01','2026-03-02', // 대체공휴일
-  '2026-05-05','2026-06-03','2026-06-06','2026-08-15', // 2026-06-03: 지방선거
-  '2026-09-24','2026-09-25','2026-09-26',
-  '2026-10-03','2026-10-09','2026-12-25',
-]);
+import { pool } from '../db/pool';
+
+// 메모리 캐시 — 서버 시작 시 및 CRUD 후 갱신
+let _cache: Set<string> = new Set();
+let _loaded = false;
+
+export async function loadHolidayCache(): Promise<void> {
+  const { rows } = await pool.query(`SELECT date::text AS date FROM public_holidays`);
+  _cache = new Set(rows.map((r: any) => r.date));
+  _loaded = true;
+}
+
+export function refreshHolidayCache(dates: string[]): void {
+  _cache = new Set(dates);
+  _loaded = true;
+}
 
 export function isHoliday(dateStr: string): boolean {
-  return HOLIDAYS.has(dateStr);
+  return _cache.has(dateStr);
 }
 
 export function isWeekend(dateStr: string): boolean {

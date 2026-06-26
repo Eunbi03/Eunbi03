@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { pool } from '../db/pool';
 import { requireAuth, requireAdmin, requireHR } from '../middleware/auth';
 import { isWithinRadius } from '../utils/geo';
-import { workdaysBetween } from '../utils/holidays';
+import { workdaysBetween, refreshHolidayCache } from '../utils/holidays';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -582,6 +582,31 @@ router.post('/company-settings', async (req: Request, res: Response): Promise<vo
     await pool.query('INSERT INTO company_settings (lat, lng, radius_meters, description) VALUES ($1,$2,$3,$4)',
       [lat, lng, radiusMeters || 100, description || null]);
   }
+  res.json({ success: true });
+});
+
+// ── 공휴일 관리 ──────────────────────────────────────────────────────────────
+router.get('/holidays', async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query('SELECT id, date::text AS date, name FROM public_holidays ORDER BY date');
+  res.json({ holidays: rows });
+});
+
+router.post('/holidays', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { date, name } = req.body;
+  if (!date) { res.status(400).json({ error: 'date는 필수입니다.' }); return; }
+  const { rows } = await pool.query(
+    'INSERT INTO public_holidays (date, name) VALUES ($1,$2) ON CONFLICT (date) DO UPDATE SET name=EXCLUDED.name RETURNING id, date::text AS date, name',
+    [date, name || '']
+  );
+  const all = await pool.query('SELECT date::text AS date FROM public_holidays');
+  refreshHolidayCache(all.rows.map((r: any) => r.date));
+  res.status(201).json({ holiday: rows[0] });
+});
+
+router.delete('/holidays/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+  await pool.query('DELETE FROM public_holidays WHERE id=$1', [req.params.id]);
+  const all = await pool.query('SELECT date::text AS date FROM public_holidays');
+  refreshHolidayCache(all.rows.map((r: any) => r.date));
   res.json({ success: true });
 });
 

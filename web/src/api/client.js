@@ -109,4 +109,9 @@ export const transferAuthority = (targetUserId) => request("/admin/authority/tra
 export const getCompanySettings = () => request("/admin/company-settings");
 export const saveCompanySettings = (data) => request("/admin/company-settings", { method: "POST", body: data });
 
+/* 관리자 — 공휴일 관리 */
+export const getHolidays = () => request("/admin/holidays");
+export const createHoliday = (date, name) => request("/admin/holidays", { method: "POST", body: { date, name } });
+export const deleteHoliday = (id) => request(`/admin/holidays/${id}`, { method: "DELETE" });
+
 export { setAccessToken };
