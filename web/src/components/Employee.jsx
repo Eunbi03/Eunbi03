@@ -260,7 +260,7 @@ export default function Employee({ user }) {
               main={[
                 { label: "출근일", value: monthly.workedDays ?? 0, color: C.green },
                 { label: "지각", value: monthly.lateDays ?? 0, color: C.amber },
-                { label: "누락", value: monthly.missingIn ?? 0, color: C.seal },
+                { label: "누락", value: (monthly.missingIn ?? 0) + (monthly.missingOut ?? 0), color: C.seal },
                 { label: "노트누락", value: monthly.missingNote ?? 0, color: C.blue },
               ]}
               sub={{ label: "총 근무", value: monthly.totalWorkMinutes ? fmtDur(monthly.totalWorkMinutes) : "—", color: C.ink }}
@@ -329,7 +329,7 @@ function WeeklyCard({ weekly }) {
         main={[
           { label: "출근일", value: weekly.workedDays ?? 0, color: C.green },
           { label: "지각", value: weekly.lateDays ?? 0, color: C.amber },
-          { label: "누락", value: weekly.missingIn ?? 0, color: C.seal },
+          { label: "누락", value: (weekly.missingIn ?? 0) + (weekly.missingOut ?? 0), color: C.seal },
           { label: "노트누락", value: weekly.missingNote ?? 0, color: C.blue },
         ]}
         sub={{ label: "총 근무", value: weekly.totalWorkMinutes ? fmtDur(weekly.totalWorkMinutes) : "—", color: C.ink }}

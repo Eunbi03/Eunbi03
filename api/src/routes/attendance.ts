@@ -225,7 +225,7 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
   const allDays = [...weekdays, ...weekendWithRecords].sort();
 
   let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0, leaveDays = 0;
-  let workedDays = 0, missingIn = 0, missingNote = 0;
+  let workedDays = 0, missingIn = 0, missingOut = 0, missingNote = 0;
 
   const days = allDays.map((date) => {
     const r = recByDate[date];
@@ -234,7 +234,7 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
 
     const isWeekday = weekdays.includes(date);
     const hasIn = Boolean(r?.check_in_time);
-    const countedAsPresent = hasIn || lt === '출근';
+    const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
 
     if (!r) {
       if (isWeekday) missingIn++;
@@ -249,11 +249,12 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
       if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
       if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
       if (!r.work_note_today && !r.daily_report) missingNote++;
+      if (!r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
     }
     return { date, minutesWorked: m, status: r.status, leaveType: lt };
   });
 
-  res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingNote, totalWorkMinutes, days });
+  res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingOut, missingNote, totalWorkMinutes, days });
 });
 
 // GET /api/attendance/monthly-summary
@@ -270,22 +271,23 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
 
   const workdays = workdaysBetween(monthStart, today);
   let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0, leaveDays = 0;
-  let workedDays = 0, missingIn = 0, missingNote = 0;
+  let workedDays = 0, missingIn = 0, missingOut = 0, missingNote = 0;
 
   for (const day of workdays) {
     const r = recByDate[day];
     const lt = r?.leave_type;
     if (lt === '연차') { leaveDays++; continue; }
     const hasIn = Boolean(r?.check_in_time);
-    const countedAsPresent = hasIn || lt === '출근';
+    const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
     if (!countedAsPresent) { missingIn++; continue; }
     workedDays++;
     totalWorkMinutes += r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
     if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
     if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
     if (!r.work_note_today && !r.daily_report) missingNote++;
+    if (!r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
   }
-  res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingNote, totalWorkMinutes });
+  res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingOut, missingNote, totalWorkMinutes });
 });
 
 // GET /api/attendance/history
@@ -305,18 +307,31 @@ router.get('/history', requireAuth, async (req: Request, res: Response): Promise
     [userId, fromDate, toDate]
   );
 
-  const records = rows.map((r: any) => ({
-    date: r.date,
-    checkIn: r.check_in_time ? { time: r.check_in_time, distanceM: r.check_in_distance_m } : null,
-    checkOut: r.check_out_time ? { time: r.check_out_time, distanceM: r.check_out_distance_m } : null,
-    workMinutes: r.work_minutes ? Math.round(Number(r.work_minutes)) : null,
-    status: r.status,
-    leaveType: r.leave_type,
-    noteIn: r.work_note_in,
-    noteOut: r.work_note_out,
-    noteField: r.work_note_field,
-    noteToday: r.work_note_today,
-  }));
+  const recByDate: Record<string, any> = {};
+  for (const r of rows) recByDate[r.date] = r;
+
+  // Include all workdays (even without records) + weekend days that have records
+  const wdays = workdaysBetween(fromDate, toDate);
+  const wdaySet = new Set(wdays);
+  const weekendWithRec = Object.keys(recByDate).filter(date => !wdaySet.has(date)).sort();
+  const allDays = [...wdays, ...weekendWithRec].sort().reverse(); // newest first
+
+  const records = allDays.map((date) => {
+    const r = recByDate[date];
+    if (!r) return { date, checkIn: null, checkOut: null, workMinutes: null, status: null, leaveType: null, noteIn: null, noteOut: null, noteField: null, noteToday: null };
+    return {
+      date: r.date,
+      checkIn: r.check_in_time ? { time: r.check_in_time, distanceM: r.check_in_distance_m } : null,
+      checkOut: r.check_out_time ? { time: r.check_out_time, distanceM: r.check_out_distance_m } : null,
+      workMinutes: r.work_minutes ? Math.round(Number(r.work_minutes)) : null,
+      status: r.status,
+      leaveType: r.leave_type,
+      noteIn: r.work_note_in,
+      noteOut: r.work_note_out,
+      noteField: r.work_note_field,
+      noteToday: r.work_note_today,
+    };
+  });
   res.json({ records });
 });
 

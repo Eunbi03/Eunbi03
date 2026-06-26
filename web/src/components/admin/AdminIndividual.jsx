@@ -21,6 +21,7 @@ function mapsUrl(lat, lng) { return `https://maps.google.com/?q=${lat},${lng}`; 
 function LeavePopup({ day, onSelect, onClose }) {
   const OPTIONS = [
     { key: "연차", label: "연차", sub: "하루 전체 인정" },
+    { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
     { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
     { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
   ];
@@ -104,13 +105,15 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     </div>
   );
 
-  if (day.leaveType === '연차') {
+  if (day.leaveType === '연차' || day.leaveType === '출퇴근') {
     return (
       <>
         {popup}
         <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
           <DateCell />
-          <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>연차</span>
+          <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>
+            {day.leaveType === '연차' ? '연차' : '출퇴근인정'}
+          </span>
           <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
       </>
@@ -130,7 +133,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     );
   }
 
-  const hasBadges = day.leaveType === '출근' || day.leaveType === '퇴근' || day.isLate || day.noOut || day.noNote;
+  const hasBadges = day.leaveType === '출근' || day.leaveType === '퇴근' || day.leaveType === '출퇴근' || day.isLate || day.noOut || day.noNote;
 
   return (
     <>
@@ -309,14 +312,14 @@ export default function AdminIndividual({ filters }) {
                 {/* 이름 + 소속 + (데스크탑: KPI + 버튼들) */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: C.ink }}>{w.name}</span>
-                    <span style={{ fontSize: 12, color: C.inkSoft, marginLeft: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16, color: C.ink }}>{w.name}</span>
+                    <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft, marginLeft: 8 }}>
                       {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
                       {w.job_title && <span style={{ marginLeft: 6 }}>| {w.job_title}</span>}
                     </span>
                   </div>
                   {!isMobile && isOpen && report && (
-                    <div style={{ display: "flex", gap: 8, fontSize: 11, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 8, fontSize: isMobile ? 11 : 13, flexShrink: 0 }}>
                       <KpiBadge label="지각" v={report.kpi.lateCount} color={C.amber} />
                       <KpiBadge label="출근누락" v={report.kpi.missingIn} color={C.seal} />
                       <KpiBadge label="퇴근누락" v={report.kpi.missingOut} color={C.seal} />

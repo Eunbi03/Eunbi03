@@ -598,8 +598,8 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                       </div>
                       {isHR && (
                         <div style={{ display: "flex", gap: 4 }}>
-                          <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.blue, borderColor: C.blueSoft }} onClick={() => resetDevice(w)}>기기변경</button>
                           <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.seal }} onClick={() => deleteWorker(w)}>삭제</button>
+                          <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.blue, borderColor: C.blueSoft }} onClick={() => resetDevice(w)}>기기변경</button>
                         </div>
                       )}
                       {w.is_locked && isHR && (

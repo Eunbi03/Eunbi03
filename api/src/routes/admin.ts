@@ -187,7 +187,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     for (const day of workdays) {
       const r = recByDate[day];
       const lt = r?.leave_type;
-      if (lt === '연차') continue;
+      if (lt === '연차' || lt === '출퇴근') continue;
       const hasIn = Boolean(r?.check_in_time);
       const isLate = r?.status === '지각' || r?.status === '지각조퇴';
       const countedAsPresent = hasIn || lt === '출근';
@@ -279,6 +279,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     const lt = r?.leave_type;
 
     if (lt === '연차') return { date: day, leaveType: '연차' };
+    if (lt === '출퇴근') return { date: day, leaveType: '출퇴근' };
 
     const hasIn = Boolean(r?.check_in_time);
     const countedAsPresent = hasIn || lt === '출근';
@@ -288,7 +289,6 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
       return { date: day, missing: true };
     }
 
-    // Weekend with a record but no check-in / no leave type → just show it
     if (!countedAsPresent) {
       return { date: day, missing: true };
     }

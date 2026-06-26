@@ -2,10 +2,21 @@ import { useState, useEffect } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 function todayStr() { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); }
 function monthStart() { return todayStr().slice(0, 7) + "-01"; }
 
 export default function AdminOverall({ filters }) {
+  const isMobile = useIsMobile();
   const today = todayStr();
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today);
@@ -65,8 +76,8 @@ export default function AdminOverall({ filters }) {
         <div key={corp} style={{ marginBottom: 20 }}>
           {/* 법인 헤더 */}
           <div style={{
-            textAlign: "center", fontWeight: 800, fontSize: 15, color: C.amber,
-            background: "#f5f0e8", border: `1px solid ${C.amber}`, borderRadius: 12, padding: "10px 16px", marginBottom: 10,
+            textAlign: "center", fontWeight: 800, fontSize: isMobile ? 15 : 17, color: C.amber,
+            background: "#f5f0e8", borderRadius: 12, padding: "10px 16px", marginBottom: 10,
           }}>
             {corp}
           </div>
@@ -96,7 +107,7 @@ export default function AdminOverall({ filters }) {
 
                     {/* 테이블 */}
                     <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px", padding: "6px 12px", background: C.paper, fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px", padding: "6px 12px", background: C.paper, fontSize: isMobile ? 11 : 13, fontWeight: 700, color: C.inkSoft }}>
                         <span>이름</span>
                         <span style={{ textAlign: "center" }}>지각</span>
                         <span style={{ textAlign: "center" }}>출근누락</span>
@@ -111,13 +122,13 @@ export default function AdminOverall({ filters }) {
                             padding: "7px 12px", borderTop: `1px solid ${C.line}`,
                             background: over ? "#fff5f5" : "#fff",
                           }}>
-                            <span style={{ fontSize: 13, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>
+                            <span style={{ fontSize: isMobile ? 13 : 15, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>
                               {m.name}
                             </span>
-                            <Cell v={m.lateCount} over={over} />
-                            <Cell v={m.missingIn} over={over} />
-                            <Cell v={m.missingOut} over={over} />
-                            <Cell v={m.missingNote} over={over} />
+                            <Cell v={m.lateCount} over={over} isMobile={isMobile} />
+                            <Cell v={m.missingIn} over={over} isMobile={isMobile} />
+                            <Cell v={m.missingOut} over={over} isMobile={isMobile} />
+                            <Cell v={m.missingNote} over={over} isMobile={isMobile} />
                           </div>
                         );
                       })}
@@ -133,9 +144,9 @@ export default function AdminOverall({ filters }) {
   );
 }
 
-function Cell({ v, over }) {
+function Cell({ v, over, isMobile }) {
   return (
-    <span style={{ textAlign: "center", fontSize: 13, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : v > 0 ? C.amber : C.inkSoft }}>
+    <span style={{ textAlign: "center", fontSize: isMobile ? 13 : 15, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : v > 0 ? C.amber : C.inkSoft }}>
       {v || "-"}
     </span>
   );
