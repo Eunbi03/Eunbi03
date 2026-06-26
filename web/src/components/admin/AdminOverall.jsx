@@ -106,8 +106,8 @@ export default function AdminOverall({ filters }) {
                     </div>
 
                     {/* 테이블 */}
-                    <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 10, overflow: "hidden" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px", padding: isMobile ? "6px 12px" : "9px 16px", background: C.blueSoft, fontSize: isMobile ? 11 : 14, fontWeight: 700, color: C.blue }}>
+                    <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 10, overflow: "hidden", background: "#fff" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px", padding: isMobile ? "6px 12px" : "9px 16px", background: C.blueSoft, fontSize: isMobile ? 13 : 17, fontWeight: 700, color: C.blue }}>
                         <span>이름</span>
                         <span style={{ textAlign: "center" }}>지각</span>
                         <span style={{ textAlign: "center" }}>출근누락</span>
@@ -117,18 +117,21 @@ export default function AdminOverall({ filters }) {
                       {members.map((m) => {
                         const over = m.score >= 5;
                         return (
-                          <div key={m.id} style={{
-                            display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px",
-                            padding: isMobile ? "7px 12px" : "11px 16px", borderTop: `1px solid ${C.lineAdmin}`,
-                            background: over ? "#fff5f5" : "#fff",
-                          }}>
-                            <span style={{ fontSize: isMobile ? 13 : 17, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>
-                              {m.name}
-                            </span>
-                            <Cell v={m.lateCount} over={over} isMobile={isMobile} />
-                            <Cell v={m.missingIn} over={over} isMobile={isMobile} />
-                            <Cell v={m.missingOut} over={over} isMobile={isMobile} />
-                            <Cell v={m.missingNote} over={over} isMobile={isMobile} />
+                          <div key={m.id} style={{ borderTop: `1px solid ${C.lineAdmin}`, background: "#fff", padding: over ? "3px 4px" : 0 }}>
+                            <div style={{
+                              display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px",
+                              padding: isMobile ? "7px 12px" : "9px 14px",
+                              background: over ? "#fff0f0" : "transparent",
+                              borderRadius: over ? 7 : 0,
+                            }}>
+                              <span style={{ fontSize: isMobile ? 12 : 14, color: over ? C.seal : C.inkSoft }}>
+                                {m.name}
+                              </span>
+                              <Cell v={m.lateCount} over={over} isMobile={isMobile} />
+                              <Cell v={m.missingIn} over={over} isMobile={isMobile} />
+                              <Cell v={m.missingOut} over={over} isMobile={isMobile} />
+                              <Cell v={m.missingNote} over={over} isMobile={isMobile} />
+                            </div>
                           </div>
                         );
                       })}
@@ -146,7 +149,7 @@ export default function AdminOverall({ filters }) {
 
 function Cell({ v, over, isMobile }) {
   return (
-    <span style={{ textAlign: "center", fontSize: isMobile ? 13 : 17, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : v > 0 ? C.amber : C.inkSoft }}>
+    <span style={{ textAlign: "center", fontSize: isMobile ? 12 : 14, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : v > 0 ? C.amber : C.inkSoft }}>
       {v || "-"}
     </span>
   );
