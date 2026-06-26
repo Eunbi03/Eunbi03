@@ -76,8 +76,8 @@ export default function AdminOverall({ filters }) {
         <div key={corp} style={{ marginBottom: 28 }}>
           {/* 법인 헤더 */}
           <div style={{
-            textAlign: "center", fontWeight: 800, fontSize: isMobile ? 15 : 19, color: C.blue,
-            background: C.blueSoft, borderRadius: 12, padding: isMobile ? "10px 16px" : "13px 20px", marginBottom: isMobile ? 10 : 16,
+            textAlign: "center", fontWeight: 800, fontSize: isMobile ? 15 : 19, color: "#fff",
+            background: C.blue, borderRadius: 12, padding: isMobile ? "10px 16px" : "13px 20px", marginBottom: isMobile ? 10 : 16,
           }}>
             {corp}
           </div>
@@ -86,7 +86,7 @@ export default function AdminOverall({ filters }) {
             <div key={division} style={{ marginBottom: isMobile ? 8 : 14 }}>
               {/* 본부 헤더 */}
               <p style={{ fontWeight: 800, fontSize: isMobile ? 13 : 17, color: C.ink, margin: isMobile ? "0 0 4px 2px" : "0 0 8px 2px" }}>
-                &gt; {division}
+                {division}
               </p>
 
               {Object.entries(teams).map(([teamName, members]) => {
@@ -96,7 +96,7 @@ export default function AdminOverall({ filters }) {
                     {/* 팀 헤더 */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, margin: isMobile ? "4px 0" : "6px 0" }}>
                       <p style={{ fontWeight: 700, fontSize: isMobile ? 12 : 14, color: C.inkSoft, margin: 0 }}>
-                        &gt; {teamName}
+                        {teamName}
                       </p>
                       {violators.length > 0 && (
                         <span style={{ fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 8px", borderRadius: 12 }}>
