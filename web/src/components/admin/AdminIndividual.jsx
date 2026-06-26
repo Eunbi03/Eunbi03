@@ -324,12 +324,12 @@ export default function AdminIndividual({ filters }) {
 
       {/* 기간 설정 */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>기간</span>
+        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft, fontWeight: 700 }}>기간</span>
         <input type="date" max={today} value={from} onChange={(e) => { setFrom(e.target.value); setReportMap({}); }}
-          style={{ ...S.input, padding: "6px 10px", fontSize: 12, flex: 1, minWidth: 120 }} />
-        <span style={{ fontSize: 12, color: C.inkSoft }}>~</span>
+          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
+        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft }}>~</span>
         <input type="date" max={today} value={to} onChange={(e) => { setTo(e.target.value); setReportMap({}); }}
-          style={{ ...S.input, padding: "6px 10px", fontSize: 12, flex: 1, minWidth: 120 }} />
+          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
       </div>
 
       {/* 직원 리스트 */}
@@ -347,17 +347,17 @@ export default function AdminIndividual({ filters }) {
                 {/* 이름 + 소속 + (데스크탑: KPI + 버튼들) */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16, color: C.ink }}>{w.name}</span>
+                    <span style={{ fontWeight: 700, fontSize: isMobile ? 14 : 18, color: C.ink }}>{w.name}</span>
                     {report && (report.kpi.lateCount * 0.5 + report.kpi.missingIn * 1 + report.kpi.missingOut * 1 + report.kpi.missingNote * 0.5) >= 5 && (
                       <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 7px", borderRadius: 10 }}>관리대상</span>
                     )}
-                    <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft, marginLeft: 8 }}>
+                    <span style={{ fontSize: isMobile ? 12 : 15, color: C.inkSoft, marginLeft: 8 }}>
                       {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
                       {w.job_title && <span style={{ marginLeft: 6 }}>| {w.job_title}</span>}
                     </span>
                   </div>
                   {!isMobile && isOpen && report && (
-                    <div style={{ display: "flex", gap: 8, fontSize: isMobile ? 11 : 13, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 8, fontSize: isMobile ? 11 : 15, flexShrink: 0 }}>
                       <KpiBadge label="지각" v={report.kpi.lateCount} color={C.amber} />
                       <KpiBadge label="출근누락" v={report.kpi.missingIn} color={C.seal} />
                       <KpiBadge label="퇴근누락" v={report.kpi.missingOut} color={C.seal} />

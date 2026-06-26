@@ -61,13 +61,13 @@ export default function AdminOverall({ filters }) {
     <div>
       {/* 기간 설정 */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>기간</span>
+        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft, fontWeight: 700 }}>기간</span>
         <input type="date" max={today} value={from} onChange={(e) => setFrom(e.target.value)}
-          style={{ ...S.input, padding: "6px 10px", fontSize: 12, flex: 1, minWidth: 120 }} />
-        <span style={{ fontSize: 12, color: C.inkSoft }}>~</span>
+          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
+        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft }}>~</span>
         <input type="date" max={today} value={to} onChange={(e) => setTo(e.target.value)}
-          style={{ ...S.input, padding: "6px 10px", fontSize: 12, flex: 1, minWidth: 120 }} />
-        <span style={{ fontSize: 11, color: C.inkSoft }}>근무일 {data?.period?.workdays ?? "—"}일</span>
+          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
+        <span style={{ fontSize: isMobile ? 11 : 13, color: C.inkSoft }}>근무일 {data?.period?.workdays ?? "—"}일</span>
       </div>
 
       {!corpEntries.length && <div style={S.empty}>직원 데이터가 없습니다.</div>}
@@ -76,7 +76,7 @@ export default function AdminOverall({ filters }) {
         <div key={corp} style={{ marginBottom: 20 }}>
           {/* 법인 헤더 */}
           <div style={{
-            textAlign: "center", fontWeight: 800, fontSize: isMobile ? 15 : 17, color: C.blue,
+            textAlign: "center", fontWeight: 800, fontSize: isMobile ? 15 : 19, color: C.blue,
             background: C.blueSoft, borderRadius: 12, padding: "10px 16px", marginBottom: 10,
           }}>
             {corp}
@@ -85,7 +85,7 @@ export default function AdminOverall({ filters }) {
           {Object.entries(divisions).map(([division, teams]) => (
             <div key={division} style={{ marginBottom: 8 }}>
               {/* 본부 헤더 */}
-              <p style={{ fontWeight: 800, fontSize: 13, color: C.ink, margin: "0 0 4px 2px" }}>
+              <p style={{ fontWeight: 800, fontSize: isMobile ? 13 : 17, color: C.ink, margin: "0 0 4px 2px" }}>
                 &gt; {division}
               </p>
 
@@ -95,7 +95,7 @@ export default function AdminOverall({ filters }) {
                   <div key={teamName} style={{ marginLeft: 10, marginBottom: 12 }}>
                     {/* 팀 헤더 */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0" }}>
-                      <p style={{ fontWeight: 700, fontSize: 12, color: C.inkSoft, margin: 0 }}>
+                      <p style={{ fontWeight: 700, fontSize: isMobile ? 12 : 14, color: C.inkSoft, margin: 0 }}>
                         &gt; {teamName}
                       </p>
                       {violators.length > 0 && (
@@ -107,7 +107,7 @@ export default function AdminOverall({ filters }) {
 
                     {/* 테이블 */}
                     <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px", padding: "6px 12px", background: C.paper, fontSize: isMobile ? 11 : 13, fontWeight: 700, color: C.inkSoft }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px", padding: "6px 12px", background: C.paper, fontSize: isMobile ? 11 : 15, fontWeight: 700, color: C.inkSoft }}>
                         <span>이름</span>
                         <span style={{ textAlign: "center" }}>지각</span>
                         <span style={{ textAlign: "center" }}>출근누락</span>
@@ -122,7 +122,7 @@ export default function AdminOverall({ filters }) {
                             padding: "7px 12px", borderTop: `1px solid ${C.line}`,
                             background: over ? "#fff5f5" : "#fff",
                           }}>
-                            <span style={{ fontSize: isMobile ? 13 : 15, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>
+                            <span style={{ fontSize: isMobile ? 13 : 17, fontWeight: over ? 700 : 400, color: over ? C.seal : C.ink }}>
                               {m.name}
                             </span>
                             <Cell v={m.lateCount} over={over} isMobile={isMobile} />
@@ -146,7 +146,7 @@ export default function AdminOverall({ filters }) {
 
 function Cell({ v, over, isMobile }) {
   return (
-    <span style={{ textAlign: "center", fontSize: isMobile ? 13 : 15, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : v > 0 ? C.amber : C.inkSoft }}>
+    <span style={{ textAlign: "center", fontSize: isMobile ? 13 : 17, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : v > 0 ? C.amber : C.inkSoft }}>
       {v || "-"}
     </span>
   );
