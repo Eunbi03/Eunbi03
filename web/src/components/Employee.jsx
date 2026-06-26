@@ -402,6 +402,7 @@ function HistoryView({ onBack }) {
     else if (status === "지각") badges.push({ text: "지각", color: C.amber, bg: C.amberSoft });
     else if (status === "조퇴") badges.push({ text: "조퇴", color: C.seal, bg: C.sealSoft });
     else if (status === "지각조퇴") badges.push({ text: "지각·조퇴", color: C.seal, bg: C.sealSoft });
+    if (leaveType === "노트") badges.push({ text: "노트인정", color: C.blue, bg: C.blueSoft });
     // Show 퇴근누락 if present and not excused
     const noOut = !checkOut && leaveType !== "퇴근" && leaveType !== "출퇴근" && (r.checkIn || leaveType === "출근");
     if (noOut) badges.push({ text: "퇴근누락", color: C.seal, bg: C.sealSoft });

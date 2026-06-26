@@ -195,7 +195,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       if (!countedAsPresent) { missingIn++; continue; }
       if (hasIn && isLate && lt !== '출근' && lt !== '출퇴근') lateCount++;
       if (countedAsPresent && !r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
-      if (countedAsPresent && !r.work_note_today && !r.daily_report) missingNote++;
+      if (countedAsPresent && !r.work_note_today && !r.daily_report && lt !== '노트') missingNote++;
     }
     // 주말 출근 기록도 KPI에 반영
     for (const r of recs) {
@@ -207,7 +207,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       const isLate = r.status === '지각' || r.status === '지각조퇴';
       if (hasIn && isLate && lt !== '출근' && lt !== '출퇴근') lateCount++;
       if (!r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
-      if (!r.work_note_today && !r.daily_report) missingNote++;
+      if (!r.work_note_today && !r.daily_report && lt !== '노트') missingNote++;
     }
     const total = lateCount + missingIn + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, total };
@@ -307,7 +307,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
     const isLate = (r.status === '지각' || r.status === '지각조퇴') && lt !== '출근' && lt !== '출퇴근';
     const noOut  = !r.check_out_time && lt !== '퇴근' && lt !== '출퇴근';
-    const noNote = !r.work_note_today && !r.daily_report;
+    const noNote = !r.work_note_today && !r.daily_report && lt !== '노트';
 
     // 평일 KPI + 주말 출근한 경우도 KPI 반영
     if (isWorkday || hasIn) {
@@ -411,15 +411,34 @@ router.post('/attendance/:recordId/set-leave', requireHR, async (req: Request, r
 router.post('/attendance/set-leave-day', requireHR, async (req: Request, res: Response): Promise<void> => {
   const { userId, date, leaveType } = req.body;
   if (!userId || !date) { res.status(400).json({ error: 'userId, date가 필요합니다.' }); return; }
+
+  // 출근/출퇴근 인정 시 예정 근무시간 계산
+  let scheduledMinutes: number | null = null;
+  if (leaveType === '출근' || leaveType === '출퇴근') {
+    const { rows: uRows } = await pool.query('SELECT scheduled_start, scheduled_end FROM users WHERE id=$1', [userId]);
+    if (uRows[0]) {
+      const toMin = (t: string) => { const [h, m] = (t || '').slice(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+      const mins = toMin(uRows[0].scheduled_end) - toMin(uRows[0].scheduled_start);
+      if (mins > 0) scheduledMinutes = mins;
+    }
+  }
+
   const { rows: existing } = await pool.query(
-    'SELECT id FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, date]
+    'SELECT id, check_in_time, work_minutes FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, date]
   );
   if (existing.length > 0) {
-    await pool.query('UPDATE attendance_records SET leave_type=$1 WHERE id=$2', [leaveType || null, existing[0].id]);
+    const rec = existing[0];
+    // 체크인 없고 근무시간 없을 때만 예정 근무시간 기입
+    const updateMins = scheduledMinutes !== null && !rec.check_in_time && !rec.work_minutes;
+    if (updateMins) {
+      await pool.query('UPDATE attendance_records SET leave_type=$1, work_minutes=$2 WHERE id=$3', [leaveType || null, scheduledMinutes, rec.id]);
+    } else {
+      await pool.query('UPDATE attendance_records SET leave_type=$1 WHERE id=$2', [leaveType || null, rec.id]);
+    }
   } else {
     await pool.query(
-      'INSERT INTO attendance_records (user_id, date, leave_type) VALUES ($1,$2,$3)',
-      [userId, date, leaveType || null]
+      'INSERT INTO attendance_records (user_id, date, leave_type, work_minutes) VALUES ($1,$2,$3,$4)',
+      [userId, date, leaveType || null, scheduledMinutes]
     );
   }
   res.json({ success: true });

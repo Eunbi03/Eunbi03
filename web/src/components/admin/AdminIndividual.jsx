@@ -27,6 +27,7 @@ function LeavePopup({ day, onSelect, onClose }) {
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
     { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
     { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
+    { key: "노트", label: "근무 노트 인정", sub: "노트 누락 해소" },
   ];
 
   const handle = (key) => {
@@ -132,7 +133,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     );
   }
 
-  const hasBadges = day.leaveType === '출근' || day.leaveType === '퇴근' || day.leaveType === '출퇴근' || day.isLate || day.noOut || day.noNote;
+  const hasBadges = day.leaveType === '출근' || day.leaveType === '퇴근' || day.leaveType === '출퇴근' || day.leaveType === '노트' || day.isLate || day.noOut || day.noNote;
 
   return (
     <>
@@ -156,6 +157,7 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
               onClick={(e) => e.stopPropagation()}>
               {day.leaveType === '출근' && <Badge color={C.green} bg={C.greenSoft} text="출근인정" />}
               {day.leaveType === '퇴근' && <Badge color={C.green} bg={C.greenSoft} text="퇴근인정" />}
+              {day.leaveType === '노트' && <Badge color={C.blue}  bg={C.blueSoft}  text="노트인정" />}
               {day.isLate && <Badge color={C.amber} bg={C.amberSoft} text="지각" />}
               {day.noOut  && <Badge color={C.seal}  bg={C.sealSoft}  text="퇴근누락" />}
               {day.noNote && <Badge color={C.blue}  bg={C.blueSoft}  text="노트누락" />}

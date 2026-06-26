@@ -131,6 +131,9 @@ router.post('/check-out', requireAuth,
 
     const workMinutes = Math.round((Date.now() - new Date(record.check_in_time).getTime()) / 60000);
 
+    // 진행 중인 외출 기록 자동 종료
+    await pool.query('UPDATE outing_records SET end_time=now() WHERE attendance_record_id=$1 AND end_time IS NULL', [record.id]);
+
     const { rows } = await pool.query(
       `UPDATE attendance_records
        SET check_out_time=now(), check_out_lat=$1, check_out_lng=$2, check_out_is_field=FALSE,
