@@ -42,9 +42,23 @@ async function generateDailyRandomCheckSlots() {
 
 async function dispatchRandomCheckNotifications() {
   const { rows } = await pool.query(
-    "SELECT id, user_id FROM random_location_checks WHERE notification_sent=FALSE AND scheduled_time<=now() AND scheduled_time>now()-interval '5 minutes'"
+    `SELECT rc.id, rc.user_id, rc.scheduled_time, ar.check_in_time
+     FROM random_location_checks rc
+     LEFT JOIN attendance_records ar ON ar.user_id = rc.user_id AND ar.date = rc.date
+     WHERE rc.notification_sent=FALSE
+       AND rc.scheduled_time <= now()
+       AND rc.scheduled_time > now() - interval '5 minutes'`
   );
   for (const check of rows) {
+    // 출근 후 2시간 이내 슬롯은 건너뜀
+    if (check.check_in_time) {
+      const checkInMs = new Date(check.check_in_time).getTime();
+      const slotMs    = new Date(check.scheduled_time).getTime();
+      if (slotMs - checkInMs < 2 * 60 * 60 * 1000) {
+        await pool.query('UPDATE random_location_checks SET notification_sent=TRUE WHERE id=$1', [check.id]);
+        continue;
+      }
+    }
     await notifyUser(check.user_id, {
       title: '위치 확인 요청', body: '지금 위치 정보를 전송해주세요.',
       data: { type: 'random_check', checkId: check.id },

@@ -4,7 +4,6 @@ import { fmtTime, fmtDur } from "../utils/format.js";
 import { getLocation, startLocationWatch, stopLocationWatch, checkLocationPermission } from "../utils/device.js";
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
-import TimeChangeForm from "./TimeChangeForm.jsx";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
 import RandomCheckModal from "./RandomCheckModal.jsx";
 import * as api from "../api/client.js";
@@ -42,7 +41,6 @@ export default function Employee({ user }) {
   const [showWeekly, setShowWeekly] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
   const [gpsBanner, setGpsBanner] = useState(false);
-  const [showTimeChange, setShowTimeChange] = useState(false);
 
 
   const isCheckedIn = !!today?.checkIn?.time;
@@ -199,21 +197,6 @@ export default function Employee({ user }) {
           </div>
         ) : (
           <>
-            {/* 근무시간 변경 요청 (출근 후, 미신청 상태) */}
-            {isCheckedIn && !today?.timeChangeStatus && (
-              <div style={{ padding: "0 18px 8px" }}>
-                {showTimeChange ? (
-                  <TimeChangeForm
-                    onClose={() => setShowTimeChange(false)}
-                    onDone={() => { setShowTimeChange(false); load(true); }}
-                  />
-                ) : (
-                  <button style={{ ...S.subGhost, width: "100%", fontSize: 12 }} onClick={() => setShowTimeChange(true)}>
-                    근무시간 변경 요청
-                  </button>
-                )}
-              </div>
-            )}
             {(!isCheckedIn && today?.leaveType !== "연차") && (
               <div style={{ padding: "0 18px 16px" }}>
                 <button style={{ ...S.primary, width: "100%", fontSize: 16, padding: "14px", opacity: busy ? 0.6 : 1 }} onClick={checkIn} disabled={busy}>
