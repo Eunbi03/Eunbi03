@@ -184,6 +184,10 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     for (const r of recs) recByDate[r.date] = r;
 
     let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
+    const ltCI = (lt: string | null) => lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
+    const ltCO = (lt: string | null) => lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
+    const ltN  = (lt: string | null) => lt === '노트' || (!!lt && lt.includes('+노트'));
+
     // 평일 처리
     for (const day of workdays) {
       const r = recByDate[day];
@@ -191,23 +195,23 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       if (lt === '연차') continue;
       const hasIn = Boolean(r?.check_in_time);
       const isLate = r?.status === '지각' || r?.status === '지각조퇴';
-      const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
+      const countedAsPresent = hasIn || ltCI(lt);
       if (!countedAsPresent) { missingIn++; continue; }
-      if (hasIn && isLate && lt !== '출근' && lt !== '출퇴근') lateCount++;
-      if (countedAsPresent && !r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
-      if (countedAsPresent && !r.work_note_today && !r.daily_report && lt !== '노트') missingNote++;
+      if (hasIn && isLate && !ltCI(lt)) lateCount++;
+      if (!r.check_out_time && !ltCO(lt)) missingOut++;
+      if (!r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
     }
     // 주말 출근 기록도 KPI에 반영
     for (const r of recs) {
-      if (workdays.includes(r.date)) continue; // 평일은 위에서 처리
+      if (workdays.includes(r.date)) continue;
       const lt = r.leave_type;
       if (lt === '연차') continue;
       const hasIn = Boolean(r.check_in_time);
-      if (!hasIn && lt !== '출근' && lt !== '출퇴근') continue; // 출근 기록 없으면 스킵
+      if (!hasIn && !ltCI(lt)) continue;
       const isLate = r.status === '지각' || r.status === '지각조퇴';
-      if (hasIn && isLate && lt !== '출근' && lt !== '출퇴근') lateCount++;
-      if (!r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
-      if (!r.work_note_today && !r.daily_report && lt !== '노트') missingNote++;
+      if (hasIn && isLate && !ltCI(lt)) lateCount++;
+      if (!r.check_out_time && !ltCO(lt)) missingOut++;
+      if (!r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
     }
     const total = lateCount + missingIn + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, total };
@@ -295,7 +299,10 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     if (lt === '연차') return { date: day, leaveType: '연차' };
 
     const hasIn = Boolean(r?.check_in_time);
-    const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
+    const _ltCI = lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
+    const _ltCO = lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
+    const _ltN  = lt === '노트' || (!!lt && lt.includes('+노트'));
+    const countedAsPresent = hasIn || _ltCI;
 
     if (!r || (!countedAsPresent && isWorkday)) {
       if (isWorkday) missingIn++;
@@ -306,9 +313,9 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
       return { date: day, missing: true };
     }
 
-    const isLate = (r.status === '지각' || r.status === '지각조퇴') && lt !== '출근' && lt !== '출퇴근';
-    const noOut  = !r.check_out_time && lt !== '퇴근' && lt !== '출퇴근';
-    const noNote = !r.work_note_today && !r.daily_report && lt !== '노트';
+    const isLate = (r.status === '지각' || r.status === '지각조퇴') && !_ltCI;
+    const noOut  = !r.check_out_time && !_ltCO;
+    const noNote = !r.work_note_today && !r.daily_report && !_ltN;
 
     // 평일 KPI + 주말 출근한 경우도 KPI 반영
     if (isWorkday || hasIn) {
@@ -416,7 +423,7 @@ router.post('/attendance/set-leave-day', requireHR, async (req: Request, res: Re
 
   // 출근/출퇴근 인정 시 예정 근무시간 계산
   let scheduledMinutes: number | null = null;
-  if (leaveType === '출근' || leaveType === '출퇴근') {
+  if (leaveType === '출근' || leaveType === '출퇴근' || leaveType === '출근+노트' || leaveType === '출퇴근+노트') {
     const { rows: uRows } = await pool.query('SELECT scheduled_start, scheduled_end FROM users WHERE id=$1', [userId]);
     if (uRows[0]) {
       const toMin = (t: string) => { const [h, m] = (t || '').slice(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); };

@@ -18,55 +18,92 @@ function fmtTime(t) { if (!t) return "—"; return new Date(t).toLocaleTimeStrin
 function fmtDist(m) { if (m == null) return null; return m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`; }
 function mapsUrl(lat, lng) { return `https://maps.google.com/?q=${lat},${lng}`; }
 
-function LeavePopup({ day, onSelect, onClose }) {
-  const [selected, setSelected] = useState(day.leaveType || null);
-  useEffect(() => { setSelected(day.leaveType || null); }, [day.leaveType]);
+// leave_type 파싱/조합 헬퍼
+function parseLt(lt) {
+  if (!lt) return { primary: null, noteOn: false };
+  if (lt === '노트') return { primary: null, noteOn: true };
+  const hasNote = lt.endsWith('+노트');
+  return { primary: hasNote ? lt.slice(0, -'+노트'.length) : lt, noteOn: hasNote };
+}
+function buildLt(primary, noteOn) {
+  if (!primary && !noteOn) return null;
+  if (!primary) return '노트';
+  return noteOn ? primary + '+노트' : primary;
+}
 
-  const OPTIONS = [
-    { key: "연차", label: "연차", sub: "하루 전체 인정" },
+function LeavePopup({ day, onSelect, onClose }) {
+  const init = parseLt(day.leaveType);
+  const [primary, setPrimary] = useState(init.primary);
+  const [noteOn, setNoteOn] = useState(init.noteOn);
+  useEffect(() => { const p = parseLt(day.leaveType); setPrimary(p.primary); setNoteOn(p.noteOn); }, [day.leaveType]);
+
+  const PRIMARY_OPTIONS = [
+    { key: "연차",   label: "연차",       sub: "하루 전체 인정" },
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
-    { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
-    { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
-    { key: "노트", label: "근무 노트 인정", sub: "노트 누락 해소" },
+    { key: "출근",   label: "출근 인정",   sub: "출근 누락·지각 해소" },
+    { key: "퇴근",   label: "퇴근 인정",   sub: "퇴근 누락 해소" },
   ];
 
-  const handle = (key) => {
-    setSelected(key);
-    onSelect(key);
+  const canNote = primary === "출근" || primary === "퇴근" || primary === "출퇴근";
+
+  const handlePrimary = (key) => {
+    const next = primary === key ? null : key;
+    setPrimary(next);
+    // 연차 선택 시 노트 해제
+    if (key === "연차") setNoteOn(false);
+    onSelect(buildLt(next, noteOn && next !== "연차" && next !== null));
   };
 
+  const handleNote = () => {
+    if (!canNote) return;
+    const next = !noteOn;
+    setNoteOn(next);
+    onSelect(buildLt(primary, next));
+  };
+
+  const btnStyle = (active) => ({
+    padding: "11px", borderRadius: 10,
+    border: `1px solid ${active ? C.green : C.line}`,
+    background: active ? C.greenSoft : "#fff",
+    color: active ? C.green : C.ink,
+    fontWeight: 700, fontSize: 14, cursor: "pointer", textAlign: "left",
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+  });
+
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}
-    >
-      <div
-        style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", minWidth: 240, textAlign: "center" }}
-      >
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", minWidth: 240, textAlign: "center" }}>
         <p style={{ fontWeight: 800, fontSize: 14, color: C.ink, marginBottom: 14 }}>
           {day.date.slice(5)} 출퇴근 인정 설정
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {OPTIONS.map(({ key, label, sub }) => (
-            <button
-              key={key}
-              style={{
-                padding: "11px", borderRadius: 10, border: `1px solid ${selected === key ? C.green : C.line}`,
-                background: selected === key ? C.greenSoft : "#fff",
-                color: selected === key ? C.green : C.ink,
-                fontWeight: 700, fontSize: 14, cursor: "pointer", textAlign: "left",
-                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-              }}
-              onClick={() => handle(key)}
-            >
+          {PRIMARY_OPTIONS.map(({ key, label, sub }) => (
+            <button key={key} style={btnStyle(primary === key)} onClick={() => handlePrimary(key)}>
               <span>{label}</span>
-              <span style={{ fontSize: 11, fontWeight: 400, color: selected === key ? C.green : C.inkSoft }}>{sub}{selected === key ? " ✓" : ""}</span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: primary === key ? C.green : C.inkSoft }}>{sub}{primary === key ? " ✓" : ""}</span>
             </button>
           ))}
+          {/* 구분선 */}
+          <div style={{ borderTop: `1px solid ${C.line}`, margin: "2px 0" }} />
+          {/* 근무 노트 인정 — 출근/퇴근/출퇴근 선택 시만 활성 */}
+          <button
+            style={{
+              ...btnStyle(noteOn),
+              opacity: canNote ? 1 : 0.4,
+              cursor: canNote ? "pointer" : "default",
+            }}
+            onClick={handleNote}
+            disabled={!canNote}
+          >
+            <span>근무 노트 인정</span>
+            <span style={{ fontSize: 11, fontWeight: 400, color: noteOn ? C.green : C.inkSoft }}>
+              노트 누락 해소{noteOn ? " ✓" : ""}
+            </span>
+          </button>
         </div>
-        <button
-          style={{ marginTop: 12, background: "none", border: "none", fontSize: 13, color: C.inkSoft, cursor: "pointer" }}
-          onClick={onClose}
-        >닫기</button>
+        <button style={{ marginTop: 12, background: "none", border: "none", fontSize: 13, color: C.inkSoft, cursor: "pointer" }} onClick={onClose}>
+          닫기
+        </button>
       </div>
     </div>
   );
@@ -133,7 +170,8 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
     );
   }
 
-  const hasBadges = day.leaveType === '출근' || day.leaveType === '퇴근' || day.leaveType === '출퇴근' || day.leaveType === '노트' || day.isLate || day.noOut || day.noNote;
+  const { primary: ltPrimary, noteOn: ltNote } = parseLt(day.leaveType);
+  const hasBadges = !!ltPrimary || ltNote || day.isLate || day.noOut || day.noNote;
 
   return (
     <>
@@ -155,9 +193,9 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
           {(hasBadges || leaveBtn) && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5, paddingLeft: 50, alignItems: "center" }}
               onClick={(e) => e.stopPropagation()}>
-              {day.leaveType === '출근' && <Badge color={C.green} bg={C.greenSoft} text="출근인정" />}
-              {day.leaveType === '퇴근' && <Badge color={C.green} bg={C.greenSoft} text="퇴근인정" />}
-              {day.leaveType === '노트' && <Badge color={C.blue}  bg={C.blueSoft}  text="노트인정" />}
+              {(ltPrimary === '출근' || ltPrimary === '출퇴근') && <Badge color={C.green} bg={C.greenSoft} text={ltPrimary === '출퇴근' ? "출퇴근인정" : "출근인정"} />}
+              {ltPrimary === '퇴근' && <Badge color={C.green} bg={C.greenSoft} text="퇴근인정" />}
+              {ltNote && <Badge color={C.blue}  bg={C.blueSoft}  text="노트인정" />}
               {day.isLate && <Badge color={C.amber} bg={C.amberSoft} text="지각" />}
               {day.noOut  && <Badge color={C.seal}  bg={C.sealSoft}  text="퇴근누락" />}
               {day.noNote && <Badge color={C.blue}  bg={C.blueSoft}  text="노트누락" />}

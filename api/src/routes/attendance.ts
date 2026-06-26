@@ -237,7 +237,10 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
 
     const isWeekday = weekdays.includes(date);
     const hasIn = Boolean(r?.check_in_time);
-    const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
+    const ltCI = lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
+    const ltCO = lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
+    const ltN  = lt === '노트' || (!!lt && lt.includes('+노트'));
+    const countedAsPresent = hasIn || ltCI;
 
     if (!r) {
       if (isWeekday) missingIn++;
@@ -251,8 +254,8 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
       totalWorkMinutes += m;
       if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
       if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
-      if (!r.work_note_today && !r.daily_report) missingNote++;
-      if (!r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
+      if (!r.work_note_today && !r.daily_report && !ltN) missingNote++;
+      if (!r.check_out_time && !ltCO) missingOut++;
     }
     return { date, minutesWorked: m, status: r.status, leaveType: lt };
   });
@@ -281,14 +284,17 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
     const lt = r?.leave_type;
     if (lt === '연차') { leaveDays++; continue; }
     const hasIn = Boolean(r?.check_in_time);
-    const countedAsPresent = hasIn || lt === '출근' || lt === '출퇴근';
+    const ltCI = lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
+    const ltCO = lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
+    const ltN  = lt === '노트' || (!!lt && lt.includes('+노트'));
+    const countedAsPresent = hasIn || ltCI;
     if (!countedAsPresent) { missingIn++; continue; }
     workedDays++;
     totalWorkMinutes += r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
     if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
     if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
-    if (!r.work_note_today && !r.daily_report) missingNote++;
-    if (!r.check_out_time && lt !== '퇴근' && lt !== '출퇴근') missingOut++;
+    if (!r.work_note_today && !r.daily_report && !ltN) missingNote++;
+    if (!r.check_out_time && !ltCO) missingOut++;
   }
   res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingOut, missingNote, totalWorkMinutes });
 });

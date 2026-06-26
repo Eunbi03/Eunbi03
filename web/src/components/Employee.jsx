@@ -413,16 +413,21 @@ function HistoryView({ onBack }) {
   const getBadges = (r) => {
     const badges = [];
     const { status, leaveType, checkOut } = r;
+    const ltCI = leaveType === "출근" || leaveType === "출퇴근" || leaveType === "출근+노트" || leaveType === "출퇴근+노트";
+    const ltCO = leaveType === "퇴근" || leaveType === "출퇴근" || leaveType === "퇴근+노트" || leaveType === "출퇴근+노트";
+    const ltN  = leaveType === "노트" || (!!leaveType && leaveType.includes("+노트"));
+    const ltBase = leaveType?.replace("+노트", "") || null; // primary part
+
     if (leaveType === "연차") { badges.push({ text: "연차", color: C.green, bg: C.greenSoft }); return badges; }
-    if (leaveType === "출퇴근") { badges.push({ text: "출퇴근인정", color: C.green, bg: C.greenSoft }); return badges; }
-    if (leaveType === "출근") badges.push({ text: "출근인정", color: C.green, bg: C.greenSoft });
-    else if (leaveType === "퇴근") badges.push({ text: "퇴근인정", color: C.green, bg: C.greenSoft });
+    if (ltBase === "출퇴근") badges.push({ text: "출퇴근인정", color: C.green, bg: C.greenSoft });
+    else if (ltBase === "출근") badges.push({ text: "출근인정", color: C.green, bg: C.greenSoft });
+    else if (ltBase === "퇴근") badges.push({ text: "퇴근인정", color: C.green, bg: C.greenSoft });
     else if (status === "지각") badges.push({ text: "지각", color: C.amber, bg: C.amberSoft });
     else if (status === "조퇴") badges.push({ text: "조퇴", color: C.seal, bg: C.sealSoft });
     else if (status === "지각조퇴") badges.push({ text: "지각·조퇴", color: C.seal, bg: C.sealSoft });
-    if (leaveType === "노트") badges.push({ text: "노트인정", color: C.blue, bg: C.blueSoft });
+    if (ltN) badges.push({ text: "노트인정", color: C.blue, bg: C.blueSoft });
     // Show 퇴근누락 if present and not excused
-    const noOut = !checkOut && leaveType !== "퇴근" && leaveType !== "출퇴근" && (r.checkIn || leaveType === "출근");
+    const noOut = !checkOut && !ltCO && (r.checkIn || ltCI);
     if (noOut) badges.push({ text: "퇴근누락", color: C.seal, bg: C.sealSoft });
     return badges;
   };
@@ -471,8 +476,10 @@ function HistoryView({ onBack }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {r.leaveType === "연차" ? (
                     <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>연차</span>
-                  ) : r.leaveType === "출퇴근" && !r.checkIn ? (
+                  ) : (r.leaveType === "출퇴근" || r.leaveType === "출퇴근+노트") && !r.checkIn ? (
                     <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>출퇴근인정</span>
+                  ) : (r.leaveType === "출근" || r.leaveType === "출근+노트") && !r.checkIn ? (
+                    <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>출근인정</span>
                   ) : r.checkIn ? (
                     <div>
                       <span style={{ fontSize: 14, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmtTime(r.checkIn.time)}</span>
@@ -483,8 +490,6 @@ function HistoryView({ onBack }) {
                         <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>{fmtDur(r.workMinutes)}</div>
                       )}
                     </div>
-                  ) : r.leaveType === "출근" ? (
-                    <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>출근인정</span>
                   ) : (
                     <span style={{ fontSize: 14, color: C.seal }}>출근 누락</span>
                   )}
