@@ -107,34 +107,43 @@ export default function AdminOverall({ filters }) {
 
                     {/* 테이블 */}
                     <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 10, overflow: "hidden", background: "#fff" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px", padding: isMobile ? "6px 12px" : "9px 16px", background: C.blueSoft, fontSize: isMobile ? 13 : 17, fontWeight: 700, color: C.blue }}>
+                      {/* 헤더 */}
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px", padding: isMobile ? "7px 12px" : "9px 16px", background: "#fff", fontSize: isMobile ? 12 : 14, fontWeight: 700, color: C.blue, borderBottom: `1px solid ${C.lineAdmin}` }}>
                         <span>이름</span>
                         <span style={{ textAlign: "center" }}>지각</span>
                         <span style={{ textAlign: "center" }}>출근누락</span>
                         <span style={{ textAlign: "center" }}>퇴근누락</span>
                         <span style={{ textAlign: "center" }}>노트누락</span>
                       </div>
-                      {members.map((m) => {
-                        const over = m.score >= 5;
-                        return (
-                          <div key={m.id} style={{ borderTop: `1px solid ${C.lineAdmin}`, background: "#fff", padding: over ? "3px 4px" : 0 }}>
-                            <div style={{
-                              display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px",
-                              padding: isMobile ? "7px 12px" : "9px 14px",
-                              background: over ? "#fff0f0" : "transparent",
-                              borderRadius: over ? 7 : 0,
-                            }}>
-                              <span style={{ fontSize: isMobile ? 12 : 14, color: over ? C.seal : C.inkSoft }}>
-                                {m.name}
-                              </span>
-                              <Cell v={m.lateCount} over={over} isMobile={isMobile} />
-                              <Cell v={m.missingIn} over={over} isMobile={isMobile} />
-                              <Cell v={m.missingOut} over={over} isMobile={isMobile} />
-                              <Cell v={m.missingNote} over={over} isMobile={isMobile} />
+                      {/* 리스트 행들 — 구분선을 inset으로 표현 */}
+                      <div style={{ padding: "0 4px" }}>
+                        {members.map((m, idx) => {
+                          const over = m.score >= 5;
+                          return (
+                            <div key={m.id}>
+                              {idx > 0 && (
+                                <div style={{ borderTop: `1px dashed ${C.lineAdmin}`, margin: "0 8px" }} />
+                              )}
+                              <div style={{ padding: over ? "3px 0" : 0 }}>
+                                <div style={{
+                                  display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px",
+                                  padding: isMobile ? "7px 8px" : "9px 12px",
+                                  background: over ? "#fff0f0" : "transparent",
+                                  borderRadius: over ? 7 : 0,
+                                }}>
+                                  <span style={{ fontSize: isMobile ? 12 : 14, fontWeight: 700, color: over ? C.seal : C.inkSoft }}>
+                                    {m.name}
+                                  </span>
+                                  <Cell v={m.lateCount} over={over} isMobile={isMobile} />
+                                  <Cell v={m.missingIn} over={over} isMobile={isMobile} />
+                                  <Cell v={m.missingOut} over={over} isMobile={isMobile} />
+                                  <Cell v={m.missingNote} over={over} isMobile={isMobile} />
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 );
