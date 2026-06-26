@@ -217,8 +217,8 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       // 노트누락: 출퇴근 모두 있을 때만
       if (hasOut && !r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
     }
-    const total = lateCount + missingIn + missingOut + missingNote;
-    return { ...w, lateCount, missingIn, missingOut, missingNote, total };
+    const score = lateCount * 0.5 + missingIn * 1 + missingOut * 1 + missingNote * 0.5;
+    return { ...w, lateCount, missingIn, missingOut, missingNote, score };
   });
 
   // 팀별 그룹핑
