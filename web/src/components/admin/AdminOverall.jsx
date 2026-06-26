@@ -158,7 +158,7 @@ export default function AdminOverall({ filters }) {
 
 function Cell({ v, over, isMobile }) {
   return (
-    <span style={{ textAlign: "center", fontSize: isMobile ? 12 : 14, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : v > 0 ? C.amber : C.inkSoft }}>
+    <span style={{ textAlign: "center", fontSize: isMobile ? 12 : 14, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : C.inkSoft }}>
       {v || "-"}
     </span>
   );
