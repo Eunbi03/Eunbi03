@@ -527,7 +527,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
       {msg && <div style={{ ...S.busy, marginBottom: 10 }}>{msg}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-        <button style={{ ...S.primary, padding: "8px 16px", fontSize: 13 }} onClick={() => setEditTarget({})}>
+        <button style={{ ...S.primary, padding: "8px 16px", fontSize: 13, background: C.blue }} onClick={() => setEditTarget({})}>
           + 직원 추가
         </button>
       </div>
@@ -539,14 +539,14 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
           return (
             <div key={w.id} style={{
               ...S.hrRow,
-              background: isThisHolder ? "#f5f0e8" : isAdminRole ? "#f8f9fc" : "#fff",
-              borderColor: isThisHolder ? C.amber : C.line,
+              background: isThisHolder ? C.blueSoft : isAdminRole ? "#f0f6fa" : "#fff",
+              borderColor: isThisHolder ? C.blue : isAdminRole ? C.blue : C.line,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: C.ink, fontSize: isMobile ? 14 : 16, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {w.name}
-                  {isThisHolder && <span style={{ ...S.badge, background: C.amberSoft, color: C.amber, fontSize: 10 }}>권한자</span>}
-                  {isAdminRole && <span style={{ ...S.badge, background: "#e8eaf6", color: "#2d4a7a", fontSize: 10 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>}
+                  {isThisHolder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 10 }}>권한자</span>}
+                  {isAdminRole && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 10 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>}
                   {!isAdminRole && w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 13 }}>#{w.employee_id}</span>}
                 </div>
                 <div style={{ fontSize: isMobile ? 11 : 13, color: C.inkSoft, marginTop: 2 }}>

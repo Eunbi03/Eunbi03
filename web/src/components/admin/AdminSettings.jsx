@@ -241,7 +241,7 @@ export default function AdminSettings() {
       )}
 
       {workplaces.map((wp) => (
-        <div key={wp.id} style={{ border: `1px solid ${C.amber}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10, background: "#f5f0e8" }}>
+        <div key={wp.id} style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10, background: "#fff" }}>
           {editing === wp.id ? (
             <>
               <p style={{ ...S.formTitle, marginBottom: 12 }}>근무지 수정</p>
