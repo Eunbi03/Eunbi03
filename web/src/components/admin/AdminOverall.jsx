@@ -90,7 +90,7 @@ export default function AdminOverall({ filters }) {
               </p>
 
               {Object.entries(teams).map(([teamName, members]) => {
-                const violators = members.filter((m) => m.total > 5);
+                const violators = members.filter((m) => m.total >= 5);
                 return (
                   <div key={teamName} style={{ marginLeft: 10, marginBottom: 12 }}>
                     {/* 팀 헤더 */}
@@ -100,7 +100,7 @@ export default function AdminOverall({ filters }) {
                       </p>
                       {violators.length > 0 && (
                         <span style={{ fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 8px", borderRadius: 12 }}>
-                          5회 초과 {violators.length}명
+                          관리대상 {violators.length}명
                         </span>
                       )}
                     </div>
@@ -115,7 +115,7 @@ export default function AdminOverall({ filters }) {
                         <span style={{ textAlign: "center" }}>노트누락</span>
                       </div>
                       {members.map((m) => {
-                        const over = m.total > 5;
+                        const over = m.total >= 5;
                         return (
                           <div key={m.id} style={{
                             display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 52px",

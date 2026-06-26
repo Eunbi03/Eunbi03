@@ -254,8 +254,10 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
       totalWorkMinutes += m;
       if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
       if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
-      if (!r.work_note_today && !r.daily_report && !ltN) missingNote++;
-      if (!r.check_out_time && !ltCO) missingOut++;
+      const hasOut = Boolean(r.check_out_time) || ltCO;
+      if (!hasOut) missingOut++;
+      // 노트누락: 퇴근이 있을 때만
+      if (hasOut && !r.work_note_today && !r.daily_report && !ltN) missingNote++;
     }
     return { date, minutesWorked: m, status: r.status, leaveType: lt };
   });
@@ -293,8 +295,10 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
     totalWorkMinutes += r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
     if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
     if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
-    if (!r.work_note_today && !r.daily_report && !ltN) missingNote++;
-    if (!r.check_out_time && !ltCO) missingOut++;
+    const hasOut = Boolean(r.check_out_time) || ltCO;
+    if (!hasOut) missingOut++;
+    // 노트누락: 퇴근이 있을 때만
+    if (hasOut && !r.work_note_today && !r.daily_report && !ltN) missingNote++;
   }
   res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingOut, missingNote, totalWorkMinutes });
 });

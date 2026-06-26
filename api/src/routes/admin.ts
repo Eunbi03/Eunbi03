@@ -198,8 +198,10 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       const countedAsPresent = hasIn || ltCI(lt);
       if (!countedAsPresent) { missingIn++; continue; }
       if (hasIn && isLate && !ltCI(lt)) lateCount++;
-      if (!r.check_out_time && !ltCO(lt)) missingOut++;
-      if (!r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
+      const hasOut = Boolean(r?.check_out_time) || ltCO(lt);
+      if (!hasOut) missingOut++;
+      // 노트누락: 출퇴근 모두 있을 때만 (퇴근 누락 시 노트를 쓸 수 없음)
+      if (hasOut && !r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
     }
     // 주말 출근 기록도 KPI에 반영
     for (const r of recs) {
@@ -210,8 +212,10 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       if (!hasIn && !ltCI(lt)) continue;
       const isLate = r.status === '지각' || r.status === '지각조퇴';
       if (hasIn && isLate && !ltCI(lt)) lateCount++;
-      if (!r.check_out_time && !ltCO(lt)) missingOut++;
-      if (!r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
+      const hasOut = Boolean(r.check_out_time) || ltCO(lt);
+      if (!hasOut) missingOut++;
+      // 노트누락: 출퇴근 모두 있을 때만
+      if (hasOut && !r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
     }
     const total = lateCount + missingIn + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, total };
@@ -314,8 +318,10 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     }
 
     const isLate = (r.status === '지각' || r.status === '지각조퇴') && !_ltCI;
-    const noOut  = !r.check_out_time && !_ltCO;
-    const noNote = !r.work_note_today && !r.daily_report && !_ltN;
+    const hasOut = Boolean(r.check_out_time) || _ltCO;
+    const noOut  = !hasOut;
+    // 노트누락: 퇴근이 있을 때만 (퇴근 누락 시 노트를 쓸 수 없음)
+    const noNote = hasOut && !r.work_note_today && !r.daily_report && !_ltN;
 
     // 평일 KPI + 주말 출근한 경우도 KPI 반영
     if (isWorkday || hasIn) {
