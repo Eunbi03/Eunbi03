@@ -44,18 +44,16 @@ function LeavePopup({ day, onSelect, onClose }) {
     { key: "퇴근",   label: "퇴근 인정",   sub: "퇴근 누락 해소" },
   ];
 
-  const canNote = primary === "출근" || primary === "퇴근" || primary === "출퇴근";
-
   const handlePrimary = (key) => {
     const next = primary === key ? null : key;
     setPrimary(next);
     // 연차 선택 시 노트 해제
-    if (key === "연차") setNoteOn(false);
-    onSelect(buildLt(next, noteOn && next !== "연차" && next !== null));
+    const keepNote = noteOn && key !== "연차";
+    setNoteOn(keepNote);
+    onSelect(buildLt(next, keepNote));
   };
 
   const handleNote = () => {
-    if (!canNote) return;
     const next = !noteOn;
     setNoteOn(next);
     onSelect(buildLt(primary, next));
@@ -85,15 +83,10 @@ function LeavePopup({ day, onSelect, onClose }) {
           ))}
           {/* 구분선 */}
           <div style={{ borderTop: `1px solid ${C.line}`, margin: "2px 0" }} />
-          {/* 근무 노트 인정 — 출근/퇴근/출퇴근 선택 시만 활성 */}
+          {/* 근무 노트 인정 — 단독 또는 중복 선택 가능 */}
           <button
-            style={{
-              ...btnStyle(noteOn),
-              opacity: canNote ? 1 : 0.4,
-              cursor: canNote ? "pointer" : "default",
-            }}
+            style={btnStyle(noteOn)}
             onClick={handleNote}
-            disabled={!canNote}
           >
             <span>근무 노트 인정</span>
             <span style={{ fontSize: 11, fontWeight: 400, color: noteOn ? C.green : C.inkSoft }}>
