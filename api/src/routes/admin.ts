@@ -286,9 +286,15 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
 
-  // Weekend days that have actual records (not in workdays)
+  // 주말은 근무일에서 제외하되, 실제로 출근(체크인)했거나 출근 관련 연차/처리가 있는 날만 표시
   const weekendRecordDays = Object.keys(recByDate).filter(d => {
     if (workdaySet.has(d)) return false;
+    const r = recByDate[d];
+    const lt = r?.leave_type;
+    const actuallyWorked = Boolean(r?.check_in_time)
+      || lt === '연차'
+      || lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
+    if (!actuallyWorked) return false;
     const [dy, dm, dd2] = d.split('-').map(Number);
     const dow = new Date(Date.UTC(dy, dm - 1, dd2, 12)).getUTCDay();
     return dow === 0 || dow === 6;
