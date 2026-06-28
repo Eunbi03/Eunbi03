@@ -10,7 +10,7 @@ const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '50');
 // GET /api/random-check/pending
 router.get('/pending', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    `SELECT id, scheduled_time FROM random_location_checks
+    `SELECT id, scheduled_time AS "scheduledTime" FROM random_location_checks
      WHERE user_id=$1 AND notification_sent=TRUE AND submitted_time IS NULL
      ORDER BY scheduled_time LIMIT 1`,
     [req.user.userId]

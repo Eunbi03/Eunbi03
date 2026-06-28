@@ -5,7 +5,6 @@ import { getLocation, startLocationWatch, stopLocationWatch, checkLocationPermis
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
-import RandomCheckModal from "./RandomCheckModal.jsx";
 import * as api from "../api/client.js";
 
 function todayLabel() {
@@ -48,7 +47,8 @@ export default function Employee({ user }) {
   // 퇴근 완료 시 외출 알림 항상 숨김
   const activeOuting = isCheckedOut ? null : (today?.outings?.find((o) => !o.endTime) ?? null);
 
-  const { pendingCheck, dismiss } = useRandomCheckPolling(isCheckedIn && !isCheckedOut);
+  // 랜덤 위치 확인: 슬롯 감지 시 버튼 없이 자동으로 위치 수집·제출
+  useRandomCheckPolling(isCheckedIn && !isCheckedOut, () => load(true));
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -129,8 +129,6 @@ export default function Employee({ user }) {
 
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      {pendingCheck && <RandomCheckModal check={pendingCheck} onDone={() => { dismiss(); load(true); }} />}
-
       {/* GPS 권한 안내 배너 */}
       {gpsBanner && !isCheckedIn && (
         <div style={{ background: C.amberSoft, borderRadius: 12, padding: "12px 16px", marginBottom: 14, fontSize: 12, color: C.amber, lineHeight: 1.6 }}>
