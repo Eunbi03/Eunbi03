@@ -114,18 +114,6 @@ export default function AdminToday({ corp, team }) {
                       <div style={S.jRow}><span style={S.jTag}>내일</span><span>{r.tomorrowPlan || "—"}</span></div>
                     </div>
                   )}
-
-                  {r.randomChecks?.length > 0 && (
-                    <div style={{ marginTop: 10 }}>
-                      <p style={{ ...S.sectionLabel, marginBottom: 6 }}>랜덤 위치 체크</p>
-                      {r.randomChecks.map((c, i) => (
-                        <div key={i} style={{ fontSize: 12, color: c.is_within_radius === false ? C.seal : C.inkSoft }}>
-                          {fmtTime(c.scheduled_time)} — {c.submitted_time ? (c.is_within_radius ? "근무지 내" : "근무지 이탈") : "미제출"}
-                          {c.mock_location_detected && <b style={{ color: C.seal }}> (위치조작 감지)</b>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
               {open === r.userId && !r.checkIn?.time && <div style={S.detailEmpty}>아직 출근 기록이 없습니다.</div>}
