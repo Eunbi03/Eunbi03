@@ -14,25 +14,38 @@ async function generateDailyRandomCheckSlots() {
   let total = 0;
   for (const user of users) {
     try {
-      const offsets = generateRandomMinuteOffsets({
-        workStart: user.scheduled_start.slice(0, 5),
-        workEnd: user.scheduled_end.slice(0, 5),
-        lunchStart: user.lunch_start.slice(0, 5),
-        lunchEnd: user.lunch_end.slice(0, 5),
-        slotCount: 3,
-      });
-      for (const t of offsetsToDateTimes(date, offsets)) {
-        await pool.query(
-          'INSERT INTO random_location_checks (user_id, date, scheduled_time) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-          [user.id, date, t]
-        );
-        total++;
-      }
+      total += await generateRandomCheckSlotsForUser(user, date);
     } catch (err: any) {
       console.error(`[랜덤체크 생성 실패] user=${user.id}:`, err.message);
     }
   }
   console.log(`[랜덤체크] ${date} - ${users.length}명, 총 ${total}개 슬롯 생성`);
+}
+
+// 한 직원의 특정 날짜 랜덤 확인 슬롯 3개를 생성한다.
+// onlyFuture=true 면 이미 지난 시각의 슬롯은 건너뛴다(당일 신규 등록 시 사용 — 과거 슬롯이 곧장 미응답 처리되는 걸 방지).
+export async function generateRandomCheckSlotsForUser(
+  user: { id: string; scheduled_start: string; scheduled_end: string; lunch_start: string; lunch_end: string },
+  date: string,
+  onlyFuture = false,
+): Promise<number> {
+  const offsets = generateRandomMinuteOffsets({
+    workStart: user.scheduled_start.slice(0, 5),
+    workEnd: user.scheduled_end.slice(0, 5),
+    lunchStart: user.lunch_start.slice(0, 5),
+    lunchEnd: user.lunch_end.slice(0, 5),
+    slotCount: 3,
+  });
+  let count = 0;
+  for (const t of offsetsToDateTimes(date, offsets)) {
+    if (onlyFuture && t.getTime() <= Date.now()) continue;
+    await pool.query(
+      'INSERT INTO random_location_checks (user_id, date, scheduled_time) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+      [user.id, date, t]
+    );
+    count++;
+  }
+  return count;
 }
 
 // 시각이 도래한 랜덤 확인 슬롯을 "활성화"한다(notification_sent=TRUE).

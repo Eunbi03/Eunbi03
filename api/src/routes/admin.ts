@@ -4,9 +4,32 @@ import { pool } from '../db/pool';
 import { requireAuth, requireAdmin, requireHR } from '../middleware/auth';
 import { workdaysBetween, refreshHolidayCache } from '../utils/holidays';
 import { classifyDay, leaveCountsAsCheckIn } from '../utils/attendanceKpi';
+import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
+
+// 직원 신규 등록/재활성화 시 당일 남은 랜덤 확인 슬롯을 생성한다(실패해도 등록은 진행).
+async function generateTodaySlots(
+  userId: string, scheduledStart?: string, scheduledEnd?: string, lunchStart?: string, lunchEnd?: string,
+): Promise<void> {
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+    await generateRandomCheckSlotsForUser(
+      {
+        id: userId,
+        scheduled_start: scheduledStart || '09:00',
+        scheduled_end: scheduledEnd || '18:00',
+        lunch_start: lunchStart || '12:00',
+        lunch_end: lunchEnd || '13:00',
+      },
+      today,
+      true, // 이미 지난 시각은 제외
+    );
+  } catch (err: any) {
+    console.error(`[랜덤체크 당일생성 실패] user=${userId}:`, err.message);
+  }
+}
 
 // ── 근무지(Workplaces) CRUD ─────────────────────────────────────
 
@@ -100,6 +123,7 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
          scheduledStart || '09:00', scheduledEnd || '18:00',
          lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, passwordHash, existing[0].id]
       );
+      await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
       res.status(201).json({ success: true, worker: rows[0], initPassword: initPw, reactivated: true });
       return;
     }
@@ -114,6 +138,7 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
        scheduledStart || '09:00', scheduledEnd || '18:00',
        lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null]
     );
+    await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
     res.status(201).json({ success: true, worker: rows[0], initPassword: initPw });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 이메일입니다.' });
