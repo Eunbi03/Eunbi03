@@ -356,7 +356,7 @@ export default function AdminIndividual({ filters, isHR }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ fontWeight: 700, fontSize: isMobile ? 14 : 18, color: C.ink }}>{w.name}</span>
-                    {report && (report.kpi.lateCount * 0.5 + report.kpi.missingIn * 1 + report.kpi.missingOut * 1 + report.kpi.missingNote * 0.5) >= 5 && (
+                    {report && (report.kpi.lateCount + report.kpi.missingIn + report.kpi.missingOut + report.kpi.missingNote) >= 5 && (
                       <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 7px", borderRadius: 10 }}>관리대상</span>
                     )}
                     <span style={{ fontSize: isMobile ? 12 : 15, color: C.inkSoft, marginLeft: 8 }}>

@@ -250,7 +250,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       if (k.missingOut) missingOut++;
       if (k.missingNote) missingNote++;
     }
-    const score = lateCount * 0.5 + missingIn * 1 + missingOut * 1 + missingNote * 0.5;
+    const score = lateCount + missingIn + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, score };
   });
 
