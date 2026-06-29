@@ -95,7 +95,6 @@ export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day",
 export const getDeviceChangeRequests = (status = "pending") => request(`/admin/device-change-requests?status=${status}`);
 export const approveDeviceChange = (id) => request(`/admin/device-change-requests/${id}/approve`, { method: "POST" });
 export const rejectDeviceChange = (id) => request(`/admin/device-change-requests/${id}/reject`, { method: "POST" });
-export const approveTimeChange = (recordId, approve) => request(`/admin/attendance/${recordId}/approve-time-change`, { method: "POST", body: { approve } });
 
 /* 관리자 — 관리자 기기 관리 */
 export const getMyAdminDevices = () => request("/admin/my-devices");

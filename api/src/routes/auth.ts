@@ -3,7 +3,6 @@ import bcrypt from 'bcrypt';
 import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
 import { generateAccessToken, generateRefreshToken, hashToken, getRefreshTokenExpiry } from '../utils/authTokens';
-import { notifyHRTeam } from '../services/notificationService';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -54,7 +53,6 @@ router.post('/login',
         [newFailCount, shouldLock, shouldLock ? '5회 이상 로그인 실패' : null, user.id]
       );
       await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'WRONG_PASSWORD', req });
-      if (shouldLock) await notifyHRTeam(user.id, user.name, '5회 이상 로그인 실패로 계정이 잠겼습니다.');
       res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.', remainingAttempts: Math.max(0, MAX_FAILED - newFailCount) }); return;
     }
 
@@ -116,7 +114,6 @@ router.post('/login',
           [newFailCount, shouldLock, shouldLock ? '5회 이상 로그인 실패' : null, user.id]
         );
         await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DEVICE_MISMATCH', req });
-        if (shouldLock) await notifyHRTeam(user.id, user.name, '5회 이상 로그인 실패로 계정이 잠겼습니다.');
         res.status(403).json({ error: '등록되지 않은 기기입니다.', remainingAttempts: Math.max(0, MAX_FAILED - newFailCount) }); return;
       }
       if (!user.device_id) {
