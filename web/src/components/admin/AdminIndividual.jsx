@@ -218,12 +218,19 @@ function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
             {day.noteToday && <NoteRow label="오늘업무" text={day.noteToday} />}
             {day.timeChangeReason && <NoteRow label="근무시간변경사유" text={day.timeChangeReason} />}
 
-            {day.randomChecks?.map((rc, i) => (
-              <div key={i} style={{ fontSize: 11, color: C.inkSoft }}>
-                랜덤확인 {fmtTime(rc.scheduled_time)}: {rc.submitted_time ? (rc.is_within_radius ? "✅ 근무지 내" : "⚠️ 근무지 외") : "미응답"}
-                {rc.lat && <a href={mapsUrl(rc.lat, rc.lng)} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: C.blue }}>지도</a>}
-              </div>
-            ))}
+            {day.randomChecks?.map((rc, i) => {
+              let label;
+              if (rc.submitted_time) label = rc.is_within_radius ? "✅ 근무지 내" : "⚠️ 근무지 외";
+              else if (rc.skipped) label = "➖ 제외(출근직후)";
+              else if (Date.now() - new Date(rc.scheduled_time).getTime() > 5 * 60 * 1000) label = "미응답";
+              else label = "⏳ 예정";
+              return (
+                <div key={i} style={{ fontSize: 11, color: C.inkSoft }}>
+                  랜덤확인 {fmtTime(rc.scheduled_time)}: {label}
+                  {rc.lat && <a href={mapsUrl(rc.lat, rc.lng)} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: C.blue }}>지도</a>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

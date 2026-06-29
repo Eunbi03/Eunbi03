@@ -1,14 +1,9 @@
 import cron from 'node-cron';
 import { pool } from '../db/pool';
 import { generateRandomMinuteOffsets, offsetsToDateTimes } from '../utils/randomTimeSlots';
-import { notifyUser } from '../services/notificationService';
 
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
-}
-
-function nowHHMM(): string {
-  return new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false }).slice(0, 5);
 }
 
 async function generateDailyRandomCheckSlots() {
@@ -40,47 +35,27 @@ async function generateDailyRandomCheckSlots() {
   console.log(`[랜덤체크] ${date} - ${users.length}명, 총 ${total}개 슬롯 생성`);
 }
 
-async function dispatchRandomCheckNotifications() {
+// 시각이 도래한 랜덤 확인 슬롯을 "활성화"한다(notification_sent=TRUE).
+// 푸시 알림은 사용하지 않으며, 근로자 앱이 폴링으로 활성 슬롯을 감지해 자동으로 위치를 수집한다.
+// 출근 후 2시간 이내 슬롯은 skipped=TRUE로 표시해 "미응답"이 아닌 "제외"로 처리한다.
+// (5분 창 제한을 두지 않으므로 API가 잠시 멈춰도 누락되지 않는다.)
+async function activateDueRandomChecks() {
   const { rows } = await pool.query(
-    `SELECT rc.id, rc.user_id, rc.scheduled_time, ar.check_in_time
+    `SELECT rc.id, rc.scheduled_time, ar.check_in_time
      FROM random_location_checks rc
      LEFT JOIN attendance_records ar ON ar.user_id = rc.user_id AND ar.date = rc.date
-     WHERE rc.notification_sent=FALSE
-       AND rc.scheduled_time <= now()
-       AND rc.scheduled_time > now() - interval '5 minutes'`
+     WHERE rc.notification_sent=FALSE AND rc.scheduled_time <= now()`
   );
   for (const check of rows) {
-    // 출근 후 2시간 이내 슬롯은 건너뜀
+    let skipped = false;
     if (check.check_in_time) {
-      const checkInMs = new Date(check.check_in_time).getTime();
-      const slotMs    = new Date(check.scheduled_time).getTime();
-      if (slotMs - checkInMs < 2 * 60 * 60 * 1000) {
-        await pool.query('UPDATE random_location_checks SET notification_sent=TRUE WHERE id=$1', [check.id]);
-        continue;
-      }
+      const diff = new Date(check.scheduled_time).getTime() - new Date(check.check_in_time).getTime();
+      if (diff < 2 * 60 * 60 * 1000) skipped = true; // 출근 직후 2시간 이내 → 제외
     }
-    await notifyUser(check.user_id, {
-      title: '위치 확인 요청', body: '지금 위치 정보를 전송해주세요.',
-      data: { type: 'random_check', checkId: check.id },
-    });
-    await pool.query('UPDATE random_location_checks SET notification_sent=TRUE WHERE id=$1', [check.id]);
-  }
-}
-
-async function dispatchPreShiftReminders() {
-  const now = nowHHMM();
-  const { rows: checkInSoon } = await pool.query(
-    "SELECT id FROM users WHERE role='worker' AND is_active=TRUE AND to_char(scheduled_start - interval '5 minutes','HH24:MI')=$1", [now]
-  );
-  for (const u of checkInSoon) {
-    await notifyUser(u.id, { title: '출근 알림', body: '출근 시간 5분 전입니다.', data: { type: 'pre_checkin' } });
-  }
-
-  const { rows: checkOutSoon } = await pool.query(
-    "SELECT id FROM users WHERE role='worker' AND is_active=TRUE AND to_char(scheduled_end - interval '5 minutes','HH24:MI')=$1", [now]
-  );
-  for (const u of checkOutSoon) {
-    await notifyUser(u.id, { title: '퇴근 알림', body: '퇴근 시간 5분 전입니다.', data: { type: 'pre_checkout' } });
+    await pool.query(
+      'UPDATE random_location_checks SET notification_sent=TRUE, skipped=$2 WHERE id=$1',
+      [check.id, skipped]
+    );
   }
 }
 
@@ -98,8 +73,7 @@ async function finalizeAbsentees() {
 
 export function startScheduler() {
   cron.schedule('0 5 * * *', generateDailyRandomCheckSlots, { timezone: 'Asia/Seoul' });
-  cron.schedule('* * * * *', dispatchRandomCheckNotifications, { timezone: 'Asia/Seoul' });
-  cron.schedule('* * * * *', dispatchPreShiftReminders, { timezone: 'Asia/Seoul' });
+  cron.schedule('* * * * *', activateDueRandomChecks, { timezone: 'Asia/Seoul' });
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
   console.log('[스케줄러] 모든 정기 작업 등록 완료');
 }

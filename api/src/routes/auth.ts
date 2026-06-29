@@ -252,14 +252,4 @@ router.post('/device-change-request', requireAuth,
   }
 );
 
-// POST /api/auth/fcm-token
-router.post('/fcm-token', requireAuth, [body('fcmToken').notEmpty()],
-  async (req: Request, res: Response): Promise<void> => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
-    await pool.query('UPDATE users SET fcm_token=$1 WHERE id=$2', [req.body.fcmToken, req.user.userId]);
-    res.json({ success: true });
-  }
-);
-
 export default router;

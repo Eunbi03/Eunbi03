@@ -114,6 +114,4 @@ export const getHolidays = () => request("/admin/holidays");
 export const createHoliday = (date, name) => request("/admin/holidays", { method: "POST", body: { date, name } });
 export const deleteHoliday = (id) => request(`/admin/holidays/${id}`, { method: "DELETE" });
 
-export const saveFcmToken = (fcmToken) => request("/auth/fcm-token", { method: "POST", body: { fcmToken } });
-
 export { setAccessToken };

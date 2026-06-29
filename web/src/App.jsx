@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { getDeviceId } from "./utils/device.js";
 import * as api from "./api/client.js";
-import { requestFcmToken } from "./utils/fcm.js";
 import Login from "./components/Login.jsx";
 import FirstLoginFlow from "./components/FirstLoginFlow.jsx";
 import Header from "./components/Header.jsx";
@@ -27,13 +26,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authErr, setAuthErr] = useState("");
 
-  const registerFcm = async () => {
-    try {
-      const token = await requestFcmToken();
-      if (token) await api.saveFcmToken(token);
-    } catch { /* FCM 실패해도 앱 동작에 영향 없음 */ }
-  };
-
   useEffect(() => {
     if (mode === "terms") { setLoading(false); return; }
     getDeviceId().then((deviceId) =>
@@ -55,7 +47,6 @@ export default function App() {
           }
           setUser(u);
           setLoading(false);
-          if (u.role === "worker") registerFcm();
         })
     );
   }, []);
@@ -74,7 +65,6 @@ export default function App() {
     }
     setAuthErr("");
     setUser(u);
-    if (u.role === "worker") registerFcm();
   };
 
   const handleLogout = () => setUser(null);
