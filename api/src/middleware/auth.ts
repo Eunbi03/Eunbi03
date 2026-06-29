@@ -30,8 +30,8 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 export function requireHR(req: Request, res: Response, next: NextFunction): void {
-  if (req.user.role !== 'hr' && req.user.role !== 'admin') {
-    res.status(403).json({ error: '관리자(HR/admin)만 접근 가능합니다.' }); return;
+  if (req.user.role !== 'hr') {
+    res.status(403).json({ error: 'HR 권한이 필요합니다.' }); return;
   }
   next();
 }

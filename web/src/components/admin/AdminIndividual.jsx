@@ -276,7 +276,7 @@ function Badge({ color, bg, text }) {
   return <span style={{ ...S.badge, color, background: bg, fontSize: 10, flexShrink: 0 }}>{text}</span>;
 }
 
-export default function AdminIndividual({ filters }) {
+export default function AdminIndividual({ filters, isHR }) {
   const isMobile = useIsMobile();
   const today = todayStr();
   const [from, setFrom] = useState(monthStart());
@@ -398,7 +398,7 @@ export default function AdminIndividual({ filters }) {
                   {report && report.days.length === 0 && <div style={S.empty}>이 기간에 근무일이 없습니다.</div>}
                   {report && report.days.map((day, i) => (
                     <DayRow key={i} day={day}
-                      onLeaveChange={(d, t) => handleLeave(w, d, t)} />
+                      onLeaveChange={isHR ? (d, t) => handleLeave(w, d, t) : undefined} />
                   ))}
                 </div>
               )}

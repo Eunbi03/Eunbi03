@@ -25,7 +25,8 @@ const TABS = [
 
 export default function AdminApp({ user }) {
   const isMobile = useIsMobile();
-  const isHR = user?.role === "hr" || user?.role === "admin";
+  // HR 전용 작업(비밀번호/기기 초기화, 근무지·연차·공휴일 관리 등)은 hr 역할만 노출 — 백엔드 requireHR과 일치
+  const isHR = user?.role === "hr";
   const [tab, setTab] = useState("overall");
 
   // 공통 필터: 직원 목록에서 동적으로 추출
@@ -49,7 +50,7 @@ export default function AdminApp({ user }) {
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 0 60px" }}>
       {/* 탭 */}
       <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "12px 0 6px", borderBottom: `1px solid ${C.lineAdmin}`, marginBottom: 12 }}>
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.key !== "settings" || isHR).map((t) => (
           <button key={t.key}
             style={{ flexShrink: 0, border: "none", borderRadius: 8, padding: isMobile ? "7px 16px" : "8px 20px", fontSize: isMobile ? 13 : 15, fontWeight: tab === t.key ? 800 : 400,
               background: tab === t.key ? C.ink : "transparent", color: tab === t.key ? "#fff" : C.inkSoft, cursor: "pointer" }}
@@ -78,8 +79,8 @@ export default function AdminApp({ user }) {
 
       {tab === "overall"    && <AdminOverall    filters={filters} />}
       {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={user} onRefreshFilters={() => {}} />}
-      {tab === "individual" && <AdminIndividual filters={filters} />}
-      {tab === "settings"   && <AdminSettings />}
+      {tab === "individual" && <AdminIndividual filters={filters} isHR={isHR} />}
+      {tab === "settings"   && isHR && <AdminSettings />}
     </div>
   );
 }
