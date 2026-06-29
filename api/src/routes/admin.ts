@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import { pool } from '../db/pool';
 import { requireAuth, requireAdmin, requireHR } from '../middleware/auth';
-import { isWithinRadius } from '../utils/geo';
 import { workdaysBetween, refreshHolidayCache } from '../utils/holidays';
 import { classifyDay, leaveCountsAsCheckIn } from '../utils/attendanceKpi';
 

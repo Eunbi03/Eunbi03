@@ -39,7 +39,6 @@ export async function tryAutoLogin({ deviceId }) {
 export function logout() { setAccessToken(null); setStoredRefreshToken(null); setStoredUserId(null); }
 export const changePassword = (newPassword) => request("/auth/change-password", { method: "POST", body: { newPassword } });
 export const giveLocationConsent = () => request("/auth/location-consent", { method: "POST" });
-export const requestDeviceChange = (newDeviceId, reason) => request("/auth/device-change-request", { method: "POST", body: { newDeviceId, reason } });
 
 /* 출퇴근 */
 export const checkIn = (location) => request("/attendance/check-in", {
@@ -82,19 +81,11 @@ export const resetWorkerDevice = (id) => request(`/admin/workers/${id}/reset-dev
 export const unlockUser = (id) => request(`/admin/users/${id}/unlock`, { method: "POST" });
 
 /* 관리자 — 현황/리포트 */
-export const getDashboard = () => request("/admin/dashboard");
 export const getOverview = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/overview${qs ? `?${qs}` : ""}`); };
 export const getIndividualReport = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/individual-report${qs ? `?${qs}` : ""}`); };
-export const getAttendanceByDate = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/attendance${qs ? `?${qs}` : ""}`); };
 
 /* 관리자 — 연차 */
-export const setLeaveType = (recordId, leaveType) => request(`/admin/attendance/${recordId}/set-leave`, { method: "POST", body: { leaveType } });
 export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day", { method: "POST", body: data });
-
-/* 관리자 — 기기/승인 */
-export const getDeviceChangeRequests = (status = "pending") => request(`/admin/device-change-requests?status=${status}`);
-export const approveDeviceChange = (id) => request(`/admin/device-change-requests/${id}/approve`, { method: "POST" });
-export const rejectDeviceChange = (id) => request(`/admin/device-change-requests/${id}/reject`, { method: "POST" });
 
 /* 관리자 — 관리자 기기 관리 */
 export const getMyAdminDevices = () => request("/admin/my-devices");

@@ -8,7 +8,3 @@ export function Kpi({ label, value, color }) {
     </div>
   );
 }
-
-export function Spinner() {
-  return <div style={S.empty}>불러오는 중…</div>;
-}

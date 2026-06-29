@@ -1,4 +1,4 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 export const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
@@ -14,22 +14,3 @@ export const pool = new Pool({
 pool.on('error', (err) => {
   console.error('[DB POOL ERROR]', err.message);
 });
-
-export async function query<T = any>(text: string, params?: unknown[]) {
-  return pool.query<T>(text, params);
-}
-
-export async function withTransaction<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
