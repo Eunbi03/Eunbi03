@@ -82,6 +82,28 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
     if (!email || !name) { res.status(400).json({ error: 'email, name은 필수입니다.' }); return; }
     const initPw = (phone || '').replace(/\D/g, '') || '초기비밀번호1';
     const passwordHash = await bcrypt.hash(initPw, 12);
+
+    // 같은 이메일의 기존 계정 확인 (소프트 삭제된 직원은 재활성화하여 근태 기록을 보존한다)
+    const { rows: existing } = await pool.query(
+      'SELECT id, is_active FROM users WHERE LOWER(email)=LOWER($1)', [email]
+    );
+    if (existing[0]) {
+      if (existing[0].is_active) { res.status(400).json({ error: '이미 등록된 이메일입니다.' }); return; }
+      // 비활성(삭제) 계정 → 재활성화: 정보 갱신 + 비밀번호/기기/잠금 초기화
+      const { rows } = await pool.query(
+        `UPDATE users SET name=$1, phone=$2, corp=$3, division=$4, team=$5, job_title=$6,
+           scheduled_start=$7, scheduled_end=$8, lunch_start=$9, lunch_end=$10, workplace_id=$11,
+           password_hash=$12, must_change_password=TRUE, is_active=TRUE, role='worker',
+           device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL
+         WHERE id=$13 RETURNING id, email, name`,
+        [name, phone || null, corp || null, division || null, team || null, jobTitle || null,
+         scheduledStart || '09:00', scheduledEnd || '18:00',
+         lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, passwordHash, existing[0].id]
+      );
+      res.status(201).json({ success: true, worker: rows[0], initPassword: initPw, reactivated: true });
+      return;
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO users (email, password_hash, name, phone,
          corp, division, team, job_title, scheduled_start, scheduled_end,
