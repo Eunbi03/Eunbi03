@@ -15,6 +15,7 @@ export default function MoveForm({ onClose, onDone }) {
     setErr("");
     try {
       const loc = await getLocation();
+      if (!loc) { setErr("위치를 가져올 수 없습니다. 위치 권한과 GPS를 확인해주세요."); setBusy(false); return; }
       await api.startOuting(loc, destination, reason);
       onDone();
     } catch (e) {

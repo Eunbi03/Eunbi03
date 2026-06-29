@@ -17,6 +17,7 @@ export default function OutForm({ onClose, onDone, workplaceName }) {
     setErr("");
     try {
       const loc = await getLocation();
+      if (!loc) { setErr("위치를 가져올 수 없습니다. 위치 권한과 GPS를 확인해주세요."); setBusy(false); return; }
       await api.checkOut(loc, { workNoteIn, workNoteOut, workNoteField, workNoteToday });
       onDone();
     } catch (e) {

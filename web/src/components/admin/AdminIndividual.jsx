@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 
 function useIsMobile(breakpoint = 640) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
@@ -107,7 +107,7 @@ function dayOfWeek(dateStr) {
   return ["일", "월", "화", "수", "목", "금", "토"][new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()];
 }
 
-function DayRow({ day, wpLat, wpLng, onLeaveChange }) {
+function DayRow({ day, onLeaveChange }) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [leavePopup, setLeavePopup] = useState(false);
@@ -398,7 +398,6 @@ export default function AdminIndividual({ filters }) {
                   {report && report.days.length === 0 && <div style={S.empty}>이 기간에 근무일이 없습니다.</div>}
                   {report && report.days.map((day, i) => (
                     <DayRow key={i} day={day}
-                      wpLat={report.user?.wp_lat} wpLng={report.user?.wp_lng}
                       onLeaveChange={(d, t) => handleLeave(w, d, t)} />
                   ))}
                 </div>

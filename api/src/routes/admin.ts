@@ -4,6 +4,7 @@ import { pool } from '../db/pool';
 import { requireAuth, requireAdmin, requireHR } from '../middleware/auth';
 import { isWithinRadius } from '../utils/geo';
 import { workdaysBetween, refreshHolidayCache } from '../utils/holidays';
+import { classifyDay, leaveCountsAsCheckIn } from '../utils/attendanceKpi';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -184,38 +185,24 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     for (const r of recs) recByDate[r.date] = r;
 
     let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
-    const ltCI = (lt: string | null) => lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
-    const ltCO = (lt: string | null) => lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
-    const ltN  = (lt: string | null) => lt === '노트' || (!!lt && lt.includes('+노트'));
 
     // 평일 처리
     for (const day of workdays) {
-      const r = recByDate[day];
-      const lt = r?.leave_type;
-      if (lt === '연차') continue;
-      const hasIn = Boolean(r?.check_in_time);
-      const isLate = r?.status === '지각' || r?.status === '지각조퇴';
-      const countedAsPresent = hasIn || ltCI(lt);
-      if (!countedAsPresent) { missingIn++; continue; }
-      if (hasIn && isLate && !ltCI(lt)) lateCount++;
-      const hasOut = Boolean(r?.check_out_time) || ltCO(lt);
-      if (!hasOut) missingOut++;
-      // 노트누락: 출퇴근 모두 있을 때만 (퇴근 누락 시 노트를 쓸 수 없음)
-      if (hasOut && !r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
+      const k = classifyDay(recByDate[day]);
+      if (k.isLeave) continue;
+      if (!k.present) { missingIn++; continue; }
+      if (k.isLate) lateCount++;
+      if (k.missingOut) missingOut++;
+      if (k.missingNote) missingNote++;
     }
-    // 주말 출근 기록도 KPI에 반영
+    // 주말 출근 기록도 KPI에 반영 (미출근 주말은 제외)
     for (const r of recs) {
       if (workdays.includes(r.date)) continue;
-      const lt = r.leave_type;
-      if (lt === '연차') continue;
-      const hasIn = Boolean(r.check_in_time);
-      if (!hasIn && !ltCI(lt)) continue;
-      const isLate = r.status === '지각' || r.status === '지각조퇴';
-      if (hasIn && isLate && !ltCI(lt)) lateCount++;
-      const hasOut = Boolean(r.check_out_time) || ltCO(lt);
-      if (!hasOut) missingOut++;
-      // 노트누락: 출퇴근 모두 있을 때만
-      if (hasOut && !r.work_note_today && !r.daily_report && !ltN(lt)) missingNote++;
+      const k = classifyDay(r);
+      if (k.isLeave || !k.present) continue;
+      if (k.isLate) lateCount++;
+      if (k.missingOut) missingOut++;
+      if (k.missingNote) missingNote++;
     }
     const score = lateCount * 0.5 + missingIn * 1 + missingOut * 1 + missingNote * 0.5;
     return { ...w, lateCount, missingIn, missingOut, missingNote, score };
@@ -291,9 +278,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     if (workdaySet.has(d)) return false;
     const r = recByDate[d];
     const lt = r?.leave_type;
-    const actuallyWorked = Boolean(r?.check_in_time)
-      || lt === '연차'
-      || lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
+    const actuallyWorked = Boolean(r?.check_in_time) || lt === '연차' || leaveCountsAsCheckIn(lt);
     if (!actuallyWorked) return false;
     const [dy, dm, dd2] = d.split('-').map(Number);
     const dow = new Date(Date.UTC(dy, dm - 1, dd2, 12)).getUTCDay();
@@ -305,35 +290,22 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   const buildDayEntry = (day: string, isWorkday: boolean) => {
     const r = recByDate[day];
     const lt = r?.leave_type;
+    const k = classifyDay(r);
 
-    if (lt === '연차') return { date: day, leaveType: '연차' };
+    if (k.isLeave) return { date: day, leaveType: '연차' };
 
-    const hasIn = Boolean(r?.check_in_time);
-    const _ltCI = lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
-    const _ltCO = lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
-    const _ltN  = lt === '노트' || (!!lt && lt.includes('+노트'));
-    const countedAsPresent = hasIn || _ltCI;
-
-    if (!r || (!countedAsPresent && isWorkday)) {
+    if (!k.present) {
       if (isWorkday) missingIn++;
       return { date: day, missing: true };
     }
 
-    if (!countedAsPresent) {
-      return { date: day, missing: true };
-    }
-
-    const isLate = (r.status === '지각' || r.status === '지각조퇴') && !_ltCI;
-    const hasOut = Boolean(r.check_out_time) || _ltCO;
-    const noOut  = !hasOut;
-    // 노트누락: 퇴근이 있을 때만 (퇴근 누락 시 노트를 쓸 수 없음)
-    const noNote = hasOut && !r.work_note_today && !r.daily_report && !_ltN;
+    const hasIn = Boolean(r.check_in_time);
 
     // 평일 KPI + 주말 출근한 경우도 KPI 반영
     if (isWorkday || hasIn) {
-      if (isLate) lateCount++;
-      if (noOut)  missingOut++;
-      if (noNote) missingNote++;
+      if (k.isLate) lateCount++;
+      if (k.missingOut)  missingOut++;
+      if (k.missingNote) missingNote++;
     }
 
     return {
@@ -343,9 +315,9 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
       checkOut: r.check_out_time ? { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: r.check_out_distance_m, isField: r.check_out_is_field, note: r.work_note_out } : null,
       status: r.status,
       workMinutes: r.work_minutes,
-      isLate,
-      noOut,
-      noNote,
+      isLate: k.isLate,
+      noOut: k.missingOut,
+      noNote: k.missingNote,
       noteField: r.work_note_field,
       noteToday: r.work_note_today || r.daily_report,
       timeChangeReason: r.temp_time_change_reason || undefined,

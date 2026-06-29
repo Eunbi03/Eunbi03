@@ -312,20 +312,7 @@ function WeeklyCard({ weekly }) {
   );
 }
 
-function SummaryGrid({ main, sub, items }) {
-  // Support both old-style {items} and new-style {main, sub}
-  if (items) {
-    return (
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {items.map((item, i) => (
-          <div key={i} style={{ flex: "1 1 auto", minWidth: 56, textAlign: "center", padding: "10px 6px", background: C.paper, borderRadius: 10 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: item.color, lineHeight: 1 }}>{item.value}</div>
-            <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 4 }}>{item.label}</div>
-          </div>
-        ))}
-      </div>
-    );
-  }
+function SummaryGrid({ main, sub }) {
   return (
     <div>
       <div style={{ display: "flex", gap: 6 }}>

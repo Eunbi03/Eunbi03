@@ -5,7 +5,7 @@ import { isWithinRadius, validateGpsReport } from '../utils/geo';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
-const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '50');
+const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '200');
 
 // GET /api/random-check/pending
 router.get('/pending', requireAuth, async (req: Request, res: Response): Promise<void> => {

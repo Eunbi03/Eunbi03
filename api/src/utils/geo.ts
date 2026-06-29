@@ -30,11 +30,3 @@ export function validateGpsReport(params: {
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) reasons.push('OUT_OF_RANGE_COORDINATES');
   return { isValid: reasons.length === 0, reasons };
 }
-
-export async function getGeofenceFromDB(pool: any): Promise<{ lat: number; lng: number; radiusM: number } | null> {
-  const { rows } = await pool.query(
-    'SELECT lat, lng, radius_meters FROM company_settings ORDER BY id LIMIT 1'
-  );
-  if (rows.length === 0) return null;
-  return { lat: Number(rows[0].lat), lng: Number(rows[0].lng), radiusM: rows[0].radius_meters };
-}

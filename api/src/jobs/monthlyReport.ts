@@ -33,7 +33,7 @@ async function runMonthlyReportBatch() {
          count(*) FILTER (WHERE status IN ('지각','지각조퇴')) AS late_count,
          count(*) FILTER (WHERE status IN ('조퇴','지각조퇴')) AS early_leave_count,
          count(*) FILTER (WHERE status = '결근') AS missing_clock_count,
-         count(*) FILTER (WHERE check_in_time IS NOT NULL AND (daily_report IS NULL OR tomorrow_plan IS NULL)) AS missing_report_count
+         count(*) FILTER (WHERE check_out_time IS NOT NULL AND daily_report IS NULL AND work_note_today IS NULL) AS missing_report_count
        FROM attendance_records WHERE user_id=$1 AND date>=$2 AND date<$3`,
       [user.id, prevMonthStart.toISOString().slice(0, 10), thisMonthStart.toISOString().slice(0, 10)]
     );

@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
-import { isWithinRadius, validateGpsReport, getGeofenceFromDB } from '../utils/geo';
+import { isWithinRadius, validateGpsReport } from '../utils/geo';
 import { requireAuth } from '../middleware/auth';
 import { workdaysBetween } from '../utils/holidays';
+import { classifyDay } from '../utils/attendanceKpi';
 
 const router = Router();
 const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '200');
@@ -232,34 +233,23 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
 
   const days = allDays.map((date) => {
     const r = recByDate[date];
-    const lt = r?.leave_type;
-    if (lt === '연차') { leaveDays++; return { date, minutesWorked: 0, status: r.status, leaveType: lt }; }
+    const k = classifyDay(r);
+    if (k.isLeave) { leaveDays++; return { date, minutesWorked: 0, status: r.status, leaveType: r.leave_type }; }
 
     const isWeekday = weekdays.includes(date);
-    const hasIn = Boolean(r?.check_in_time);
-    const ltCI = lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
-    const ltCO = lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
-    const ltN  = lt === '노트' || (!!lt && lt.includes('+노트'));
-    const countedAsPresent = hasIn || ltCI;
-
-    if (!r) {
+    if (!k.present) {
       if (isWeekday) missingIn++;
-      return { date, minutesWorked: 0, status: null, leaveType: null };
+      return { date, minutesWorked: 0, status: r?.status ?? null, leaveType: r?.leave_type ?? null };
     }
-    if (!countedAsPresent && isWeekday) { missingIn++; return { date, minutesWorked: 0, status: r.status, leaveType: lt }; }
 
     const m = r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
-    if (countedAsPresent) {
-      workedDays++;
-      totalWorkMinutes += m;
-      if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
-      if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
-      const hasOut = Boolean(r.check_out_time) || ltCO;
-      if (!hasOut) missingOut++;
-      // 노트누락: 퇴근이 있을 때만
-      if (hasOut && !r.work_note_today && !r.daily_report && !ltN) missingNote++;
-    }
-    return { date, minutesWorked: m, status: r.status, leaveType: lt };
+    workedDays++;
+    totalWorkMinutes += m;
+    if (k.isLate) lateDays++;
+    if (k.isEarlyLeave) earlyLeaveDays++;
+    if (k.missingOut) missingOut++;
+    if (k.missingNote) missingNote++;
+    return { date, minutesWorked: m, status: r.status, leaveType: r.leave_type };
   });
 
   res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingOut, missingNote, totalWorkMinutes, days });
@@ -283,22 +273,15 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
 
   for (const day of workdays) {
     const r = recByDate[day];
-    const lt = r?.leave_type;
-    if (lt === '연차') { leaveDays++; continue; }
-    const hasIn = Boolean(r?.check_in_time);
-    const ltCI = lt === '출근' || lt === '출퇴근' || lt === '출근+노트' || lt === '출퇴근+노트';
-    const ltCO = lt === '퇴근' || lt === '출퇴근' || lt === '퇴근+노트' || lt === '출퇴근+노트';
-    const ltN  = lt === '노트' || (!!lt && lt.includes('+노트'));
-    const countedAsPresent = hasIn || ltCI;
-    if (!countedAsPresent) { missingIn++; continue; }
+    const k = classifyDay(r);
+    if (k.isLeave) { leaveDays++; continue; }
+    if (!k.present) { missingIn++; continue; }
     workedDays++;
     totalWorkMinutes += r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
-    if (r.status === '지각' || r.status === '지각조퇴') lateDays++;
-    if (r.status === '조퇴' || r.status === '지각조퇴') earlyLeaveDays++;
-    const hasOut = Boolean(r.check_out_time) || ltCO;
-    if (!hasOut) missingOut++;
-    // 노트누락: 퇴근이 있을 때만
-    if (hasOut && !r.work_note_today && !r.daily_report && !ltN) missingNote++;
+    if (k.isLate) lateDays++;
+    if (k.isEarlyLeave) earlyLeaveDays++;
+    if (k.missingOut) missingOut++;
+    if (k.missingNote) missingNote++;
   }
   res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingOut, missingNote, totalWorkMinutes });
 });
