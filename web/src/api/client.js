@@ -103,4 +103,24 @@ export const getHolidays = () => request("/admin/holidays");
 export const createHoliday = (date, name) => request("/admin/holidays", { method: "POST", body: { date, name } });
 export const deleteHoliday = (id) => request(`/admin/holidays/${id}`, { method: "DELETE" });
 
+/* 관리자 — 조직 마스터 (법인/본부·팀/직책/근무시간) */
+export const getCorporations = () => request("/admin/corporations");
+export const createCorporation = (name, address) => request("/admin/corporations", { method: "POST", body: { name, address } });
+export const deleteCorporation = (id) => request(`/admin/corporations/${id}`, { method: "DELETE" });
+
+export const getDivisions = () => request("/admin/divisions");
+export const createDivision = (name, teams) => request("/admin/divisions", { method: "POST", body: { name, teams } });
+export const deleteDivision = (id) => request(`/admin/divisions/${id}`, { method: "DELETE" });
+export const addTeam = (divisionId, name) => request(`/admin/divisions/${divisionId}/teams`, { method: "POST", body: { name } });
+export const deleteTeam = (id) => request(`/admin/teams/${id}`, { method: "DELETE" });
+
+export const getPositions = () => request("/admin/positions");
+export const createPositions = (names) => request("/admin/positions", { method: "POST", body: { names } });
+export const deletePosition = (id) => request(`/admin/positions/${id}`, { method: "DELETE" });
+
+export const getJobSchedules = () => request("/admin/job-schedules");
+export const createJobSchedule = (data) => request("/admin/job-schedules", { method: "POST", body: data });
+export const updateJobSchedule = (id, data) => request(`/admin/job-schedules/${id}`, { method: "PUT", body: data });
+export const deleteJobSchedule = (id) => request(`/admin/job-schedules/${id}`, { method: "DELETE" });
+
 export { setAccessToken };

@@ -681,4 +681,140 @@ router.delete('/holidays/:id', requireHR, async (req: Request, res: Response): P
   res.json({ success: true });
 });
 
+// ── 조직 마스터: 법인 ────────────────────────────────────────────────────────
+router.get('/corporations', async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query('SELECT id, name, address FROM corporations ORDER BY name');
+  res.json({ corporations: rows });
+});
+router.post('/corporations', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { name, address } = req.body;
+  if (!name) { res.status(400).json({ error: '법인명은 필수입니다.' }); return; }
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO corporations (name, address) VALUES ($1,$2) RETURNING id, name, address',
+      [name, address || null]
+    );
+    res.status(201).json({ corporation: rows[0] });
+  } catch (e: any) {
+    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 법인명입니다.' });
+    else res.status(500).json({ error: e.message });
+  }
+});
+router.delete('/corporations/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+  await pool.query('DELETE FROM corporations WHERE id=$1', [req.params.id]);
+  res.json({ success: true });
+});
+
+// ── 조직 마스터: 본부 및 팀 ───────────────────────────────────────────────────
+router.get('/divisions', async (_req: Request, res: Response): Promise<void> => {
+  const { rows: divs } = await pool.query('SELECT id, name FROM divisions ORDER BY name');
+  const { rows: teams } = await pool.query('SELECT id, division_id, name FROM teams ORDER BY name');
+  const byDiv: Record<string, any[]> = {};
+  for (const t of teams) (byDiv[t.division_id] ||= []).push({ id: t.id, name: t.name });
+  res.json({ divisions: divs.map((d: any) => ({ ...d, teams: byDiv[d.id] || [] })) });
+});
+// 본부 생성 (팀 여러 개 동시 생성 가능)
+router.post('/divisions', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { name, teams } = req.body;
+  if (!name) { res.status(400).json({ error: '본부명은 필수입니다.' }); return; }
+  try {
+    const { rows } = await pool.query('INSERT INTO divisions (name) VALUES ($1) RETURNING id, name', [name]);
+    const div = rows[0];
+    const teamNames: string[] = Array.isArray(teams) ? teams.filter((t: string) => t && t.trim()) : [];
+    for (const tn of teamNames) {
+      await pool.query('INSERT INTO teams (division_id, name) VALUES ($1,$2) ON CONFLICT (division_id, name) DO NOTHING', [div.id, tn.trim()]);
+    }
+    res.status(201).json({ division: div });
+  } catch (e: any) {
+    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 본부명입니다.' });
+    else res.status(500).json({ error: e.message });
+  }
+});
+router.delete('/divisions/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+  await pool.query('DELETE FROM divisions WHERE id=$1', [req.params.id]); // 팀은 CASCADE 삭제
+  res.json({ success: true });
+});
+// 팀 단건 추가 (기존 본부에)
+router.post('/divisions/:id/teams', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { name } = req.body;
+  if (!name) { res.status(400).json({ error: '팀명은 필수입니다.' }); return; }
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO teams (division_id, name) VALUES ($1,$2) RETURNING id, division_id, name',
+      [req.params.id, name.trim()]
+    );
+    res.status(201).json({ team: rows[0] });
+  } catch (e: any) {
+    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 팀명입니다.' });
+    else res.status(500).json({ error: e.message });
+  }
+});
+router.delete('/teams/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+  await pool.query('DELETE FROM teams WHERE id=$1', [req.params.id]);
+  res.json({ success: true });
+});
+
+// ── 조직 마스터: 직책 ────────────────────────────────────────────────────────
+router.get('/positions', async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query('SELECT id, name FROM positions ORDER BY name');
+  res.json({ positions: rows });
+});
+// 여러 개 동시 추가 가능
+router.post('/positions', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const names: string[] = Array.isArray(req.body.names) ? req.body.names : (req.body.name ? [req.body.name] : []);
+  const clean = names.map((n) => (n || '').trim()).filter(Boolean);
+  if (clean.length === 0) { res.status(400).json({ error: '직책명은 필수입니다.' }); return; }
+  const added: any[] = [];
+  for (const n of clean) {
+    const { rows } = await pool.query(
+      'INSERT INTO positions (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING id, name', [n]
+    );
+    if (rows[0]) added.push(rows[0]);
+  }
+  res.status(201).json({ positions: added });
+});
+router.delete('/positions/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+  await pool.query('DELETE FROM positions WHERE id=$1', [req.params.id]);
+  res.json({ success: true });
+});
+
+// ── 조직 마스터: 근무시간(직무 프리셋) ────────────────────────────────────────
+router.get('/job-schedules', async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query(
+    `SELECT id, name, to_char(work_start,'HH24:MI') AS "workStart", to_char(work_end,'HH24:MI') AS "workEnd",
+            to_char(break_start,'HH24:MI') AS "breakStart", to_char(break_end,'HH24:MI') AS "breakEnd"
+     FROM job_schedules ORDER BY name`
+  );
+  res.json({ jobSchedules: rows });
+});
+router.post('/job-schedules', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { name, workStart, workEnd, breakStart, breakEnd } = req.body;
+  if (!name) { res.status(400).json({ error: '직무명은 필수입니다.' }); return; }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO job_schedules (name, work_start, work_end, break_start, break_end)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id, name`,
+      [name, workStart || '09:00', workEnd || '18:00', breakStart || '12:00', breakEnd || '13:00']
+    );
+    res.status(201).json({ jobSchedule: rows[0] });
+  } catch (e: any) {
+    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 직무명입니다.' });
+    else res.status(500).json({ error: e.message });
+  }
+});
+router.put('/job-schedules/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { name, workStart, workEnd, breakStart, breakEnd } = req.body;
+  const { rows } = await pool.query(
+    `UPDATE job_schedules SET name=$1, work_start=$2, work_end=$3, break_start=$4, break_end=$5
+     WHERE id=$6 RETURNING id, name`,
+    [name, workStart, workEnd, breakStart, breakEnd, req.params.id]
+  );
+  if (!rows[0]) { res.status(404).json({ error: '직무를 찾을 수 없습니다.' }); return; }
+  res.json({ jobSchedule: rows[0] });
+});
+router.delete('/job-schedules/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+  await pool.query('DELETE FROM job_schedules WHERE id=$1', [req.params.id]);
+  res.json({ success: true });
+});
+
 export default router;
