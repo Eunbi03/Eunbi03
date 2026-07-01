@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { pool } from '../db/pool';
 import { requireAuth, requireAdmin, requireHR } from '../middleware/auth';
 import { workdaysBetween, refreshHolidayCache } from '../utils/holidays';
-import { classifyDay, leaveCountsAsCheckIn } from '../utils/attendanceKpi';
+import { classifyDay, leaveCountsAsCheckIn, leaveCountsAsCheckOut, leaveCountsAsNote } from '../utils/attendanceKpi';
 import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
 
 const router = Router();
@@ -828,6 +828,138 @@ router.put('/job-schedules/:id', requireHR, async (req: Request, res: Response):
 router.delete('/job-schedules/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
   await pool.query('DELETE FROM job_schedules WHERE id=$1', [req.params.id]);
   res.json({ success: true });
+});
+
+// ── 인원 직접 검색 (동명이인 구분용) ─────────────────────────────────────────
+router.get('/worker-search', async (req: Request, res: Response): Promise<void> => {
+  const name = ((req.query.name as string) || '').trim();
+  if (!name) { res.json({ workers: [] }); return; }
+  const { rows } = await pool.query(
+    `SELECT u.id, u.name, u.corp, u.division, u.team, w.name AS workplace_name
+     FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id
+     WHERE u.is_active=TRUE AND u.role='worker' AND u.name=$1
+     ORDER BY u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST`,
+    [name]
+  );
+  res.json({ workers: rows });
+});
+
+// ── 전체현황: 월간 근태대장 ───────────────────────────────────────────────────
+router.get('/monthly-overview', async (req: Request, res: Response): Promise<void> => {
+  const now = new Date();
+  const year  = parseInt((req.query.year as string) || String(now.getFullYear()), 10);
+  const month = parseInt((req.query.month as string) || String(now.getMonth() + 1), 10); // 1-12
+  const { corp, division, team, position, userIds } = req.query;
+  const pageNum = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+  const PER_PAGE = 10;
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, '0');
+  const fromDate = `${year}-${mm}-01`;
+  const toDate   = `${year}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+
+  // 공휴일 (해당 월)
+  const { rows: holRows } = await pool.query(
+    `SELECT date::text AS date, name FROM public_holidays WHERE date>=$1 AND date<=$2`, [fromDate, toDate]
+  );
+  const holidays: Record<string, string> = {};
+  for (const h of holRows) holidays[h.date] = h.name;
+
+  // 대상 직원
+  const conds = ["u.is_active=TRUE", "u.role='worker'"];
+  const params: unknown[] = [];
+  if (userIds) {
+    const ids = String(userIds).split(',').filter(Boolean);
+    params.push(ids); conds.push(`u.id = ANY($${params.length})`);
+  } else {
+    if (corp)     { params.push(corp);     conds.push(`u.corp=$${params.length}`); }
+    if (division) { params.push(division); conds.push(`u.division=$${params.length}`); }
+    if (team)     { params.push(team);     conds.push(`u.team=$${params.length}`); }
+    if (position) { params.push(position); conds.push(`u.position=$${params.length}`); }
+  }
+  const { rows: allWorkers } = await pool.query(
+    `SELECT id, name, corp, division, team, position, note_exempt, irregular_worker
+     FROM users u WHERE ${conds.join(' AND ')} ORDER BY name`, params
+  );
+  const total = allWorkers.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const pageWorkers = allWorkers.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
+
+  // 해당 월 출퇴근 기록
+  const ids = pageWorkers.map((w: any) => w.id);
+  const recByUserDate: Record<string, any> = {};
+  if (ids.length) {
+    const { rows: recs } = await pool.query(
+      `SELECT user_id, date::text AS date, check_in_time, check_out_time, status,
+              work_note_today, daily_report, leave_type
+       FROM attendance_records WHERE user_id=ANY($1) AND date>=$2 AND date<=$3`,
+      [ids, fromDate, toDate]
+    );
+    for (const r of recs) recByUserDate[`${r.user_id}|${r.date}`] = r;
+  }
+
+  const dowOf = (d: number) => new Date(Date.UTC(year, month - 1, d, 12)).getUTCDay(); // 0=일,6=토
+  const hhmm = (t: any) => (t ? new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false }).slice(0, 5) : null);
+
+  const dayTotals: number[] = Array(daysInMonth + 1).fill(0); // index 1..daysInMonth
+
+  const workers = pageWorkers.map((w: any) => {
+    let workedDays = 0, lateMissing = 0, noteMissing = 0;
+    const days: any[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${mm}-${String(d).padStart(2, '0')}`;
+      const r = recByUserDate[`${w.id}|${dateStr}`];
+      const lt = r?.leave_type ?? null;
+      const isHol = !!holidays[dateStr];
+      const dow = dowOf(d);
+      const isWeekend = dow === 0 || dow === 6;
+      const hasIn = !!r?.check_in_time;
+      const present = hasIn || leaveCountsAsCheckIn(lt);
+
+      if (lt === '연차') { days.push({ leave: '연차' }); continue; }
+
+      // 근무일 판정: 비정기 근로자는 실제 출근(또는 출근인정)한 날만, 그 외엔 평일(공휴일 제외)+공휴일/주말 출근한 날
+      const workday = w.irregular_worker ? present : ((!isWeekend && !isHol) || present);
+
+      if (!workday) { days.push({ off: true }); continue; }   // 근무일 아님 → '-'
+      if (present && hasIn) dayTotals[d]++;
+
+      const late = (r?.status === '지각' || r?.status === '지각조퇴') && !leaveCountsAsCheckIn(lt);
+      const hasOut = !!r?.check_out_time || leaveCountsAsCheckOut(lt);
+      const missingIn = !present;
+      const missingOut = present && !hasOut;
+      const noteMiss = present && hasOut && !w.note_exempt && !r?.work_note_today && !r?.daily_report && !leaveCountsAsNote(lt);
+
+      if (present) workedDays++;
+      if (late) lateMissing++;
+      if (missingIn) lateMissing++;
+      if (missingOut) lateMissing++;
+      if (noteMiss) noteMissing++;
+
+      days.push({
+        checkIn: hhmm(r?.check_in_time),
+        checkOut: hhmm(r?.check_out_time),
+        late, missingIn, missingOut, noteMiss,
+        leave: lt || undefined,
+      });
+    }
+    return {
+      id: w.id, name: w.name, corp: w.corp, division: w.division, team: w.team,
+      irregularWorker: w.irregular_worker,
+      days,
+      workedDays, lateMissing, noteMissing,
+      over: (lateMissing + noteMissing) >= 5,
+    };
+  });
+
+  res.json({
+    year, month, daysInMonth,
+    holidays,
+    dow: Array.from({ length: daysInMonth }, (_, i) => dowOf(i + 1)),
+    workers,
+    dayTotals: dayTotals.slice(1),
+    pagination: { total, page: pageNum, pages: totalPages, perPage: PER_PAGE },
+  });
 });
 
 export default router;

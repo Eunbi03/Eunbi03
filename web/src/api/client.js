@@ -83,6 +83,8 @@ export const unlockUser = (id) => request(`/admin/users/${id}/unlock`, { method:
 /* 관리자 — 현황/리포트 */
 export const getOverview = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/overview${qs ? `?${qs}` : ""}`); };
 export const getIndividualReport = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/individual-report${qs ? `?${qs}` : ""}`); };
+export const getMonthlyOverview = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/monthly-overview${qs ? `?${qs}` : ""}`); };
+export const searchWorkers = (name) => request(`/admin/worker-search?name=${encodeURIComponent(name)}`);
 
 /* 관리자 — 연차 */
 export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day", { method: "POST", body: data });
