@@ -3,8 +3,8 @@ import * as api from "../api/client.js";
 
 const ROLE_CONFIG = {
   worker: { label: "직원", bg: C.ink },
-  admin:  { label: "관리자", bg: "#1a2a4a" },
-  hr:     { label: "인사팀", bg: "#2a1a4a" },
+  admin:  { label: "관리자", bg: "#0e6ca5" },
+  hr:     { label: "인사팀", bg: "#0e6ca5" },
 };
 
 export default function Header({ user, onLogout }) {
@@ -12,7 +12,7 @@ export default function Header({ user, onLogout }) {
   const logout = () => { api.logout(); onLogout(); };
 
   return (
-    <div style={{ background: config.bg, color: "#fff", padding: "12px 20px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
+    <div style={{ background: config.bg, color: "#fff", padding: "12px clamp(14px, 4vw, 48px)", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontWeight: 800, fontSize: 15, letterSpacing: -0.5, color: "#fff" }}>근태 관리</span>
