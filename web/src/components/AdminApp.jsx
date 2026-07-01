@@ -29,20 +29,34 @@ export default function AdminApp({ user }) {
   const isHR = user?.role === "hr";
   const [tab, setTab] = useState("overall");
 
-  // 공통 필터: 직원 목록에서 동적으로 추출
-  const [filterOptions, setFilterOptions] = useState({ corps: [], divisions: [], teams: [] });
-  const [filters, setFilters] = useState({ corp: "", division: "", team: "" });
+  // 공통 필터: 설정의 조직 마스터 데이터 기반 (법인/본부·팀/직위)
+  const [corps, setCorps] = useState([]);          // [name]
+  const [divisions, setDivisions] = useState([]);  // [{name, teams:[{name}]}]
+  const [positions, setPositions] = useState([]);  // [name]
+  const [filters, setFilters] = useState({ corp: "", division: "", team: "", position: "" });
 
   useEffect(() => {
-    api.getWorkers({}).then((d) => {
-      const corps     = [...new Set(d.workers.map((w) => w.corp).filter(Boolean))].sort();
-      const divisions = [...new Set(d.workers.map((w) => w.division).filter(Boolean))].sort();
-      const teams     = [...new Set(d.workers.map((w) => w.team).filter(Boolean))].sort();
-      setFilterOptions({ corps, divisions, teams });
-    }).catch(() => {});
+    api.getCorporations().then((d) => setCorps((d.corporations || []).map((c) => c.name))).catch(() => {});
+    api.getDivisions().then((d) => setDivisions(d.divisions || [])).catch(() => {});
+    api.getPositions().then((d) => setPositions((d.positions || []).map((p) => p.name))).catch(() => {});
   }, []);
 
-  const setF = (key, val) => setFilters((f) => ({ ...f, [key]: val }));
+  // 팀→본부 매핑 (팀 선택 시 본부 자동 지정)
+  const teamToDivision = {};
+  divisions.forEach((d) => (d.teams || []).forEach((t) => { teamToDivision[t.name] = d.name; }));
+  // 팀 후보: 본부 선택 시 해당 본부의 팀만, 아니면 전체
+  const teamOptions = filters.division
+    ? ((divisions.find((d) => d.name === filters.division)?.teams) || []).map((t) => t.name)
+    : divisions.flatMap((d) => (d.teams || []).map((t) => t.name));
+
+  const setF = (key, val) => {
+    setFilters((f) => {
+      const next = { ...f, [key]: val };
+      if (key === "team" && val) next.division = teamToDivision[val] || f.division; // 팀→본부 자동
+      if (key === "division") next.team = ""; // 본부 바꾸면 팀 초기화
+      return next;
+    });
+  };
 
   const showFilter = tab !== "settings";
 
@@ -59,21 +73,32 @@ export default function AdminApp({ user }) {
         ))}
       </div>
 
-      {/* 필터 */}
+      {/* 필터: 법인 / 본부 / 팀 / 직위 */}
       {showFilter && (
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin }} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
-            <option value="">전체 법인</option>
-            {filterOptions.corps.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin }} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
-            <option value="">전체 본부</option>
-            {filterOptions.divisions.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-          <select style={{ ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin }} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
-            <option value="">전체 팀</option>
-            {filterOptions.teams.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          {(() => {
+            const sel = { ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin };
+            return (
+              <>
+                <select style={sel} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
+                  <option value="">전체 법인</option>
+                  {corps.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select style={sel} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
+                  <option value="">전체 본부</option>
+                  {divisions.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+                </select>
+                <select style={sel} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
+                  <option value="">전체 팀</option>
+                  {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <select style={sel} value={filters.position} onChange={(e) => setF("position", e.target.value)}>
+                  <option value="">전체 직위</option>
+                  {positions.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </>
+            );
+          })()}
         </div>
       )}
 

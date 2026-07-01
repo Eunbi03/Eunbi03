@@ -23,8 +23,8 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 }
 
 /* 인증 */
-export async function login({ email, password, deviceId }) {
-  const data = await request("/auth/login", { method: "POST", body: { email, password, deviceId }, auth: false });
+export async function login({ username, password, deviceId }) {
+  const data = await request("/auth/login", { method: "POST", body: { username, password, deviceId }, auth: false });
   setAccessToken(data.accessToken); setStoredRefreshToken(data.refreshToken); setStoredUserId(data.user.id);
   return data.user;
 }

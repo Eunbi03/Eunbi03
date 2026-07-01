@@ -19,6 +19,10 @@ const THEMES = {
     titleSize: 22,
     labelSize: 12,
     inputSize: 15,
+    idLabel: "전화번호",
+    idType: "tel",
+    idAutoComplete: "username",
+    idPlaceholder: "하이픈 없이 숫자만 (예: 01012345678)",
     inputBg: "#fff",
     inputBorder: C.line,
     inputColor: C.ink,
@@ -44,6 +48,10 @@ const THEMES = {
     titleSize: 28,               // 크게
     labelSize: 14,               // 크게
     inputSize: 16,               // 크게
+    idLabel: "이메일",
+    idType: "email",
+    idAutoComplete: "email",
+    idPlaceholder: "",
     inputBg: "#10141d",
     inputBorder: "#39435a",
     inputColor: "#fff",
@@ -67,12 +75,14 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password) { setErr("이메일과 비밀번호를 입력해주세요."); return; }
+    if (!email.trim() || !password) { setErr(`${t.idLabel}와 비밀번호를 입력해주세요.`); return; }
     setBusy(true);
     setErr("");
     try {
       const deviceId = await getDeviceId();
-      const user = await api.login({ email: email.trim().toLowerCase(), password, deviceId });
+      // 근로자는 전화번호(숫자만), 관리자는 이메일(소문자)로 로그인
+      const username = mode === "admin" ? email.trim().toLowerCase() : email.replace(/\D/g, "");
+      const user = await api.login({ username, password, deviceId });
       onLogin(user);
     } catch (e) {
       setErr(e.message);
@@ -123,11 +133,12 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
           )}
         </div>
 
-        <label style={labelStyle}>이메일</label>
+        <label style={labelStyle}>{t.idLabel}</label>
         <input
           style={inputStyle}
-          type="email"
-          autoComplete="email"
+          type={t.idType}
+          autoComplete={t.idAutoComplete}
+          placeholder={t.idPlaceholder}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={busy}
