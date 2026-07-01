@@ -22,21 +22,26 @@ function Field({ label, children, half }) {
 }
 
 // 일반 직원 추가/수정 모달
-function WorkerModal({ worker, workplaces, onClose, onSaved }) {
+function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, corporations, onClose, onSaved }) {
   const isNew = !worker?.id;
 
   const [form, setForm] = useState({
     name: worker?.name || "",
-    email: worker?.email || "",
+    position: worker?.position || "",
     phone: worker?.phone || "",
+    email: worker?.email || "",
     workplaceId: worker?.workplace_id ? String(worker.workplace_id) : "",
+    remark: worker?.remark || "",
     corp: worker?.corp || "",
     division: worker?.division || "",
     team: worker?.team || "",
+    jobTitle: worker?.job_title || "",
     scheduledStart: worker?.scheduled_start?.slice(0, 5) || "09:00",
     scheduledEnd: worker?.scheduled_end?.slice(0, 5) || "18:00",
     lunchStart: worker?.lunch_start?.slice(0, 5) || "12:00",
     lunchEnd: worker?.lunch_end?.slice(0, 5) || "13:00",
+    noteExempt: !!worker?.note_exempt,
+    irregularWorker: !!worker?.irregular_worker,
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -44,14 +49,29 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // 본부 선택 시 팀 후보
+  const teamOptions = form.division
+    ? ((divisions.find((d) => d.name === form.division)?.teams) || []).map((t) => t.name)
+    : divisions.flatMap((d) => (d.teams || []).map((t) => t.name));
+  const teamToDivision = {};
+  divisions.forEach((d) => (d.teams || []).forEach((t) => { teamToDivision[t.name] = d.name; }));
+
+  const setDivision = (v) => setForm((f) => ({ ...f, division: v, team: "" }));
+  const setTeam = (v) => setForm((f) => ({ ...f, team: v, division: v ? (teamToDivision[v] || f.division) : f.division }));
+  // 직무 선택 → 출퇴근·휴게 시간 자동 입력
+  const setJob = (v) => {
+    const js = jobSchedules.find((j) => j.name === v);
+    setForm((f) => ({ ...f, jobTitle: v, ...(js ? { scheduledStart: js.workStart, scheduledEnd: js.workEnd, lunchStart: js.breakStart, lunchEnd: js.breakEnd } : {}) }));
+  };
+
   const validate = () => {
     if (!form.name.trim())     { setErr("이름을 입력해주세요."); return false; }
-    if (!form.email.trim())    { setErr("이메일을 입력해주세요."); return false; }
-    if (!form.phone.trim())    { setErr("전화번호를 입력해주세요."); return false; }
-    if (!form.corp.trim())     { setErr("법인을 입력해주세요."); return false; }
-    if (!form.division.trim()) { setErr("본부를 입력해주세요."); return false; }
-    if (!form.team.trim())     { setErr("팀을 입력해주세요."); return false; }
+    if (!form.phone.replace(/\D/g, "")) { setErr("전화번호를 입력해주세요."); return false; }
     if (!form.workplaceId)     { setErr("근무지를 선택해주세요."); return false; }
+    if (!form.corp.trim())     { setErr("법인을 선택해주세요."); return false; }
+    if (!form.division.trim()) { setErr("본부를 선택해주세요."); return false; }
+    if (!form.team.trim())     { setErr("팀을 선택해주세요."); return false; }
+    if (!form.jobTitle.trim()) { setErr("직무를 선택해주세요."); return false; }
     return true;
   };
 
@@ -60,9 +80,7 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
     if (!validate()) return;
     setBusy(true);
     try {
-      const result = isNew
-        ? await api.createWorker(form)
-        : await api.updateWorker(worker.id, form);
+      const result = isNew ? await api.createWorker(form) : await api.updateWorker(worker.id, form);
       if (isNew && result.initPassword) setInitPw(result.initPassword);
       else onSaved();
     } catch (e) {
@@ -77,54 +95,75 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
       <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
         <div style={{ ...S.loginCard, maxWidth: 380, width: "100%", margin: 0 }}>
           <p style={S.h1}>직원 추가 완료</p>
-          <p style={{ fontSize: 13, color: C.inkSoft }}>직원에게 아래 초기 비밀번호를 전달해주세요.</p>
+          <p style={{ fontSize: 13, color: C.inkSoft }}>직원에게 아래 로그인 정보를 전달해주세요.</p>
           <div style={{ background: C.paper, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 4 }}>이메일</div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: C.ink, marginBottom: 12 }}>{form.email}</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 4 }}>초기 비밀번호 (전화번호)</div>
+            <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 4 }}>아이디 · 초기 비밀번호 (전화번호)</div>
             <div style={{ fontWeight: 800, fontSize: 22, color: C.seal, letterSpacing: 2 }}>{initPw}</div>
           </div>
-          <p style={{ fontSize: 11, color: C.inkSoft }}>직원이 첫 로그인 시 반드시 비밀번호를 변경합니다.</p>
+          <p style={{ fontSize: 11, color: C.inkSoft }}>아이디와 비밀번호 모두 하이픈 없는 전화번호입니다. 첫 로그인 시 비밀번호를 변경합니다.</p>
           <button style={S.primary} onClick={onSaved}>확인</button>
         </div>
       </div>
     );
   }
 
+  const selStyle = { ...S.input, padding: "11px 12px" };
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, padding: 16, overflowY: "auto" }}>
-      <div style={{ ...S.loginCard, maxWidth: 500, width: "100%", margin: "20px 0" }}>
+      <div style={{ ...S.loginCard, maxWidth: 620, width: "100%", margin: "20px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <p style={S.h1}>{isNew ? "직원 추가" : "직원 정보 수정"}</p>
+          <p style={S.h1}>{isNew ? "새 직원 추가" : "직원 정보 수정"}</p>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, color: C.inkSoft, cursor: "pointer" }}>✕</button>
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <Field label="이름 *">
+          <Field label="이름 *" half>
             <input style={S.input} value={form.name} onChange={(e) => set("name", e.target.value)} />
           </Field>
-          <Field label="이메일 *">
-            <input style={S.input} type="email" value={form.email} onChange={(e) => set("email", e.target.value)} disabled={!isNew} />
-            {!isNew && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>이메일은 변경할 수 없습니다.</div>}
+          <Field label="직책" half>
+            <select style={selStyle} value={form.position} onChange={(e) => set("position", e.target.value)}>
+              <option value="">직책 선택</option>
+              {positions.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
           </Field>
-          <Field label={isNew ? "전화번호 * (초기 비밀번호로 사용)" : "전화번호 *"}>
+          <Field label={isNew ? "전화번호 * (초기 비밀번호로 사용)" : "전화번호 *"} half>
             <input style={S.input} type="tel" placeholder="예: 01012345678" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
-            {isNew && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>전화번호 전체가 초기 비밀번호가 됩니다.</div>}
           </Field>
-          <Field label="근무지 *">
-            <select style={{ ...S.input, padding: "11px 12px" }} value={form.workplaceId} onChange={(e) => set("workplaceId", e.target.value)}>
+          <Field label="이메일 (선택)" half>
+            <input style={S.input} type="email" placeholder="예: kpride@gmail.com" value={form.email} onChange={(e) => set("email", e.target.value)} />
+          </Field>
+          <Field label="근무지 *" half>
+            <select style={selStyle} value={form.workplaceId} onChange={(e) => set("workplaceId", e.target.value)}>
               <option value="">근무지 선택</option>
               {workplaces.map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
             </select>
           </Field>
+          <Field label="비고 (선택)" half>
+            <input style={S.input} placeholder="예: 새말센터 외 xxx개점" value={form.remark} onChange={(e) => set("remark", e.target.value)} />
+          </Field>
           <Field label="법인 *" half>
-            <input style={S.input} value={form.corp} onChange={(e) => set("corp", e.target.value)} />
+            <select style={selStyle} value={form.corp} onChange={(e) => set("corp", e.target.value)}>
+              <option value="">법인 선택</option>
+              {corporations.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </Field>
           <Field label="본부 *" half>
-            <input style={S.input} value={form.division} onChange={(e) => set("division", e.target.value)} />
+            <select style={selStyle} value={form.division} onChange={(e) => setDivision(e.target.value)}>
+              <option value="">본부 선택</option>
+              {divisions.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+            </select>
           </Field>
-          <Field label="팀 *">
-            <input style={S.input} value={form.team} onChange={(e) => set("team", e.target.value)} />
+          <Field label="팀 *" half>
+            <select style={selStyle} value={form.team} onChange={(e) => setTeam(e.target.value)}>
+              <option value="">팀 선택</option>
+              {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Field>
+          <Field label="직무 *" half>
+            <select style={selStyle} value={form.jobTitle} onChange={(e) => setJob(e.target.value)}>
+              <option value="">직무 선택</option>
+              {jobSchedules.map((j) => <option key={j.name} value={j.name}>{j.name}</option>)}
+            </select>
           </Field>
           <Field label="출근 시간" half>
             <input style={S.input} type="time" value={form.scheduledStart} onChange={(e) => set("scheduledStart", e.target.value)} />
@@ -132,18 +171,27 @@ function WorkerModal({ worker, workplaces, onClose, onSaved }) {
           <Field label="퇴근 시간" half>
             <input style={S.input} type="time" value={form.scheduledEnd} onChange={(e) => set("scheduledEnd", e.target.value)} />
           </Field>
-          <Field label="점심 시작" half>
+          <Field label="휴게 시작 시간" half>
             <input style={S.input} type="time" value={form.lunchStart} onChange={(e) => set("lunchStart", e.target.value)} />
           </Field>
-          <Field label="점심 종료" half>
+          <Field label="휴게 종료 시간" half>
             <input style={S.input} type="time" value={form.lunchEnd} onChange={(e) => set("lunchEnd", e.target.value)} />
           </Field>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.ink, cursor: "pointer" }}>
+            <input type="checkbox" checked={form.noteExempt} onChange={(e) => set("noteExempt", e.target.checked)} /> 근무노트 제외 대상
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.ink, cursor: "pointer" }}>
+            <input type="checkbox" checked={form.irregularWorker} onChange={(e) => set("irregularWorker", e.target.checked)} /> 비정기적 근로자
+          </label>
         </div>
 
         {err && <div style={{ ...S.err, padding: "8px 10px", background: C.sealSoft, borderRadius: 8 }}>{err}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <button style={S.subGhost} onClick={onClose} disabled={busy}>취소</button>
-          <button style={{ ...S.subPrimary, background: C.ink, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={save}>
+          <button style={{ ...S.subPrimary, background: C.blue, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={save}>
             {busy ? "저장 중…" : "저장"}
           </button>
         </div>
@@ -366,6 +414,10 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const isMobile = useIsMobile();
   const [workers, setWorkers] = useState([]);
   const [workplaces, setWorkplaces] = useState([]);
+  const [positions, setPositions] = useState([]);
+  const [divisions, setDivisions] = useState([]);
+  const [jobSchedules, setJobSchedules] = useState([]);
+  const [corporations, setCorporations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [editTarget, setEditTarget] = useState(null);
@@ -374,15 +426,27 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [resetTarget, setResetTarget] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 10;
 
   const isHolder = currentUser?.isAuthorityHolder;
 
   const load = async () => {
     setLoading(true);
     try {
-      const [w, wp] = await Promise.all([api.getWorkers({}), api.getWorkplaces()]);
+      const [w, wp, pos, div, js, corp] = await Promise.all([
+        api.getWorkers({ limit: 500 }), api.getWorkplaces(),
+        api.getPositions().catch(() => ({ positions: [] })),
+        api.getDivisions().catch(() => ({ divisions: [] })),
+        api.getJobSchedules().catch(() => ({ jobSchedules: [] })),
+        api.getCorporations().catch(() => ({ corporations: [] })),
+      ]);
       setWorkers(w.workers);
       setWorkplaces(wp.workplaces || []);
+      setPositions((pos.positions || []).map((p) => p.name));
+      setDivisions(div.divisions || []);
+      setJobSchedules(js.jobSchedules || []);
+      setCorporations((corp.corporations || []).map((c) => c.name));
     } catch (e) {
       setMsg(e.message);
     } finally { setLoading(false); }
@@ -463,15 +527,20 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     await api.updateWorker(userId, {
       name: newName,
       phone: w?.phone || "",
+      email: w?.email || "",
+      position: w?.position || "",
       corp: w?.corp || "",
       division: w?.division || "",
       team: w?.team || "",
-      employeeId: w?.employee_id || "",
+      jobTitle: w?.job_title || "",
+      remark: w?.remark || "",
       scheduledStart: w?.scheduled_start?.slice(0, 5) || "09:00",
       scheduledEnd: w?.scheduled_end?.slice(0, 5) || "18:00",
       lunchStart: w?.lunch_start?.slice(0, 5) || "12:00",
       lunchEnd: w?.lunch_end?.slice(0, 5) || "13:00",
       workplaceId: w?.workplace_id ? String(w.workplace_id) : "",
+      noteExempt: !!w?.note_exempt,
+      irregularWorker: !!w?.irregular_worker,
     });
     load();
   };
@@ -480,21 +549,35 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     await api.resetWorkerPassword(userId, pw);
   };
 
-  const visible = workers.filter((w) => {
+  const isAdmin = (w) => w.role !== "worker";
+  const needsAttention = (w) => !isAdmin(w) && (!w.device_id || w.must_change_password);
+
+  // 카테고리 필터
+  const filtered = workers.filter((w) => {
     if (filters.corp     && w.corp     !== filters.corp)     return false;
     if (filters.division && w.division !== filters.division) return false;
     if (filters.team     && w.team     !== filters.team)     return false;
+    if (filters.position && w.position !== filters.position) return false;
     return true;
   });
 
+  // 게이팅: 관리자는 항상 노출. 근로자는 본부 필터가 있어야 전체 노출,
+  // 없으면 기기 미등록/비번 미변경 근로자만 노출.
+  const hasDivision = !!filters.division;
+  const visible = filtered.filter((w) => isAdmin(w) || hasDivision || needsAttention(w));
+  const nonAdminVisible = visible.filter((w) => !isAdmin(w));
+  const showGuidance = !hasDivision && nonAdminVisible.length === 0;
+
   const sorted = [...visible].sort((a, b) => {
-    if (a.is_authority_holder && !b.is_authority_holder) return -1;
-    if (!a.is_authority_holder && b.is_authority_holder) return 1;
-    const aAdmin = a.role !== "worker" ? 0 : 1;
-    const bAdmin = b.role !== "worker" ? 0 : 1;
-    if (aAdmin !== bAdmin) return aAdmin - bAdmin;
+    if (a.is_authority_holder !== b.is_authority_holder) return a.is_authority_holder ? -1 : 1;
+    if (isAdmin(a) !== isAdmin(b)) return isAdmin(a) ? -1 : 1;               // 관리자 먼저
+    if (needsAttention(a) !== needsAttention(b)) return needsAttention(a) ? -1 : 1; // 미변경자 먼저
     return (a.name || "").localeCompare(b.name || "", "ko");
   });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
+  const pageSafe = Math.min(page, totalPages);
+  const pageRows = sorted.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
 
   const resetDevice = async (w) => {
     if (!confirm(`${w.name}의 등록 기기를 초기화하시겠습니까?\n다음 로그인 시 현재 기기가 자동 등록됩니다.`)) return;
@@ -526,14 +609,23 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
 
       {msg && <div style={{ ...S.busy, marginBottom: 10 }}>{msg}</div>}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-        <button style={{ ...S.primary, padding: "8px 16px", fontSize: 13, background: C.blue }} onClick={() => setEditTarget({})}>
-          + 직원 추가
-        </button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <p style={{ margin: 0, fontSize: isMobile ? 14 : 16, fontWeight: 800, color: C.blue }}>
+          총 사용자: {workers.filter((w) => !isAdmin(w)).length}명
+        </p>
+        {isHR && (
+          <button style={{ ...S.primary, padding: "8px 16px", fontSize: 13, background: C.blue }} onClick={() => setEditTarget({})}>
+            + 직원 추가
+          </button>
+        )}
       </div>
 
+      {showGuidance && (
+        <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>본부를 설정해 주세요.</div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {sorted.map((w) => {
+        {pageRows.map((w) => {
           const isAdminRole = w.role !== "worker";
           const isThisHolder = w.is_authority_holder;
           return (
@@ -546,16 +638,19 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                 <div style={{ fontWeight: 700, color: C.ink, fontSize: isMobile ? 14 : 18, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {w.name}
                   {isThisHolder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>권한자</span>}
-                  {isAdminRole && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>}
-                  {!isAdminRole && w.employee_id && <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 15 }}>#{w.employee_id}</span>}
+                  {isAdminRole ? (
+                    <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>
+                  ) : (
+                    <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 15 }}>
+                      {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, marginTop: isMobile ? 2 : 5, lineHeight: 1.6 }}>
-                  {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
-                </div>
-                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{w.email}{w.phone && ` · ${w.phone}`}</div>
+                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{[w.email, w.phone].filter(Boolean).join(" / ")}</div>
                 {!isAdminRole && (
                   <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>
-                    근무지: {w.workplace_name || "미지정"} · {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
+                    근무지: {w.workplace_name || "미지정"} / {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
+                    {w.note_exempt && " (근무노트제외)"}
                   </div>
                 )}
                 <div style={{ fontSize: isMobile ? 11 : 14, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600, lineHeight: 1.6 }}>
@@ -570,54 +665,57 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                 </span>
               </div>
 
-              {isMobile ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  {isAdminRole ? (
-                    <button style={S.miniBtn} onClick={() => openAdminProfile(w)}>수정</button>
-                  ) : (
-                    <button style={S.miniBtn} onClick={() => setEditTarget(w)}>수정</button>
-                  )}
-                  {isHR && !isAdminRole && (
-                    <>
-                      <button style={{ ...S.miniBtn, color: C.amber, borderColor: C.amberSoft }} onClick={() => setResetTarget(w)}>비번초기화</button>
-                      <button style={{ ...S.miniBtn, color: C.blue, borderColor: C.blueSoft }} onClick={() => resetDevice(w)}>기기변경</button>
-                      {w.is_locked && <button style={{ ...S.miniBtn, color: C.green }} onClick={() => unlock(w)}>잠금해제</button>}
-                      <button style={{ ...S.miniBtn, color: C.seal }} onClick={() => deleteWorker(w)}>삭제</button>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {isAdminRole ? (
-                    <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px" }} onClick={() => openAdminProfile(w)}>수정</button>
-                  ) : (
-                    <>
+              {(() => {
+                const mod = { color: "#787878" };       // 수정 진회색
+                const del = { color: "#cb6156" };         // 삭제 붉은색
+                const dev = { color: "#2f6d8f", borderColor: C.blueSoft }; // 기기변경 푸른색
+                const pw  = { color: "#be8b29", borderColor: C.amberSoft }; // 비번초기화
+                const base = isMobile ? S.miniBtn : { ...S.miniBtn, fontSize: 13, padding: "7px 12px" };
+                if (isAdminRole) return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4 }}>
+                    <button style={{ ...base, ...mod }} onClick={() => openAdminProfile(w)}>수정</button>
+                  </div>
+                );
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4 }}>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
+                      {isHR && <button style={{ ...base, ...pw }} onClick={() => setResetTarget(w)}>비번초기화</button>}
+                    </div>
+                    {isHR && (
                       <div style={{ display: "flex", gap: 4 }}>
-                        <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px" }} onClick={() => setEditTarget(w)}>수정</button>
-                        {isHR && <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.amber, borderColor: C.amberSoft }} onClick={() => setResetTarget(w)}>비번초기화</button>}
+                        <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>
+                        <button style={{ ...base, ...dev }} onClick={() => resetDevice(w)}>기기변경</button>
                       </div>
-                      {isHR && (
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.seal }} onClick={() => deleteWorker(w)}>삭제</button>
-                          <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.blue, borderColor: C.blueSoft }} onClick={() => resetDevice(w)}>기기변경</button>
-                        </div>
-                      )}
-                      {w.is_locked && isHR && (
-                        <button style={{ ...S.miniBtn, fontSize: 13, padding: "7px 12px", color: C.green }} onClick={() => unlock(w)}>잠금해제</button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+                    )}
+                    {w.is_locked && isHR && <button style={{ ...base, color: C.green }} onClick={() => unlock(w)}>잠금해제</button>}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
       </div>
 
+      {totalPages > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 16 }}>
+          <button style={{ ...S.miniBtn, color: C.inkSoft }} disabled={pageSafe <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+            <button key={n} onClick={() => setPage(n)}
+              style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 15, fontWeight: n === pageSafe ? 800 : 400, color: n === pageSafe ? C.blue : C.inkSoft, minWidth: 24 }}>{n}</button>
+          ))}
+          <button style={{ ...S.miniBtn, color: C.inkSoft }} disabled={pageSafe >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>›</button>
+        </div>
+      )}
+
       {editTarget !== null && (
         <WorkerModal
           worker={editTarget}
           workplaces={workplaces}
+          positions={positions}
+          divisions={divisions}
+          jobSchedules={jobSchedules}
+          corporations={corporations}
           onClose={() => setEditTarget(null)}
           onSaved={() => { setEditTarget(null); load(); }}
         />
