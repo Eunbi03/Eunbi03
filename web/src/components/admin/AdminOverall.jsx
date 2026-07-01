@@ -1,165 +1,204 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 
+const COL = {
+  black: "#3a3a3a", gray: "#787878", lgray: "#eeeeee",
+  blue: "#2f6d8f", red: "#cb6156", lred: "#fff0f0", white: "#ffffff",
+};
+const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+
 function useIsMobile(breakpoint = 640) {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
-  useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener('resize', h);
-    return () => window.removeEventListener('resize', h);
-  }, [breakpoint]);
-  return isMobile;
+  const [m, setM] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => { const h = () => setM(window.innerWidth < breakpoint); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, [breakpoint]);
+  return m;
 }
 
-function todayStr() { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); }
-function monthStart() { return todayStr().slice(0, 7) + "-01"; }
+const pad = (n) => String(n).padStart(2, "0");
 
-export default function AdminOverall({ filters }) {
-  const isMobile = useIsMobile();
-  const today = todayStr();
-  const [from, setFrom] = useState(monthStart());
-  const [to, setTo] = useState(today);
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    api.getOverview({ from, to }).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [from, to]);
-
-  const filterWorker = (w) => {
-    if (filters.corp     && w.corp     !== filters.corp)     return false;
-    if (filters.division && w.division !== filters.division) return false;
-    if (filters.team     && w.team     !== filters.team)     return false;
-    return true;
-  };
-
-  // 법인 → 본부 → 팀 계층 구조로 변환
-  const buildHierarchy = () => {
-    if (!data?.teams) return {};
-    const corps = {};
-    for (const team of data.teams) {
-      const members = team.members.filter(filterWorker);
-      if (!members.length) continue;
-      const corp     = team.corp     || "(미지정)";
-      const division = team.division || "(미지정)";
-      const teamName = team.team     || "(미지정)";
-      if (!corps[corp]) corps[corp] = {};
-      if (!corps[corp][division]) corps[corp][division] = {};
-      corps[corp][division][teamName] = members;
-    }
-    return corps;
-  };
-
-  if (loading) return <div style={S.empty}>불러오는 중…</div>;
-
-  const hierarchy = buildHierarchy();
-  const corpEntries = Object.entries(hierarchy);
-
+function Cell({ cell, isMobile }) {
+  const fs = isMobile ? 10 : 12;
+  const base = { padding: "3px 2px", textAlign: "center", fontSize: fs, lineHeight: 1.25, borderRight: `1px solid ${COL.lgray}`, verticalAlign: "middle", minWidth: isMobile ? 34 : 42 };
+  if (!cell || cell.off) return <td style={{ ...base, color: COL.gray }}>-</td>;
+  if (cell.leave) return <td style={{ ...base, color: COL.blue, fontWeight: 700 }}>{cell.leave}</td>;
+  const warn = <span style={{ color: COL.red, fontWeight: 800 }}>❗</span>;
   return (
-    <div>
-      {/* 기간 설정 */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft, fontWeight: 700 }}>기간</span>
-        <input type="date" max={today} value={from} onChange={(e) => setFrom(e.target.value)}
-          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
-        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft }}>~</span>
-        <input type="date" max={today} value={to} onChange={(e) => setTo(e.target.value)}
-          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
-        <span style={{ fontSize: isMobile ? 11 : 13, color: C.inkSoft }}>근무일 {data?.period?.workdays ?? "—"}일</span>
+    <td style={{ ...base, boxShadow: cell.noteMiss ? `inset 0 -3px 0 ${COL.red}` : undefined }}>
+      <div style={{ color: cell.late ? COL.red : COL.black, fontWeight: cell.late ? 700 : 400, fontVariantNumeric: "tabular-nums" }}>
+        {cell.missingIn ? warn : (cell.checkIn || "")}
       </div>
-
-      {!corpEntries.length && <div style={S.empty}>직원 데이터가 없습니다.</div>}
-
-      {corpEntries.map(([corp, divisions]) => (
-        <div key={corp} style={{ marginBottom: 28 }}>
-          {/* 법인 헤더 */}
-          <div style={{
-            textAlign: "center", fontWeight: 800, fontSize: isMobile ? 15 : 19, color: "#fff",
-            background: C.blue, borderRadius: 12, padding: isMobile ? "10px 16px" : "13px 20px", marginBottom: isMobile ? 10 : 16,
-          }}>
-            {corp}
-          </div>
-
-          {Object.entries(divisions).map(([division, teams]) => (
-            <div key={division} style={{ marginBottom: isMobile ? 8 : 14 }}>
-              {/* 본부 헤더 */}
-              <p style={{ fontWeight: 800, fontSize: isMobile ? 13 : 17, color: C.ink, margin: isMobile ? "0 0 4px 2px" : "0 0 8px 2px" }}>
-                {division}
-              </p>
-
-              {Object.entries(teams).map(([teamName, members]) => {
-                const violators = members.filter((m) => m.score >= 5);
-                return (
-                  <div key={teamName} style={{ marginLeft: 10, marginBottom: isMobile ? 12 : 18 }}>
-                    {/* 팀 헤더 */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: isMobile ? "4px 0" : "6px 0" }}>
-                      <p style={{ fontWeight: 700, fontSize: isMobile ? 12 : 14, color: C.inkSoft, margin: 0 }}>
-                        {teamName}
-                      </p>
-                      {violators.length > 0 && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 8px", borderRadius: 12 }}>
-                          관리대상 {violators.length}명
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 테이블 */}
-                    <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 10, overflow: "hidden", background: "#fff" }}>
-                      {/* 헤더 */}
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px", padding: isMobile ? "7px 12px" : "9px 16px", background: "#fff", fontSize: isMobile ? 12 : 14, fontWeight: 700, color: C.blue, borderBottom: `1px solid ${C.lineAdmin}` }}>
-                        <span>이름</span>
-                        <span style={{ textAlign: "center" }}>지각</span>
-                        <span style={{ textAlign: "center" }}>출근누락</span>
-                        <span style={{ textAlign: "center" }}>퇴근누락</span>
-                        <span style={{ textAlign: "center" }}>노트누락</span>
-                      </div>
-                      {/* 리스트 행들 — 구분선을 inset으로 표현 */}
-                      <div style={{ padding: "0 4px" }}>
-                        {members.map((m, idx) => {
-                          const over = m.score >= 5;
-                          return (
-                            <div key={m.id}>
-                              {idx > 0 && (
-                                <div style={{ borderTop: `1px dashed ${C.lineAdmin}`, margin: "0 8px" }} />
-                              )}
-                              <div style={{ padding: over ? "3px 0" : 0 }}>
-                                <div style={{
-                                  display: "grid", gridTemplateColumns: isMobile ? "1fr 48px 48px 48px 48px" : "1fr 72px 72px 72px 72px",
-                                  padding: isMobile ? "7px 8px" : "9px 12px",
-                                  background: over ? "#fff0f0" : "transparent",
-                                  borderRadius: over ? 7 : 0,
-                                }}>
-                                  <span style={{ fontSize: isMobile ? 12 : 14, fontWeight: 700, color: over ? C.seal : C.inkSoft }}>
-                                    {m.name}
-                                  </span>
-                                  <Cell v={m.lateCount} over={over} isMobile={isMobile} />
-                                  <Cell v={m.missingIn} over={over} isMobile={isMobile} />
-                                  <Cell v={m.missingOut} over={over} isMobile={isMobile} />
-                                  <Cell v={m.missingNote} over={over} isMobile={isMobile} />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
+      <div style={{ color: COL.black, fontVariantNumeric: "tabular-nums" }}>
+        {cell.missingOut ? warn : (cell.checkOut || "")}
+      </div>
+    </td>
   );
 }
 
-function Cell({ v, over, isMobile }) {
+export default function AdminOverall({ filters }) {
+  const isMobile = useIsMobile();
+  const now = new Date();
+  const [ym, setYm] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+
+  // 인원 직접 입력
+  const [directOn, setDirectOn] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [selected, setSelected] = useState([]); // [{id,name,corp,division,team,workplace_name}]
+  const [popup, setPopup] = useState(null);      // 동명이인 후보 목록
+  const monthRef = useRef(null);
+
+  const shiftMonth = (delta) => setYm((v) => {
+    let m = v.month + delta, y = v.year;
+    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+    return { year: y, month: m };
+  });
+
+  const load = () => {
+    setLoading(true);
+    const params = { year: ym.year, month: ym.month, page };
+    if (selected.length) params.userIds = selected.map((s) => s.id).join(",");
+    else { if (filters.corp) params.corp = filters.corp; if (filters.division) params.division = filters.division; if (filters.team) params.team = filters.team; if (filters.position) params.position = filters.position; }
+    api.getMonthlyOverview(params).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [ym, page, filters, selected]);
+  useEffect(() => { setPage(1); }, [ym, filters, selected]);
+
+  const doSearch = async () => {
+    const name = nameInput.trim(); if (!name) return;
+    try {
+      const d = await api.searchWorkers(name);
+      const found = d.workers || [];
+      if (found.length === 0) { alert("해당 이름의 직원을 찾을 수 없습니다."); return; }
+      if (found.length === 1) { addSelected(found[0]); setNameInput(""); return; }
+      setPopup(found);
+    } catch (e) { alert(e.message); }
+  };
+  const addSelected = (w) => { setSelected((s) => (s.some((x) => x.id === w.id) ? s : [...s, w])); setPopup(null); setNameInput(""); };
+  const removeSelected = (id) => setSelected((s) => s.filter((x) => x.id !== id));
+
+  const dim = data?.daysInMonth || new Date(ym.year, ym.month, 0).getDate();
+  const periodText = `${ym.year}. ${pad(ym.month)}. 01. ~ ${pad(ym.month)}. ${pad(dim)}.`;
+
   return (
-    <span style={{ textAlign: "center", fontSize: isMobile ? 12 : 14, fontWeight: v > 0 ? 700 : 400, color: v > 0 && over ? C.seal : C.inkSoft }}>
-      {v || "-"}
-    </span>
+    <div>
+      {/* 기간 + 인원 직접 입력 + 다운로드 */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+        <span style={{ fontWeight: 800, color: C.ink, fontSize: isMobile ? 14 : 16 }}>조회 기간</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, border: `2px solid ${COL.blue}`, borderRadius: 10, padding: "6px 10px", background: "#fff", position: "relative" }}>
+          <button onClick={() => (monthRef.current?.showPicker ? monthRef.current.showPicker() : monthRef.current?.focus())} title="연월 선택" style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 16 }}>📅</button>
+          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 700, color: C.ink, fontSize: isMobile ? 13 : 15 }}>{periodText}</span>
+          <input ref={monthRef} type="month" value={`${ym.year}-${pad(ym.month)}`}
+            onChange={(e) => { const [y, m] = e.target.value.split("-").map(Number); if (y && m) setYm({ year: y, month: m }); }}
+            style={{ width: 1, height: 1, opacity: 0, position: "absolute", left: 8, bottom: 0, pointerEvents: "none" }} />
+          <div style={{ display: "flex", flexDirection: "column", marginLeft: 4 }}>
+            <button onClick={() => shiftMonth(1)} aria-label="다음 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.blue, lineHeight: 0.8, fontSize: 12 }}>▲</button>
+            <button onClick={() => shiftMonth(-1)} aria-label="지난 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.blue, lineHeight: 0.8, fontSize: 12 }}>▼</button>
+          </div>
+        </div>
+
+        <div onClick={() => setDirectOn(true)}
+          style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", border: `2px solid ${directOn ? COL.blue : COL.black}`, borderRadius: 10, padding: "6px 10px", background: directOn ? "#fff" : COL.lgray, flex: "1 1 220px", cursor: "text" }}>
+          {selected.map((s) => (
+            <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: COL.blue, color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 12 }}>
+              {s.name}<button onClick={(e) => { e.stopPropagation(); removeSelected(s.id); }} style={{ border: "none", background: "transparent", color: "#fff", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+            </span>
+          ))}
+          <input value={nameInput} placeholder={selected.length ? "" : "인원 직접 입력"}
+            onFocus={() => setDirectOn(true)}
+            onChange={(e) => setNameInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+            style={{ flex: 1, minWidth: 80, border: "none", outline: "none", background: "transparent", color: directOn ? COL.black : COL.gray, fontSize: 14 }} />
+          {directOn && (selected.length > 0 || nameInput) && (
+            <button onClick={(e) => { e.stopPropagation(); setSelected([]); setNameInput(""); setDirectOn(false); }} style={{ border: "none", background: "transparent", color: COL.gray, cursor: "pointer", fontSize: 13 }}>초기화</button>
+          )}
+        </div>
+
+        <button onClick={() => alert("엑셀 다운로드는 곧 제공됩니다.")}
+          style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer" }}>다운로드</button>
+      </div>
+
+      {/* 동명이인 팝업 */}
+      {popup && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }} onClick={() => setPopup(null)}>
+          <div style={{ ...S.loginCard, maxWidth: 420, width: "100%", margin: 0 }} onClick={(e) => e.stopPropagation()}>
+            <p style={S.h1}>동명이인 선택</p>
+            <p style={{ fontSize: 13, color: C.inkSoft }}>같은 이름의 직원이 여러 명입니다. 선택해주세요.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {popup.map((w) => (
+                <button key={w.id} onClick={() => addSelected(w)}
+                  style={{ textAlign: "left", border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 10, padding: "10px 14px", cursor: "pointer" }}>
+                  <div style={{ fontWeight: 700, color: C.ink }}>{w.name}</div>
+                  <div style={{ fontSize: 12, color: C.inkSoft }}>{[w.corp, w.division, w.team, w.workplace_name].filter(Boolean).join(" · ")}</div>
+                </button>
+              ))}
+            </div>
+            <button style={{ ...S.subGhost, width: "100%", marginTop: 8 }} onClick={() => setPopup(null)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {/* 그리드 */}
+      {loading ? <div style={S.empty}>불러오는 중…</div>
+        : !data || data.workers.length === 0 ? <div style={S.empty}>조회된 직원이 없습니다.</div>
+        : (
+          <>
+            <div style={{ overflowX: "auto", border: `1px solid ${COL.lgray}`, borderRadius: 8 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", background: "#fff" }}>
+                <thead>
+                  <tr>
+                    <th style={{ position: "sticky", left: 0, zIndex: 2, background: COL.lgray, padding: "6px 8px", fontSize: isMobile ? 11 : 13, color: C.ink, borderRight: `1px solid ${COL.gray}`, minWidth: isMobile ? 54 : 70 }}>구분</th>
+                    {Array.from({ length: dim }, (_, i) => {
+                      const d = i + 1; const dow = data.dow[i];
+                      const isRed = dow === 0 || dow === 6 || !!data.holidays[`${ym.year}-${pad(ym.month)}-${pad(d)}`];
+                      return (
+                        <th key={d} style={{ padding: "4px 2px", fontSize: isMobile ? 10 : 12, borderRight: `1px solid ${COL.lgray}`, color: isRed ? COL.red : C.ink, background: "#fafbfc" }}>
+                          <div>{d}</div><div style={{ fontWeight: 400 }}>{DOW[dow]}</div>
+                        </th>
+                      );
+                    })}
+                    <th colSpan={2} style={{ padding: "4px 8px", fontSize: isMobile ? 11 : 13, color: C.ink, background: COL.lgray, borderLeft: `1px solid ${COL.gray}` }}>합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.workers.map((w) => (
+                    <tr key={w.id} style={{ background: w.over ? COL.lred : "#fff", borderTop: `1px solid ${COL.lgray}` }}>
+                      <td style={{ position: "sticky", left: 0, zIndex: 1, background: w.over ? COL.lred : "#fff", padding: "4px 8px", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: C.ink, borderRight: `1px solid ${COL.gray}`, whiteSpace: "nowrap" }}>{w.name}</td>
+                      {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} />)}
+                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: w.over ? COL.red : C.ink, borderLeft: `1px solid ${COL.gray}`, fontVariantNumeric: "tabular-nums" }}>
+                        {w.lateMissing}/{w.workedDays}
+                      </td>
+                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: w.over ? COL.red : C.ink, fontVariantNumeric: "tabular-nums" }}>
+                        {w.noteMissing || "-"}
+                      </td>
+                    </tr>
+                  ))}
+                  {/* 세로 합계: 해당일 출근 인원 */}
+                  <tr style={{ background: COL.lgray, borderTop: `2px solid ${COL.gray}` }}>
+                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: COL.lgray, padding: "4px 8px", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: C.ink, borderRight: `1px solid ${COL.gray}` }}>합계</td>
+                    {data.dayTotals.map((n, i) => (
+                      <td key={i} style={{ padding: "4px 2px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: C.ink, borderRight: `1px solid ${COL.lgray}`, fontVariantNumeric: "tabular-nums" }}>{n || "-"}</td>
+                    ))}
+                    <td colSpan={2} style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: C.ink, borderLeft: `1px solid ${COL.gray}`, fontVariantNumeric: "tabular-nums" }}>
+                      {data.dayTotals.reduce((a, b) => a + b, 0)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {data.pagination.pages > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 16 }}>
+                <button style={{ ...S.miniBtn, color: C.inkSoft }} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</button>
+                {Array.from({ length: data.pagination.pages }, (_, i) => i + 1).map((n) => (
+                  <button key={n} onClick={() => setPage(n)} style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 15, fontWeight: n === page ? 800 : 400, color: n === page ? COL.blue : C.inkSoft, minWidth: 24 }}>{n}</button>
+                ))}
+                <button style={{ ...S.miniBtn, color: C.inkSoft }} disabled={page >= data.pagination.pages} onClick={() => setPage((p) => Math.min(data.pagination.pages, p + 1))}>›</button>
+              </div>
+            )}
+          </>
+        )}
+    </div>
   );
 }
