@@ -68,7 +68,7 @@ router.delete('/workplaces/:id', requireHR, async (req: Request, res: Response):
 // ── 직원 관리 ──────────────────────────────────────────────────
 
 router.get('/workers', async (req: Request, res: Response): Promise<void> => {
-  const { corp, division, team, jobTitle, page = '1', limit = '200' } = req.query;
+  const { corp, division, team, position, jobTitle, needsAttention, page = '1', limit = '200' } = req.query;
   const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
   const limitNum = Math.min(500, parseInt(limit as string, 10) || 200);
   const offset = (pageNum - 1) * limitNum;
@@ -78,7 +78,12 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
   if (corp)     { params.push(corp);     conditions.push(`u.corp=$${params.length}`); }
   if (division) { params.push(division); conditions.push(`u.division=$${params.length}`); }
   if (team)     { params.push(team);     conditions.push(`u.team=$${params.length}`); }
+  if (position) { params.push(position); conditions.push(`u.position=$${params.length}`); }
   if (jobTitle) { params.push(jobTitle); conditions.push(`u.job_title=$${params.length}`); }
+  // 기기 미등록 또는 비밀번호 미변경 근로자만 (첫 화면 우선 노출용)
+  if (needsAttention === 'true') {
+    conditions.push(`u.role='worker' AND (u.device_id IS NULL OR u.must_change_password=TRUE)`);
+  }
 
   const where = `WHERE ${conditions.join(' AND ')}`;
   const { rows: countRows } = await pool.query(`SELECT COUNT(*) as count FROM users u ${where}`, params);
@@ -86,12 +91,16 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
 
   params.push(limitNum, offset);
   const { rows } = await pool.query(
-    `SELECT u.id, u.employee_id, u.corp, u.division, u.team, u.job_title, u.name, u.phone,
+    `SELECT u.id, u.employee_id, u.corp, u.division, u.team, u.position, u.job_title, u.name, u.phone,
             u.workplace_id, w.name AS workplace_name, w.lat AS wp_lat, w.lng AS wp_lng,
             u.scheduled_start, u.scheduled_end, u.lunch_start, u.lunch_end,
+            u.remark, u.note_exempt, u.irregular_worker,
             u.email, u.device_id, u.is_locked, u.must_change_password, u.role, u.is_authority_holder, u.created_at
      FROM users u LEFT JOIN workplaces w ON u.workplace_id = w.id
-     ${where} ORDER BY u.is_authority_holder DESC NULLS LAST, u.role DESC, u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST, u.name
+     ${where}
+     ORDER BY (u.role='worker' AND (u.device_id IS NULL OR u.must_change_password=TRUE)) DESC,
+              u.is_authority_holder DESC NULLS LAST, u.role DESC,
+              u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST, u.name
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
@@ -100,63 +109,67 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
 
 router.post('/workers', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, name, phone, corp, division, team, jobTitle,
-            scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId } = req.body;
-    if (!email || !name) { res.status(400).json({ error: 'email, name은 필수입니다.' }); return; }
-    const initPw = (phone || '').replace(/\D/g, '') || '초기비밀번호1';
-    const passwordHash = await bcrypt.hash(initPw, 12);
+    const { email, name, phone, position, corp, division, team, jobTitle, remark,
+            scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
+            noteExempt, irregularWorker } = req.body;
+    const phoneDigits = (phone || '').replace(/\D/g, '');
+    if (!name || !phoneDigits) { res.status(400).json({ error: '이름과 전화번호는 필수입니다.' }); return; }
+    const passwordHash = await bcrypt.hash(phoneDigits, 12); // 초기 비밀번호 = 하이픈 제외 전화번호
 
-    // 같은 이메일의 기존 계정 확인 (소프트 삭제된 직원은 재활성화하여 근태 기록을 보존한다)
+    // 같은 전화번호의 기존 계정 확인 (소프트 삭제된 직원은 재활성화하여 근태 기록을 보존한다)
     const { rows: existing } = await pool.query(
-      'SELECT id, is_active FROM users WHERE LOWER(email)=LOWER($1)', [email]
+      `SELECT id, is_active FROM users WHERE regexp_replace(phone, '\\D', '', 'g') = $1`, [phoneDigits]
     );
     if (existing[0]) {
-      if (existing[0].is_active) { res.status(400).json({ error: '이미 등록된 이메일입니다.' }); return; }
+      if (existing[0].is_active) { res.status(400).json({ error: '이미 등록된 전화번호입니다.' }); return; }
       // 비활성(삭제) 계정 → 재활성화: 정보 갱신 + 비밀번호/기기/잠금 초기화
       const { rows } = await pool.query(
-        `UPDATE users SET name=$1, phone=$2, corp=$3, division=$4, team=$5, job_title=$6,
-           scheduled_start=$7, scheduled_end=$8, lunch_start=$9, lunch_end=$10, workplace_id=$11,
-           password_hash=$12, must_change_password=TRUE, is_active=TRUE, role='worker',
+        `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
+           scheduled_start=$9, scheduled_end=$10, lunch_start=$11, lunch_end=$12, workplace_id=$13,
+           note_exempt=$14, irregular_worker=$15,
+           password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker',
            device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL
-         WHERE id=$13 RETURNING id, email, name`,
-        [name, phone || null, corp || null, division || null, team || null, jobTitle || null,
-         scheduledStart || '09:00', scheduledEnd || '18:00',
-         lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, passwordHash, existing[0].id]
+         WHERE id=$17 RETURNING id, name`,
+        [name, email || null, position || null, corp || null, division || null, team || null, jobTitle || null, remark || null,
+         scheduledStart || '09:00', scheduledEnd || '18:00', lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null,
+         !!noteExempt, !!irregularWorker, passwordHash, existing[0].id]
       );
       await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
-      res.status(201).json({ success: true, worker: rows[0], initPassword: initPw, reactivated: true });
+      res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits, reactivated: true });
       return;
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, name, phone,
-         corp, division, team, job_title, scheduled_start, scheduled_end,
-         lunch_start, lunch_end, workplace_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, email, name`,
-      [email, passwordHash, name, phone || null,
-       corp || null, division || null, team || null, jobTitle || null,
+      `INSERT INTO users (email, password_hash, name, phone, position,
+         corp, division, team, job_title, remark, scheduled_start, scheduled_end,
+         lunch_start, lunch_end, workplace_id, note_exempt, irregular_worker)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id, name`,
+      [email || null, passwordHash, name, phone, position || null,
+       corp || null, division || null, team || null, jobTitle || null, remark || null,
        scheduledStart || '09:00', scheduledEnd || '18:00',
-       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null]
+       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker]
     );
     await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
-    res.status(201).json({ success: true, worker: rows[0], initPassword: initPw });
+    res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits });
   } catch (e: any) {
-    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 이메일입니다.' });
+    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 전화번호 또는 이메일입니다.' });
     else res.status(500).json({ error: e.message || '직원 추가 중 오류가 발생했습니다.' });
   }
 });
 
 router.put('/workers/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, phone, corp, division, team, jobTitle,
-            scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId } = req.body;
+    const { name, phone, email, position, corp, division, team, jobTitle, remark,
+            scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
+            noteExempt, irregularWorker } = req.body;
     const { rows } = await pool.query(
-      `UPDATE users SET name=$1, phone=$2, corp=$3, division=$4, team=$5, job_title=$6,
-         scheduled_start=$7, scheduled_end=$8, lunch_start=$9, lunch_end=$10, workplace_id=$11
-       WHERE id=$12 RETURNING id, name, email`,
-      [name, phone || null, corp || null, division || null, team || null, jobTitle || null,
-       scheduledStart || '09:00', scheduledEnd || '18:00',
-       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, req.params.id]
+      `UPDATE users SET name=$1, phone=$2, email=$3, position=$4, corp=$5, division=$6, team=$7, job_title=$8,
+         remark=$9, scheduled_start=$10, scheduled_end=$11, lunch_start=$12, lunch_end=$13, workplace_id=$14,
+         note_exempt=$15, irregular_worker=$16
+       WHERE id=$17 RETURNING id, name`,
+      [name, phone || null, email || null, position || null, corp || null, division || null, team || null, jobTitle || null,
+       remark || null, scheduledStart || '09:00', scheduledEnd || '18:00',
+       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker, req.params.id]
     );
     if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
     res.json({ success: true, worker: rows[0] });

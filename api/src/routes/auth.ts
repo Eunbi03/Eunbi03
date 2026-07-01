@@ -22,7 +22,6 @@ async function logAttempt(data: {
 // POST /api/auth/login
 router.post('/login',
   [
-    body('email').isEmail(),
     body('password').notEmpty(),
     body('deviceId').notEmpty(),
   ],
@@ -30,11 +29,20 @@ router.post('/login',
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
 
-    const { email, password, deviceId, deviceName } = req.body;
-    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1 AND is_active = TRUE', [email]);
+    // 아이디: 근로자는 전화번호(하이픈 제외 11자리), 관리자는 이메일 — 둘 다 허용
+    const { password, deviceId, deviceName } = req.body;
+    const email = (req.body.username ?? req.body.email ?? '').trim();
+    const digits = email.replace(/\D/g, '');
+    const { rows } = await pool.query(
+      `SELECT * FROM users WHERE is_active = TRUE AND (
+         LOWER(email) = LOWER($1)
+         OR (char_length($2) >= 10 AND regexp_replace(phone, '\\D', '', 'g') = $2)
+       )`,
+      [email, digits]
+    );
     if (rows.length === 0) {
       await logAttempt({ email, deviceId, success: false, failReason: 'USER_NOT_FOUND', req });
-      res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' }); return;
+      res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다.' }); return;
     }
     const user = rows[0];
 
