@@ -61,7 +61,7 @@ function DeleteButton({ onClick, disabled }) {
 function EditButton({ onClick }) {
   return (
     <button onClick={onClick}
-      style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 13, color: COL.gray, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+      style={{ border: `1px solid ${COL.gray}`, background: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 13, color: COL.gray, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
       수정
     </button>
   );

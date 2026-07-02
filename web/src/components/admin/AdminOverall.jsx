@@ -42,7 +42,7 @@ function Cell({ cell, isMobile, over, height }) {
   );
 }
 
-export default function AdminOverall({ filters }) {
+export default function AdminOverall({ filters, onDirectActive }) {
   const isMobile = useIsMobile();
   const now = new Date();
   const [ym, setYm] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
@@ -72,6 +72,9 @@ export default function AdminOverall({ filters }) {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [ym, page, filters, selected]);
   useEffect(() => { setPage(1); }, [ym, filters, selected]);
+  // 직접 입력으로 인원을 선택하면(엔터 후) 상단 카테고리 필터를 비활성화하도록 상위에 알림
+  useEffect(() => { onDirectActive?.(selected.length > 0); }, [selected]); // eslint-disable-line
+  useEffect(() => () => onDirectActive?.(false), []); // 언마운트 시 해제
 
   const doSearch = async () => {
     const name = nameInput.trim(); if (!name) return;

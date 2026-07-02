@@ -94,7 +94,7 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
   if (initPw) {
     return (
       <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-        <div style={{ ...S.loginCard, maxWidth: 380, width: "100%", margin: 0 }}>
+        <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 380, width: "100%", margin: 0 }}>
           <p style={S.h1}>직원 추가 완료</p>
           <p style={{ fontSize: 13, color: C.inkSoft }}>직원에게 아래 로그인 정보를 전달해주세요.</p>
           <div style={{ background: C.paper, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
@@ -111,7 +111,7 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
   const selStyle = { ...S.input, padding: "11px 12px" };
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, padding: 16, overflowY: "auto" }}>
-      <div style={{ ...S.loginCard, maxWidth: 620, width: "100%", margin: "20px 0" }}>
+      <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 620, width: "100%", margin: "20px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <p style={S.h1}>{isNew ? "새 직원 추가" : "직원 정보 수정"}</p>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, color: C.inkSoft, cursor: "pointer" }}>✕</button>
@@ -244,7 +244,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, padding: 16, overflowY: "auto" }}>
-      <div style={{ ...S.loginCard, maxWidth: 480, width: "100%", margin: "20px 0" }}>
+      <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 480, width: "100%", margin: "20px 0" }}>
         {/* 헤더 */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -254,7 +254,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                 <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, background: C.amberSoft, padding: "2px 8px", borderRadius: 20 }}>권한자</span>
               )}
               <span style={{ fontSize: 11, fontWeight: 700, color: "#2d4a7a", background: "#e8eaf6", padding: "2px 8px", borderRadius: 20 }}>
-                {worker?.role === "hr" ? "인사팀" : "관리자"}
+                관리자
               </span>
             </div>
           </div>
@@ -336,7 +336,10 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               {adminDevices.map((d) => (
                 <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, background: d.is_approved ? C.greenSoft : C.amberSoft, borderRadius: 10, padding: "8px 12px" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: C.ink }}>{d.device_name || "기기"}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 6 }}>
+                      {d.device_name || worker?.name || "기기"}
+                      {worker?.is_authority_holder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 10 }}>권한자</span>}
+                    </div>
                     <div style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.device_id}</div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
                   </div>
@@ -394,7 +397,7 @@ function ResetPasswordModal({ worker, onClose, onDone }) {
   };
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-      <div style={{ ...S.loginCard, maxWidth: 400, width: "100%", margin: 0 }}>
+      <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 400, width: "100%", margin: 0 }}>
         <p style={S.h1}>비밀번호 초기화</p>
         <p style={{ fontSize: 13, color: C.inkSoft }}><b style={{ color: C.ink }}>{worker.name}</b> ({worker.email})</p>
         <label style={S.fieldLabel}>새 임시 비밀번호</label>
@@ -431,6 +434,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const PER_PAGE = 10;
   const [uploadResult, setUploadResult] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [etcPopup, setEtcPopup] = useState(null);
   const fileRef = useRef(null);
 
   const isHolder = currentUser?.isAuthorityHolder;
@@ -568,7 +572,11 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   };
 
   const isAdmin = (w) => w.role !== "worker";
-  const needsAttention = (w) => !isAdmin(w) && (!w.device_id || w.must_change_password);
+  // 기기 미등록·비번 미변경, 또는 필수 정보(전화/근무지/법인/본부/팀/직무) 누락자
+  const needsAttention = (w) => !isAdmin(w) && (
+    !w.device_id || w.must_change_password ||
+    !w.phone || !w.workplace_id || !w.corp || !w.division || !w.team || !w.job_title
+  );
 
   // 카테고리 필터
   const filtered = workers.filter((w) => {
@@ -597,6 +605,17 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const pageSafe = Math.min(page, totalPages);
   const pageRows = sorted.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
 
+  // 법인별 인원 집계 (마스터 순서 → 기타는 맨 뒤)
+  const corpBreakdown = (() => {
+    const byCorp = {};
+    workers.filter((w) => !isAdmin(w)).forEach((w) => { const k = (w.corp || "").trim() || "기타"; (byCorp[k] ||= []).push(w); });
+    const out = [];
+    corporations.forEach((name) => { if (byCorp[name]) out.push({ key: name, list: byCorp[name] }); });
+    Object.keys(byCorp).forEach((k) => { if (k !== "기타" && !corporations.includes(k)) out.push({ key: k, list: byCorp[k] }); });
+    if (byCorp["기타"]) out.push({ key: "기타", list: byCorp["기타"] });
+    return out;
+  })();
+
   const resetDevice = async (w) => {
     if (!confirm(`${w.name}의 등록 기기를 초기화하시겠습니까?\n다음 로그인 시 현재 기기가 자동 등록됩니다.`)) return;
     try { await api.resetWorkerDevice(w.id); setMsg(`${w.name} 기기 초기화 완료`); load(); }
@@ -604,7 +623,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   };
 
   const deleteWorker = async (w) => {
-    if (!confirm(`${w.name} 계정을 비활성화하시겠습니까?`)) return;
+    if (!confirm(`삭제하시면, 이전 정보를 복구할 수 없습니다.\n정말 삭제하시겠습니까?`)) return;
     try { await api.deleteWorker(w.id); setMsg(`${w.name} 비활성화 완료`); load(); }
     catch (e) { setMsg(e.message); }
   };
@@ -628,9 +647,18 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
       {msg && <div style={{ ...S.busy, marginBottom: 10 }}>{msg}</div>}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-        <p style={{ margin: 0, fontSize: isMobile ? 14 : 16, fontWeight: 800, color: C.blue }}>
-          총 사용자: {workers.filter((w) => !isAdmin(w)).length}명
-        </p>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: isMobile ? 14 : 16, fontWeight: 800, color: C.blue, whiteSpace: "nowrap" }}>
+            총 사용자: {workers.filter((w) => !isAdmin(w)).length}명
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", fontSize: isMobile ? 12 : 14, color: C.inkSoft }}>
+            {corpBreakdown.map((c) => (
+              c.key === "기타"
+                ? <button key="기타" onClick={() => setEtcPopup(c.list)} style={{ whiteSpace: "nowrap", border: "none", background: "transparent", color: C.blue, cursor: "pointer", fontSize: "inherit", padding: 0, textDecoration: "underline" }}>기타 {c.list.length}명</button>
+                : <span key={c.key} style={{ whiteSpace: "nowrap" }}>{c.key} {c.list.length}명</span>
+            ))}
+          </div>
+        </div>
         {isHR && (
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
@@ -644,9 +672,27 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         )}
       </div>
 
+      {etcPopup && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 16 }} onClick={() => setEtcPopup(null)}>
+          <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 420, width: "100%", margin: 0, maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <p style={S.h1}>법인 미지정 인원 ({etcPopup.length}명)</p>
+            <p style={{ fontSize: 13, color: C.inkSoft }}>법인 정보가 비어 있는 직원입니다.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {etcPopup.map((w) => (
+                <div key={w.id} style={{ fontSize: 13, color: C.ink, background: "#fff", borderRadius: 8, padding: "8px 10px" }}>
+                  <b>{w.name}</b>
+                  <span style={{ color: C.inkSoft, marginLeft: 8 }}>{[w.division, w.team].filter(Boolean).join(" · ") || "본부·팀 미지정"}</span>
+                </div>
+              ))}
+            </div>
+            <button style={{ ...S.primary, marginTop: 10 }} onClick={() => setEtcPopup(null)}>확인</button>
+          </div>
+        </div>
+      )}
+
       {uploadResult && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 16 }} onClick={() => setUploadResult(null)}>
-          <div style={{ ...S.loginCard, maxWidth: 460, width: "100%", margin: 0, maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 460, width: "100%", margin: 0, maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
             <p style={S.h1}>직원 일괄 등록 결과</p>
             <p style={{ fontSize: 14, color: C.ink }}>성공 <b style={{ color: C.green }}>{uploadResult.success}</b>건 · 실패 <b style={{ color: C.seal }}>{uploadResult.failed.length}</b>건</p>
             {uploadResult.failed.length > 0 && (
@@ -683,30 +729,28 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                   {w.name}
                   {isThisHolder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>권한자</span>}
                   {isAdminRole ? (
-                    <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>{w.role === "hr" ? "인사팀" : "관리자"}</span>
+                    <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>관리자</span>
                   ) : (
                     <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 15 }}>
                       {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{[w.email, w.phone].filter(Boolean).join(" / ")}</div>
+                {w.email && <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{w.email}</div>}
+                {!isAdminRole && <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{w.phone}</div>}
                 {!isAdminRole && (
                   <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>
                     근무지: {w.workplace_name || "미지정"} / {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
-                    {w.note_exempt && " (근무노트제외)"}
+                  </div>
+                )}
+                {!isAdminRole && (w.note_exempt || w.irregular_worker) && (
+                  <div style={{ fontSize: isMobile ? 11 : 14, color: C.amber, lineHeight: 1.6 }}>
+                    {[w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(" · ")}
                   </div>
                 )}
                 <div style={{ fontSize: isMobile ? 11 : 14, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600, lineHeight: 1.6 }}>
                   기기: {isAdminRole ? "다중 기기 관리" : (w.device_id ? "등록됨" : "미등록")}
                 </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, marginRight: 6 }}>
-                {w.must_change_password && <span style={{ ...S.badge, color: C.amber, background: C.amberSoft, fontSize: 10 }}>비번미변경</span>}
-                <span style={{ ...S.badge, color: w.is_locked ? C.seal : C.green, background: w.is_locked ? C.sealSoft : C.greenSoft }}>
-                  {w.is_locked ? "잠김" : "정상"}
-                </span>
               </div>
 
               {(() => {
@@ -715,13 +759,21 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                 const dev = { color: "#2f6d8f", borderColor: C.blueSoft }; // 기기변경 푸른색
                 const pw  = { color: "#be8b29", borderColor: C.amberSoft }; // 비번초기화
                 const base = isMobile ? S.miniBtn : { ...S.miniBtn, fontSize: 13, padding: "7px 12px" };
+                const status = (
+                  <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 2 }}>
+                    {w.must_change_password && <span style={{ ...S.badge, color: C.amber, background: C.amberSoft, fontSize: 10 }}>비번미변경</span>}
+                    <span style={{ ...S.badge, color: w.is_locked ? C.seal : C.green, background: w.is_locked ? C.sealSoft : C.greenSoft }}>{w.is_locked ? "잠김" : "정상"}</span>
+                  </div>
+                );
                 if (isAdminRole) return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4, alignItems: "flex-end" }}>
+                    {status}
                     <button style={{ ...base, ...mod }} onClick={() => openAdminProfile(w)}>수정</button>
                   </div>
                 );
                 return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4, alignItems: "flex-end" }}>
+                    {status}
                     <div style={{ display: "flex", gap: 4 }}>
                       <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
                       {isHR && <button style={{ ...base, ...pw }} onClick={() => setResetTarget(w)}>비번초기화</button>}

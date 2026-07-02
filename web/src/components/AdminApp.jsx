@@ -34,6 +34,7 @@ export default function AdminApp({ user }) {
   const [divisions, setDivisions] = useState([]);  // [{name, teams:[{name}]}]
   const [positions, setPositions] = useState([]);  // [name]
   const [filters, setFilters] = useState({ corp: "", division: "", team: "", position: "" });
+  const [directActive, setDirectActive] = useState(false); // 전체현황 인원 직접입력 시 필터 비활성화
 
   useEffect(() => {
     api.getCorporations().then((d) => setCorps((d.corporations || []).map((c) => c.name))).catch(() => {});
@@ -77,22 +78,24 @@ export default function AdminApp({ user }) {
       {showFilter && (
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {(() => {
-            const sel = { ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14, borderColor: C.lineAdmin };
+            const disabled = tab === "overall" && directActive;
+            const sel = { ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14,
+              borderColor: disabled ? "#3a3a3a" : C.lineAdmin, background: disabled ? "#eeeeee" : "#fff", color: disabled ? "#787878" : C.ink };
             return (
               <>
-                <select style={sel} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
+                <select style={sel} disabled={disabled} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
                   <option value="">전체 법인</option>
                   {corps.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select style={sel} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
+                <select style={sel} disabled={disabled} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
                   <option value="">전체 본부</option>
                   {divisions.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
                 </select>
-                <select style={sel} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
+                <select style={sel} disabled={disabled} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
                   <option value="">전체 팀</option>
                   {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
-                <select style={sel} value={filters.position} onChange={(e) => setF("position", e.target.value)}>
+                <select style={sel} disabled={disabled} value={filters.position} onChange={(e) => setF("position", e.target.value)}>
                   <option value="">전체 직위</option>
                   {positions.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
@@ -102,7 +105,7 @@ export default function AdminApp({ user }) {
         </div>
       )}
 
-      {tab === "overall"    && <AdminOverall    filters={filters} />}
+      {tab === "overall"    && <AdminOverall    filters={filters} onDirectActive={setDirectActive} />}
       {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={user} onRefreshFilters={() => {}} />}
       {tab === "individual" && <AdminIndividual filters={filters} isHR={isHR} />}
       {tab === "settings"   && isHR && <AdminSettings />}
