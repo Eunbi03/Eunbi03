@@ -104,6 +104,8 @@ export const saveCompanySettings = (data) => request("/admin/company-settings", 
 export const getHolidays = () => request("/admin/holidays");
 export const createHoliday = (date, name) => request("/admin/holidays", { method: "POST", body: { date, name } });
 export const deleteHoliday = (id) => request(`/admin/holidays/${id}`, { method: "DELETE" });
+export const bulkHolidays = (rows) => request("/admin/holidays/bulk", { method: "POST", body: { rows } });
+export const bulkWorkers = (rows) => request("/admin/workers/bulk", { method: "POST", body: { rows } });
 
 /* 관리자 — 조직 마스터 (법인/본부·팀/직책/근무시간) */
 export const getCorporations = () => request("/admin/corporations");

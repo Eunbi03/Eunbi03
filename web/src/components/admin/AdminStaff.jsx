@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
+import { readWorkerSheet } from "../../utils/excelUpload.js";
 
 function useIsMobile(breakpoint = 640) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
@@ -428,8 +429,25 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [pendingCount, setPendingCount] = useState(0);
   const [page, setPage] = useState(1);
   const PER_PAGE = 10;
+  const [uploadResult, setUploadResult] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
 
   const isHolder = currentUser?.isAuthorityHolder;
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]; if (e.target) e.target.value = "";
+    if (!file) return;
+    setUploading(true); setMsg("");
+    try {
+      const rows = await readWorkerSheet(file);
+      if (!rows.length) { setMsg("'직원 관리' 시트에 데이터가 없습니다."); return; }
+      const r = await api.bulkWorkers(rows);
+      setUploadResult(r);
+      load();
+    } catch (err) { setMsg("업로드 실패: " + err.message); }
+    finally { setUploading(false); }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -614,11 +632,37 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
           총 사용자: {workers.filter((w) => !isAdmin(w)).length}명
         </p>
         {isHR && (
-          <button style={{ ...S.primary, padding: "8px 16px", fontSize: 13, background: C.blue }} onClick={() => setEditTarget({})}>
-            + 직원 추가
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
+            <button style={{ ...S.miniBtn, padding: "8px 14px", fontSize: 13, color: C.blue, borderColor: C.blueSoft }} disabled={uploading} onClick={() => fileRef.current?.click()}>
+              {uploading ? "업로드 중…" : "엑셀 업로드"}
+            </button>
+            <button style={{ ...S.primary, padding: "8px 16px", fontSize: 13, background: C.blue }} onClick={() => setEditTarget({})}>
+              + 직원 추가
+            </button>
+          </div>
         )}
       </div>
+
+      {uploadResult && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 16 }} onClick={() => setUploadResult(null)}>
+          <div style={{ ...S.loginCard, maxWidth: 460, width: "100%", margin: 0, maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <p style={S.h1}>직원 일괄 등록 결과</p>
+            <p style={{ fontSize: 14, color: C.ink }}>성공 <b style={{ color: C.green }}>{uploadResult.success}</b>건 · 실패 <b style={{ color: C.seal }}>{uploadResult.failed.length}</b>건</p>
+            {uploadResult.failed.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                {uploadResult.failed.map((f, i) => (
+                  <div key={i} style={{ fontSize: 12, color: C.ink, background: C.sealSoft, borderRadius: 8, padding: "8px 10px" }}>
+                    <b>{[f.corp, f.division, f.team, f.jobTitle, f.name].filter(Boolean).join(" · ")}</b>
+                    <div style={{ color: C.seal }}>사유: {f.reason}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button style={{ ...S.primary, marginTop: 10 }} onClick={() => setUploadResult(null)}>확인</button>
+          </div>
+        </div>
+      )}
 
       {showGuidance && (
         <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>본부를 설정해 주세요.</div>

@@ -830,6 +830,78 @@ router.delete('/job-schedules/:id', requireHR, async (req: Request, res: Respons
   res.json({ success: true });
 });
 
+// ── 일괄 등록: 공휴일 ─────────────────────────────────────────────────────────
+router.post('/holidays/bulk', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
+  let success = 0; const failed: any[] = [];
+  for (const r of rows) {
+    const date = (r.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { failed.push({ date: r.date, name: r.name, reason: '날짜 형식 오류(YYYY-MM-DD)' }); continue; }
+    try {
+      await pool.query('INSERT INTO public_holidays (date, name) VALUES ($1,$2) ON CONFLICT (date) DO UPDATE SET name=EXCLUDED.name', [date, (r.name || '').trim()]);
+      success++;
+    } catch (e: any) { failed.push({ date: r.date, name: r.name, reason: e.message }); }
+  }
+  const all = await pool.query('SELECT date::text AS date FROM public_holidays');
+  refreshHolidayCache(all.rows.map((x: any) => x.date));
+  res.json({ success, failed });
+});
+
+// ── 일괄 등록: 직원 ───────────────────────────────────────────────────────────
+router.post('/workers/bulk', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
+  // 근무지·직무 이름 → 매핑 준비
+  const { rows: wps } = await pool.query('SELECT id, name FROM workplaces');
+  const wpByName: Record<string, string> = {}; for (const w of wps) wpByName[w.name] = w.id;
+  const { rows: jss } = await pool.query(
+    `SELECT name, to_char(work_start,'HH24:MI') s, to_char(work_end,'HH24:MI') e,
+            to_char(break_start,'HH24:MI') bs, to_char(break_end,'HH24:MI') be FROM job_schedules`
+  );
+  const jsByName: Record<string, any> = {}; for (const j of jss) jsByName[j.name] = j;
+
+  let success = 0; const failed: any[] = [];
+  for (const r of rows) {
+    const name = (r.name || '').trim();
+    const phoneDigits = (r.phone || '').replace(/\D/g, '');
+    const info = { corp: r.corp, division: r.division, team: r.team, jobTitle: r.jobTitle, name };
+    if (!name || !phoneDigits) { failed.push({ ...info, reason: '이름/전화번호 누락' }); continue; }
+    const workplaceId = r.workplaceName ? wpByName[String(r.workplaceName).trim()] : null;
+    if (r.workplaceName && !workplaceId) { failed.push({ ...info, reason: `근무지 '${r.workplaceName}' 없음` }); continue; }
+    const js = r.jobTitle ? jsByName[String(r.jobTitle).trim()] : null;
+    if (r.jobTitle && !js) { failed.push({ ...info, reason: `직무 '${r.jobTitle}' 없음` }); continue; }
+    const times = js ? { s: js.s, e: js.e, bs: js.bs, be: js.be } : { s: '09:00', e: '18:00', bs: '12:00', be: '13:00' };
+    const noteExempt = String(r.noteExempt) === '1' || r.noteExempt === true;
+    const irregular = String(r.irregularWorker) === '1' || r.irregularWorker === true;
+    try {
+      const passwordHash = await bcrypt.hash(phoneDigits, 12);
+      const { rows: existing } = await pool.query(`SELECT id, is_active FROM users WHERE regexp_replace(phone,'\\D','','g')=$1`, [phoneDigits]);
+      if (existing[0] && existing[0].is_active) { failed.push({ ...info, reason: '이미 등록된 전화번호' }); continue; }
+      if (existing[0]) {
+        await pool.query(
+          `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
+             scheduled_start=$9, scheduled_end=$10, lunch_start=$11, lunch_end=$12, workplace_id=$13,
+             note_exempt=$14, irregular_worker=$15, password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker',
+             device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL WHERE id=$17`,
+          [name, r.email || null, r.position || null, r.corp || null, r.division || null, r.team || null, r.jobTitle || null, r.remark || null,
+           times.s, times.e, times.bs, times.be, workplaceId, noteExempt, irregular, passwordHash, existing[0].id]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO users (email, password_hash, name, phone, position, corp, division, team, job_title, remark,
+             scheduled_start, scheduled_end, lunch_start, lunch_end, workplace_id, note_exempt, irregular_worker)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          [r.email || null, passwordHash, name, r.phone, r.position || null, r.corp || null, r.division || null, r.team || null, r.jobTitle || null, r.remark || null,
+           times.s, times.e, times.bs, times.be, workplaceId, noteExempt, irregular]
+        );
+      }
+      success++;
+    } catch (e: any) {
+      failed.push({ ...info, reason: e.code === '23505' ? '중복(전화번호/이메일)' : e.message });
+    }
+  }
+  res.json({ success, failed });
+});
+
 // ── 인원 직접 검색 (동명이인 구분용) ─────────────────────────────────────────
 router.get('/worker-search', async (req: Request, res: Response): Promise<void> => {
   const name = ((req.query.name as string) || '').trim();

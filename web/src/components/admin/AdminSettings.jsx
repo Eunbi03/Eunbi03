@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
+import { readHolidaySheet } from "../../utils/excelUpload.js";
 
 // 지정 색상 팔레트
 const COL = {
@@ -377,6 +378,20 @@ function HolidaySection() {
     catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
   };
   const del = async (id) => { if (!window.confirm("이 공휴일을 삭제하시겠습니까?")) return; setBusy(true); try { await api.deleteHoliday(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+  const fileRef = useRef(null);
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]; if (e.target) e.target.value = "";
+    if (!file) return;
+    setBusy(true); setMsg(null);
+    try {
+      const rows = await readHolidaySheet(file);
+      if (!rows.length) { setMsg({ text: "'공휴일 관리' 시트에 데이터가 없습니다.", ok: false }); return; }
+      const r = await api.bulkHolidays(rows);
+      setMsg({ text: `성공 ${r.success}건 · 실패 ${r.failed.length}건${r.failed.length ? " (" + r.failed.map((f) => f.date).join(", ") + ")" : ""}`, ok: r.failed.length === 0 });
+      load();
+    } catch (err) { setMsg({ text: "업로드 실패: " + err.message, ok: false }); }
+    finally { setBusy(false); }
+  };
   const fmt = (d) => { const [y, m, day] = d.split("-"); return `${y.slice(2)}-${m}-${day}`; };
   const arrow = (dir) => (
     <button onClick={() => setYear((y) => y + dir)} aria-label={dir > 0 ? "다음 해" : "지난 해"}
@@ -387,7 +402,14 @@ function HolidaySection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>공휴일 관리</p>
-        {!adding && <AddButton onClick={() => { setForm({ date: "", name: "" }); setAdding(true); setMsg(null); }}>+ 공휴일 추가</AddButton>}
+        {!adding && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy}
+              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer" }}>엑셀 업로드</button>
+            <AddButton onClick={() => { setForm({ date: "", name: "" }); setAdding(true); setMsg(null); }}>+ 공휴일 추가</AddButton>
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         {arrow(-1)}
