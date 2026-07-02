@@ -39,7 +39,11 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
   if (!key || !address) return null;
   const url = `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(address)}`;
   const resp = await fetch(url, { headers: { Authorization: `KakaoAK ${key}` } });
-  if (!resp.ok) throw new Error(`카카오 API 오류 (${resp.status})`);
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    console.error('[카카오 지오코딩 오류]', resp.status, body);
+    throw new Error(`카카오 API 오류 (${resp.status})${body ? ': ' + body.slice(0, 200) : ''}`);
+  }
   const data: any = await resp.json();
   const doc = data.documents?.[0];
   if (!doc) return null;
