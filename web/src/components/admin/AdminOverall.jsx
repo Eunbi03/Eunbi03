@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
+import { downloadAttendanceRegister } from "../../utils/excelReport.js";
 
 const COL = {
   black: "#3a3a3a", gray: "#787878", lgray: "#eeeeee",
@@ -78,6 +79,20 @@ export default function AdminOverall({ filters }) {
   const addSelected = (w) => { setSelected((s) => (s.some((x) => x.id === w.id) ? s : [...s, w])); setPopup(null); setNameInput(""); };
   const removeSelected = (id) => setSelected((s) => s.filter((x) => x.id !== id));
 
+  const [downloading, setDownloading] = useState(false);
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const params = { year: ym.year, month: ym.month, full: 1 };
+      if (selected.length) params.userIds = selected.map((s) => s.id).join(",");
+      else { if (filters.corp) params.corp = filters.corp; if (filters.division) params.division = filters.division; if (filters.team) params.team = filters.team; if (filters.position) params.position = filters.position; }
+      const d = await api.getMonthlyOverview(params);
+      if (!d.workers.length) { alert("다운로드할 직원이 없습니다."); return; }
+      await downloadAttendanceRegister(d);
+    } catch (e) { alert("다운로드 실패: " + e.message); }
+    finally { setDownloading(false); }
+  };
+
   const dim = data?.daysInMonth || new Date(ym.year, ym.month, 0).getDate();
   const periodText = `${ym.year}. ${pad(ym.month)}. 01. ~ ${pad(ym.month)}. ${pad(dim)}.`;
 
@@ -115,8 +130,8 @@ export default function AdminOverall({ filters }) {
           )}
         </div>
 
-        <button onClick={() => alert("엑셀 다운로드는 곧 제공됩니다.")}
-          style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer" }}>다운로드</button>
+        <button onClick={handleDownload} disabled={downloading}
+          style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer", opacity: downloading ? 0.6 : 1 }}>{downloading ? "생성 중…" : "다운로드"}</button>
       </div>
 
       {/* 동명이인 팝업 */}
