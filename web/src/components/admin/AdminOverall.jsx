@@ -8,6 +8,8 @@ const COL = {
   blue: "#2f6d8f", red: "#cb6156", lred: "#fff0f0", white: "#ffffff",
 };
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+const HEADER_BG = "#d8e8f0"; // 가로/세로 헤더 배경
+const ROW_H = 44;            // 헤더와 데이터 행 높이 동일
 
 function useIsMobile(breakpoint = 640) {
   const [m, setM] = useState(() => window.innerWidth < breakpoint);
@@ -17,11 +19,16 @@ function useIsMobile(breakpoint = 640) {
 
 const pad = (n) => String(n).padStart(2, "0");
 
-function Cell({ cell, isMobile }) {
+function Cell({ cell, isMobile, over, height }) {
   const fs = isMobile ? 10 : 12;
-  const base = { padding: "3px 2px", textAlign: "center", fontSize: fs, lineHeight: 1.25, borderRight: `1px solid ${COL.lgray}`, verticalAlign: "middle", minWidth: isMobile ? 34 : 42 };
+  const base = {
+    padding: "3px 2px", textAlign: "center", fontSize: fs, lineHeight: 1.25,
+    borderRight: `1px solid ${COL.lgray}`, verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
+    ...(over ? { borderTop: `2px solid ${COL.white}`, borderBottom: `2px solid ${COL.white}` } : {}), // 관리대상 여백
+  };
   if (!cell || cell.off) return <td style={{ ...base, color: COL.gray }}>-</td>;
-  if (cell.leave) return <td style={{ ...base, color: COL.blue, fontWeight: 700 }}>{cell.leave}</td>;
+  // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반
+  if (cell.leave) return <td style={{ ...base, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>{cell.leave}</td>;
   const warn = <span style={{ color: COL.red, fontWeight: 800 }}>❗</span>;
   return (
     <td style={{ ...base, boxShadow: cell.noteMiss ? `inset 0 -3px 0 ${COL.red}` : undefined }}>
@@ -100,21 +107,23 @@ export default function AdminOverall({ filters }) {
     <div>
       {/* 기간 + 인원 직접 입력 + 다운로드 */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
-        <span style={{ fontWeight: 800, color: C.ink, fontSize: isMobile ? 14 : 16 }}>조회 기간</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, border: `2px solid ${COL.blue}`, borderRadius: 10, padding: "6px 10px", background: "#fff", position: "relative" }}>
-          <button onClick={() => (monthRef.current?.showPicker ? monthRef.current.showPicker() : monthRef.current?.focus())} title="연월 선택" style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 16 }}>📅</button>
-          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 700, color: C.ink, fontSize: isMobile ? 13 : 15 }}>{periodText}</span>
+        <span style={{ fontWeight: 400, color: COL.black, fontSize: isMobile ? 14 : 16 }}>조회 기간</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid #bb8414`, borderRadius: 8, padding: "0 10px", height: 40, boxSizing: "border-box", background: "#fff", position: "relative" }}>
+          <button onClick={() => (monthRef.current?.showPicker ? monthRef.current.showPicker() : monthRef.current?.focus())} title="연월 선택" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={COL.black} strokeWidth="2" strokeLinecap="round"><rect x="3" y="4.5" width="18" height="17" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>
+          </button>
+          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 400, color: COL.black, fontSize: isMobile ? 13 : 15 }}>{periodText}</span>
           <input ref={monthRef} type="month" value={`${ym.year}-${pad(ym.month)}`}
             onChange={(e) => { const [y, m] = e.target.value.split("-").map(Number); if (y && m) setYm({ year: y, month: m }); }}
             style={{ width: 1, height: 1, opacity: 0, position: "absolute", left: 8, bottom: 0, pointerEvents: "none" }} />
-          <div style={{ display: "flex", flexDirection: "column", marginLeft: 4 }}>
-            <button onClick={() => shiftMonth(1)} aria-label="다음 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.blue, lineHeight: 0.8, fontSize: 12 }}>▲</button>
-            <button onClick={() => shiftMonth(-1)} aria-label="지난 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.blue, lineHeight: 0.8, fontSize: 12 }}>▼</button>
+          <div style={{ display: "flex", flexDirection: "column", marginLeft: 2 }}>
+            <button onClick={() => shiftMonth(1)} aria-label="다음 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.black, lineHeight: 0.8, fontSize: 11 }}>▲</button>
+            <button onClick={() => shiftMonth(-1)} aria-label="지난 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.black, lineHeight: 0.8, fontSize: 11 }}>▼</button>
           </div>
         </div>
 
         <div onClick={() => setDirectOn(true)}
-          style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", border: `2px solid ${directOn ? COL.blue : COL.black}`, borderRadius: 10, padding: "6px 10px", background: directOn ? "#fff" : COL.lgray, flex: "1 1 220px", cursor: "text" }}>
+          style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", border: `1px solid ${directOn ? COL.blue : COL.black}`, borderRadius: 8, padding: "0 10px", minHeight: 40, boxSizing: "border-box", background: directOn ? "#fff" : COL.lgray, flex: "1 1 220px", cursor: "text" }}>
           {selected.map((s) => (
             <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: COL.blue, color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 12 }}>
               {s.name}<button onClick={(e) => { e.stopPropagation(); removeSelected(s.id); }} style={{ border: "none", background: "transparent", color: "#fff", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
@@ -162,40 +171,41 @@ export default function AdminOverall({ filters }) {
             <div style={{ overflowX: "auto", border: `1px solid ${COL.lgray}`, borderRadius: 8 }}>
               <table style={{ borderCollapse: "collapse", width: "100%", background: "#fff" }}>
                 <thead>
-                  <tr>
-                    <th style={{ position: "sticky", left: 0, zIndex: 2, background: COL.lgray, padding: "6px 8px", fontSize: isMobile ? 11 : 13, color: C.ink, borderRight: `1px solid ${COL.gray}`, minWidth: isMobile ? 54 : 70 }}>구분</th>
+                  <tr style={{ height: ROW_H }}>
+                    <th style={{ position: "sticky", left: 0, zIndex: 2, background: HEADER_BG, padding: "6px 8px", fontSize: isMobile ? 11 : 13, color: COL.black, borderRight: `1px solid ${COL.gray}`, minWidth: isMobile ? 54 : 70 }}>구분</th>
                     {Array.from({ length: dim }, (_, i) => {
                       const d = i + 1; const dow = data.dow[i];
                       const isRed = dow === 0 || dow === 6 || !!data.holidays[`${ym.year}-${pad(ym.month)}-${pad(d)}`];
                       return (
-                        <th key={d} style={{ padding: "4px 2px", fontSize: isMobile ? 10 : 12, borderRight: `1px solid ${COL.lgray}`, color: isRed ? COL.red : C.ink, background: "#fafbfc" }}>
+                        <th key={d} style={{ padding: "4px 2px", fontSize: isMobile ? 10 : 12, borderRight: `1px solid ${COL.lgray}`, color: isRed ? COL.red : COL.black, background: HEADER_BG }}>
                           <div>{d}</div><div style={{ fontWeight: 400 }}>{DOW[dow]}</div>
                         </th>
                       );
                     })}
-                    <th colSpan={2} style={{ padding: "4px 8px", fontSize: isMobile ? 11 : 13, color: C.ink, background: COL.lgray, borderLeft: `1px solid ${COL.gray}` }}>합계</th>
+                    <th colSpan={2} style={{ padding: "4px 8px", fontSize: isMobile ? 11 : 13, color: COL.black, background: HEADER_BG, borderLeft: `1px solid ${COL.gray}` }}>합계</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.workers.map((w) => (
-                    <tr key={w.id} style={{ background: w.over ? COL.lred : "#fff", borderTop: `1px solid ${COL.lgray}` }}>
-                      <td style={{ position: "sticky", left: 0, zIndex: 1, background: w.over ? COL.lred : "#fff", padding: "4px 8px", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: C.ink, borderRight: `1px solid ${COL.gray}`, whiteSpace: "nowrap" }}>{w.name}</td>
-                      {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} />)}
-                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: w.over ? COL.red : C.ink, borderLeft: `1px solid ${COL.gray}`, fontVariantNumeric: "tabular-nums" }}>
-                        {w.lateMissing}/{w.workedDays}
+                    <tr key={w.id} style={{ height: ROW_H, background: w.over ? COL.lred : "#fff", borderTop: `1px solid ${COL.lgray}` }}>
+                      <td style={{ position: "sticky", left: 0, zIndex: 1, background: HEADER_BG, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${COL.gray}`, whiteSpace: "nowrap" }}>{w.name}</td>
+                      {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} over={w.over} height={ROW_H} />)}
+                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderLeft: `1px solid ${COL.gray}`, fontVariantNumeric: "tabular-nums", ...(w.over ? { borderTop: `2px solid ${COL.white}`, borderBottom: `2px solid ${COL.white}` } : {}) }}>
+                        <span style={{ color: w.over ? COL.red : COL.black }}>{w.lateMissing}</span>
+                        <span style={{ color: COL.black }}>/{w.workedDays}</span>
                       </td>
-                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: w.over ? COL.red : C.ink, fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: w.over ? COL.red : COL.black, fontVariantNumeric: "tabular-nums", ...(w.over ? { borderTop: `2px solid ${COL.white}`, borderBottom: `2px solid ${COL.white}`, borderRight: `2px solid ${COL.white}` } : {}) }}>
                         {w.noteMissing || "-"}
                       </td>
                     </tr>
                   ))}
                   {/* 세로 합계: 해당일 출근 인원 */}
-                  <tr style={{ background: COL.lgray, borderTop: `2px solid ${COL.gray}` }}>
-                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: COL.lgray, padding: "4px 8px", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: C.ink, borderRight: `1px solid ${COL.gray}` }}>합계</td>
+                  <tr style={{ height: ROW_H, background: COL.lgray, borderTop: `1px solid ${COL.lgray}` }}>
+                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: COL.lgray, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderRight: `1px solid ${COL.gray}` }}>합계</td>
                     {data.dayTotals.map((n, i) => (
-                      <td key={i} style={{ padding: "4px 2px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: C.ink, borderRight: `1px solid ${COL.lgray}`, fontVariantNumeric: "tabular-nums" }}>{n || "-"}</td>
+                      <td key={i} style={{ padding: "4px 2px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${COL.lgray}`, fontVariantNumeric: "tabular-nums" }}>{n || "-"}</td>
                     ))}
-                    <td colSpan={2} style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: C.ink, borderLeft: `1px solid ${COL.gray}`, fontVariantNumeric: "tabular-nums" }}>
+                    <td colSpan={2} style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderLeft: `1px solid ${COL.gray}`, fontVariantNumeric: "tabular-nums" }}>
                       {data.dayTotals.reduce((a, b) => a + b, 0)}
                     </td>
                   </tr>

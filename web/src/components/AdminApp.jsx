@@ -67,7 +67,7 @@ export default function AdminApp({ user }) {
         {TABS.filter((t) => t.key !== "settings" || isHR).map((t) => (
           <button key={t.key}
             style={{ flexShrink: 0, border: "none", borderRadius: 8, padding: isMobile ? "7px 16px" : "8px 20px", fontSize: isMobile ? 13 : 15, fontWeight: tab === t.key ? 800 : 400,
-              background: tab === t.key ? C.ink : "transparent", color: tab === t.key ? "#fff" : C.inkSoft, cursor: "pointer" }}
+              background: tab === t.key ? "#2f6d8f" : "transparent", color: tab === t.key ? "#fff" : C.inkSoft, cursor: "pointer" }}
             onClick={() => setTab(t.key)}
           >{t.label}</button>
         ))}

@@ -4,7 +4,7 @@ import * as api from "../api/client.js";
 const ROLE_CONFIG = {
   worker: { label: "직원", bg: C.ink },
   admin:  { label: "관리자", bg: "#0e6ca5" },
-  hr:     { label: "인사팀", bg: "#0e6ca5" },
+  hr:     { label: "인적자원팀", bg: "#0e6ca5" },
 };
 
 export default function Header({ user, onLogout }) {
@@ -17,13 +17,13 @@ export default function Header({ user, onLogout }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontWeight: 800, fontSize: 15, letterSpacing: -0.5, color: "#fff" }}>근태 관리</span>
           {user?.role !== "worker" && (
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "rgba(255,255,255,0.2)", color: "#fff", letterSpacing: 0.5 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, padding: "2px 9px", borderRadius: 20, background: "rgba(255,255,255,0.2)", color: "#fff", letterSpacing: 0.5 }}>
               {config.label}
             </span>
           )}
         </div>
         {user && (
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {user.name}
           </div>
         )}

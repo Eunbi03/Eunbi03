@@ -1069,7 +1069,7 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
       const workday = w.irregular_worker ? present : ((!isWeekend && !isHol) || present);
 
       if (!workday) { days.push({ off: true }); continue; }   // 근무일 아님 → '-'
-      if (present && hasIn) dayTotals[d]++;
+      if (present) dayTotals[d]++; // 실제 출근 또는 관리자 출근인정 모두 포함
 
       const late = (r?.status === '지각' || r?.status === '지각조퇴') && !leaveCountsAsCheckIn(lt);
       const hasOut = hasOutRec || leaveCountsAsCheckOut(lt);
