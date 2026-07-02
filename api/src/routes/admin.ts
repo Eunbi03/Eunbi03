@@ -33,28 +33,70 @@ async function generateTodaySlots(
 
 // ── 근무지(Workplaces) CRUD ─────────────────────────────────────
 
+// 카카오 로컬 API: 주소 → 좌표
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number; road: string; zone: string } | null> {
+  const key = process.env.KAKAO_REST_KEY;
+  if (!key || !address) return null;
+  const url = `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(address)}`;
+  const resp = await fetch(url, { headers: { Authorization: `KakaoAK ${key}` } });
+  if (!resp.ok) throw new Error(`카카오 API 오류 (${resp.status})`);
+  const data: any = await resp.json();
+  const doc = data.documents?.[0];
+  if (!doc) return null;
+  return {
+    lat: parseFloat(doc.y), lng: parseFloat(doc.x),
+    road: doc.road_address?.address_name || doc.address_name || address,
+    zone: doc.road_address?.zone_no || '',
+  };
+}
+
+router.get('/geocode', async (req: Request, res: Response): Promise<void> => {
+  const address = (req.query.address as string) || '';
+  if (!address) { res.status(400).json({ error: '주소가 필요합니다.' }); return; }
+  if (!process.env.KAKAO_REST_KEY) { res.status(500).json({ error: '카카오 API 키가 설정되지 않았습니다.' }); return; }
+  try {
+    const g = await geocodeAddress(address);
+    if (!g) { res.status(404).json({ error: '주소를 찾을 수 없습니다.' }); return; }
+    res.json(g);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/workplaces', async (_req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    'SELECT id, name, lat, lng, radius_m, is_active, created_at FROM workplaces WHERE is_active=TRUE ORDER BY name'
+    'SELECT id, name, lat, lng, radius_m, address, postal_code, detail_address, is_active, created_at FROM workplaces WHERE is_active=TRUE ORDER BY name'
   );
   res.json({ workplaces: rows });
 });
 
-router.post('/workplaces', requireHR, async (req: Request, res: Response): Promise<void> => {
-  const { name, lat, lng, radiusM } = req.body;
-  if (!name || lat == null || lng == null) { res.status(400).json({ error: 'name, lat, lng는 필수입니다.' }); return; }
+// 근무지명/주소 중복 검사 (활성 근무지 대상). excludeId는 수정 시 자기 자신 제외.
+async function workplaceDupCheck(name: string, address: string, excludeId?: string): Promise<{ name: boolean; address: boolean }> {
   const { rows } = await pool.query(
-    'INSERT INTO workplaces (name, lat, lng, radius_m) VALUES ($1,$2,$3,$4) RETURNING *',
-    [name, lat, lng, radiusM || 200]
+    `SELECT name, address FROM workplaces WHERE is_active=TRUE ${excludeId ? 'AND id<>$3' : ''}
+       AND (name=$1 OR (address IS NOT NULL AND address=$2))`,
+    excludeId ? [name, address || '', excludeId] : [name, address || '']
+  );
+  return { name: rows.some((r: any) => r.name === name), address: !!address && rows.some((r: any) => r.address === address) };
+}
+
+router.post('/workplaces', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { name, lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
+  if (!name || lat == null || lng == null) { res.status(400).json({ error: 'name, lat, lng는 필수입니다.' }); return; }
+  const dup = await workplaceDupCheck(name, address);
+  if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
+  const { rows } = await pool.query(
+    'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+    [name, lat, lng, radiusM || 300, address || null, postalCode || null, detailAddress || null]
   );
   res.status(201).json({ workplace: rows[0] });
 });
 
 router.put('/workplaces/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
-  const { name, lat, lng, radiusM } = req.body;
+  const { name, lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
+  const dup = await workplaceDupCheck(name, address, req.params.id);
+  if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
   const { rows } = await pool.query(
-    'UPDATE workplaces SET name=$1, lat=$2, lng=$3, radius_m=$4 WHERE id=$5 RETURNING *',
-    [name, lat, lng, radiusM || 200, req.params.id]
+    'UPDATE workplaces SET name=$1, lat=$2, lng=$3, radius_m=$4, address=$5, postal_code=$6, detail_address=$7 WHERE id=$8 RETURNING *',
+    [name, lat, lng, radiusM || 300, address || null, postalCode || null, detailAddress || null, req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '근무지를 찾을 수 없습니다.' }); return; }
   res.json({ workplace: rows[0] });
@@ -63,6 +105,33 @@ router.put('/workplaces/:id', requireHR, async (req: Request, res: Response): Pr
 router.delete('/workplaces/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
   await pool.query('UPDATE workplaces SET is_active=FALSE WHERE id=$1', [req.params.id]);
   res.json({ success: true });
+});
+
+// 근무지 일괄 등록 (엑셀): 주소 지오코딩 + 중복검사
+router.post('/workplaces/bulk', requireHR, async (req: Request, res: Response): Promise<void> => {
+  if (!process.env.KAKAO_REST_KEY) { res.status(500).json({ error: '카카오 API 키가 설정되지 않았습니다.' }); return; }
+  const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
+  let success = 0; const failed: any[] = [];
+  for (const r of rows) {
+    const name = (r.name || '').trim();
+    const address = (r.address || '').trim();
+    if (!name) { failed.push({ name: r.name || '(이름없음)', reason: '근무지명 누락' }); continue; }
+    if (!address) { failed.push({ name, reason: '주소 누락' }); continue; }
+    try {
+      const dup = await workplaceDupCheck(name, address);
+      if (dup.name && dup.address) { failed.push({ name, reason: '근무지명·주소 모두 중복' }); continue; }
+      if (dup.name)    { failed.push({ name, reason: '근무지명 중복' }); continue; }
+      if (dup.address) { failed.push({ name, reason: '주소 중복' }); continue; }
+      const g = await geocodeAddress(address);
+      if (!g) { failed.push({ name, reason: '주소 검색 실패(좌표 없음)' }); continue; }
+      await pool.query(
+        'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [name, g.lat, g.lng, parseInt(r.radiusM, 10) || 300, g.road, g.zone || null, (r.detailAddress || '').trim() || null]
+      );
+      success++;
+    } catch (e: any) { failed.push({ name, reason: e.message }); }
+  }
+  res.json({ success, failed });
 });
 
 // ── 직원 관리 ──────────────────────────────────────────────────

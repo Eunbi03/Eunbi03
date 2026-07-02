@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
-import { readHolidaySheet } from "../../utils/excelUpload.js";
+import { readHolidaySheet, readWorkplaceSheet } from "../../utils/excelUpload.js";
 
 // 지정 색상 팔레트
 const COL = {
@@ -74,42 +74,96 @@ function CardRow({ children }) {
   return <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, padding: "14px 18px", marginBottom: 8, background: "#fff", display: "flex", alignItems: "center", gap: 10 }}>{children}</div>;
 }
 
-/* ── 근무지 관리 (좌표 입력 방식 유지 — 주소검색은 주소 API 단계에서) ───────── */
+/* ── 근무지 관리 (카카오 주소검색 → 좌표 자동) ─────────────────────────────── */
+const emptyWp = { name: "", radius_m: 300, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
 function WorkplaceSection() {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false); const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", lat: "", lng: "", radius_m: 300 });
+  const [form, setForm] = useState(emptyWp);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  const [dup, setDup] = useState({ name: false, address: false });
+  const [searching, setSearching] = useState(false);
+  const fileRef = useRef(null);
   const load = () => { setLoading(true); api.getWorkplaces().then((d) => setList(d.workplaces || [])).catch(() => {}).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
-  const reset = () => { setForm({ name: "", lat: "", lng: "", radius_m: 300 }); setAdding(false); setEditing(null); };
+  const reset = () => { setForm(emptyWp); setAdding(false); setEditing(null); setDup({ name: false, address: false }); };
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const search = async () => {
+    if (!form.address.trim()) { setMsg({ text: "주소를 입력한 뒤 검색하세요.", ok: false }); return; }
+    setSearching(true); setMsg(null);
+    try {
+      const g = await api.geocodeAddress(form.address.trim());
+      setForm((f) => ({ ...f, address: g.road || f.address, postalCode: g.zone || "", lat: g.lat, lng: g.lng }));
+      setDup((d) => ({ ...d, address: false }));
+    } catch (e) { setMsg({ text: "주소 검색 실패: " + e.message, ok: false }); }
+    finally { setSearching(false); }
+  };
+
   const save = async () => {
     if (!form.name.trim()) { setMsg({ text: "근무지명을 입력해주세요.", ok: false }); return; }
-    if (!form.lat || !form.lng) { setMsg({ text: "위도·경도를 입력해주세요.", ok: false }); return; }
-    setBusy(true); setMsg(null);
-    const body = { name: form.name.trim(), lat: parseFloat(form.lat), lng: parseFloat(form.lng), radiusM: parseInt(form.radius_m, 10) || 300 };
+    if (form.lat === "" || form.lng === "") { setMsg({ text: "주소를 검색해 좌표를 채워주세요.", ok: false }); return; }
+    setBusy(true); setMsg(null); setDup({ name: false, address: false });
+    const body = { name: form.name.trim(), lat: parseFloat(form.lat), lng: parseFloat(form.lng), radiusM: parseInt(form.radius_m, 10) || 300, address: form.address.trim(), postalCode: form.postalCode, detailAddress: form.detailAddress.trim() };
     try {
       if (editing) await api.updateWorkplace(editing, body); else await api.createWorkplace(body);
       reset(); setMsg({ text: "저장되었습니다.", ok: true }); load();
-    } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+    } catch (e) {
+      if (e.status === 409 && e.payload?.dup) { setDup(e.payload.dup); setMsg({ text: "이미 등록된 근무지명 또는 주소입니다.", ok: false }); }
+      else setMsg({ text: e.message, ok: false });
+    } finally { setBusy(false); }
   };
   const del = async (id) => { if (!window.confirm("이 근무지를 삭제하시겠습니까?")) return; setBusy(true); try { await api.deleteWorkplace(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]; if (e.target) e.target.value = "";
+    if (!file) return;
+    setBusy(true); setMsg(null);
+    try {
+      const rows = await readWorkplaceSheet(file);
+      if (!rows.length) { setMsg({ text: "'근무지 추가' 시트에 데이터가 없습니다.", ok: false }); return; }
+      const r = await api.bulkWorkplaces(rows);
+      const failText = r.failed.map((f) => `${f.name}(${f.reason})`).join(", ");
+      setMsg({ text: `성공 ${r.success}건 · 실패 ${r.failed.length}건${failText ? " — " + failText : ""}`, ok: r.failed.length === 0 });
+      load();
+    } catch (err) { setMsg({ text: "업로드 실패: " + err.message, ok: false }); }
+    finally { setBusy(false); }
+  };
+
+  const dupBorder = (on) => (on ? { borderColor: COL.red } : {});
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>근무지 관리</p>
-        {!adding && !editing && <AddButton onClick={() => { setForm({ name: "", lat: "", lng: "", radius_m: 300 }); setAdding(true); setMsg(null); }}>+ 근무지 추가</AddButton>}
+        {!adding && !editing && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy}
+              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer" }}>엑셀 업로드</button>
+            <AddButton onClick={() => { setForm(emptyWp); setAdding(true); setMsg(null); }}>+ 근무지 추가</AddButton>
+          </div>
+        )}
       </div>
       <Msg msg={msg} />
       {(adding || editing) && (
         <div style={formCardStyle}>
-          <p style={formTitleStyle}>{editing ? "근무지 수정" : "새 근무지 추가"}</p>
+          <p style={formTitleStyle}>{editing ? "근무지 수정" : "새 근무지 추가"}{(dup.name || dup.address) && <span style={{ color: COL.red, fontSize: 13, marginLeft: 8 }}>*중복*</span>}</p>
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-            <div><label style={labelStyle}>근무지명 *</label><FInput placeholder="예: 새말센터" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
-            <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={form.radius_m} onChange={(e) => setForm((f) => ({ ...f, radius_m: e.target.value }))} /></div>
-            <div><label style={labelStyle}>위도 *</label><FInput type="number" step="any" placeholder="예: 37.5665" value={form.lat} onChange={(e) => setForm((f) => ({ ...f, lat: e.target.value }))} /></div>
-            <div><label style={labelStyle}>경도 *</label><FInput type="number" step="any" placeholder="예: 126.9780" value={form.lng} onChange={(e) => setForm((f) => ({ ...f, lng: e.target.value }))} /></div>
+            <div><label style={labelStyle}>근무지명 *</label><FInput placeholder="예: 새말센터" error={dup.name} value={form.name} onChange={(e) => { setF("name", e.target.value); setDup((d) => ({ ...d, name: false })); }} /></div>
+            <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={form.radius_m} onChange={(e) => setF("radius_m", e.target.value)} /></div>
+          </div>
+          <label style={{ ...labelStyle, marginTop: 12 }}>주소 * {dup.address && <span style={{ color: COL.red }}>*중복*</span>}</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <FInput placeholder="주소 입력 후 검색" error={dup.address} value={form.address} style={{ flex: 1 }}
+              onChange={(e) => { setF("address", e.target.value); setF("lat", ""); setF("lng", ""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
+            <button onClick={search} disabled={searching} style={{ ...S.subGhost, padding: "8px 16px", whiteSpace: "nowrap" }}>{searching ? "검색 중…" : "검색"}</button>
+          </div>
+          <label style={{ ...labelStyle, marginTop: 12 }}>상세주소</label>
+          <FInput placeholder="상세주소 (동/호 등)" value={form.detailAddress} onChange={(e) => setF("detailAddress", e.target.value)} />
+          <div style={{ fontSize: 12, color: COL.gray, marginTop: 8 }}>
+            우편번호: {form.postalCode || "—"} &nbsp; 위도: {form.lat || "—"} &nbsp; 경도: {form.lng || "—"}
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <button style={{ ...S.subGhost, flex: 1 }} onClick={reset} disabled={busy}>취소</button>
@@ -121,9 +175,9 @@ function WorkplaceSection() {
         <CardRow key={wp.id}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{wp.name} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {wp.radius_m || 300}m</span></p>
-            <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>위도 {wp.lat} · 경도 {wp.lng}</p>
+            <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
           </div>
-          <EditButton onClick={() => { setForm({ name: wp.name || "", lat: wp.lat, lng: wp.lng, radius_m: wp.radius_m || 300 }); setEditing(wp.id); setAdding(false); setMsg(null); }} />
+          <EditButton onClick={() => { setForm({ name: wp.name || "", radius_m: wp.radius_m || 300, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setEditing(wp.id); setAdding(false); setMsg(null); setDup({ name: false, address: false }); }} />
           <DeleteButton onClick={() => del(wp.id)} disabled={busy} />
         </CardRow>
       ))}

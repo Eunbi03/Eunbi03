@@ -67,6 +67,8 @@ export const getWorkplaces = () => request("/admin/workplaces");
 export const createWorkplace = (data) => request("/admin/workplaces", { method: "POST", body: data });
 export const updateWorkplace = (id, data) => request(`/admin/workplaces/${id}`, { method: "PUT", body: data });
 export const deleteWorkplace = (id) => request(`/admin/workplaces/${id}`, { method: "DELETE" });
+export const geocodeAddress = (address) => request(`/admin/geocode?address=${encodeURIComponent(address)}`);
+export const bulkWorkplaces = (rows) => request("/admin/workplaces/bulk", { method: "POST", body: { rows } });
 
 /* 관리자 — 직원 */
 export const getWorkers = (params = {}) => {
