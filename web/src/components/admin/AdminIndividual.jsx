@@ -145,7 +145,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
 
   const Divider = <span style={{ width: 1, alignSelf: "stretch", background: C.lineAdmin, flexShrink: 0 }} />;
 
-  const hasOutingsOrNote = (day.outings && day.outings.length) || day.noteToday || day.noteField || day.timeChangeReason;
+  const hasOutingsOrNote = (day.outings && day.outings.length) || day.noteToday || day.timeChangeReason;
 
   // 연차 / 출퇴근 인정 전체
   if (isLeaveFull) {
@@ -180,14 +180,16 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
 
   // 시계 구간
   const clock = (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-      <TimeText time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} color={day.isLate ? COL.red : COL.black} bold />
-      <PlaceDist note={day.checkIn?.note} workplaceName={workplaceName} dist={day.checkIn?.distanceM} />
+    <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap", minWidth: 0 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <TimeText time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} color={day.isLate ? COL.red : COL.black} bold />
+        <PlaceDist note={day.checkIn?.note} workplaceName={workplaceName} dist={day.checkIn?.distanceM} />
+      </span>
       {day.checkOut ? (
-        <>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <TimeText time={day.checkOut.time} lat={day.checkOut.lat} lng={day.checkOut.lng} bold />
           <PlaceDist note={day.checkOut.note} workplaceName={workplaceName} dist={day.checkOut.distanceM} />
-        </>
+        </span>
       ) : (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: COL.red, fontWeight: 700 }}><WarnIcon /> 퇴근 누락</span>
       )}
@@ -218,14 +220,14 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
               <div style={{ paddingLeft: 52 }}>{tail}</div>
             </div>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               {DateCell}
               {Divider}
               <div style={{ flex: "2 1 260px", minWidth: 0 }}>{clock}</div>
               {Divider}
               <div style={{ flex: "1 1 200px", minWidth: 0 }}><RandomChecks checks={day.randomChecks} /></div>
               {Divider}
-              <div style={{ marginLeft: "auto" }}>{tail}</div>
+              <div style={{ flexShrink: 0 }}>{tail}</div>
             </div>
           )}
         </div>
@@ -244,9 +246,6 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
                   </span>
                 ))}
               </div>
-            )}
-            {day.noteField && (
-              <div><span style={{ color: COL.amber, fontWeight: 700, marginRight: 8 }}>외근장소</span><span style={{ color: COL.black }}>{day.noteField}</span></div>
             )}
             {day.noteToday && (
               <div><span style={{ color: COL.blue, fontWeight: 700, marginRight: 8 }}>근무노트</span><span style={{ color: COL.black }}>{day.noteToday}</span></div>
@@ -432,7 +431,7 @@ export default function AdminIndividual({ filters, isHR }) {
                           <div style={{ padding: isMobile ? "11px 14px" : "14px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }} onClick={() => toggle(w)}>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <span style={{ fontWeight: 800, fontSize: isMobile ? 15 : 18, color: COL.black }}>{w.name}</span>
-                              {over && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COL.red, background: COL.lred, border: `1px solid ${COL.red}`, padding: "2px 8px", borderRadius: 10 }}>관리대상</span>}
+                              {over && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COL.red, background: COL.lred, padding: "2px 8px", borderRadius: 10 }}>관리대상</span>}
                               <span style={{ fontSize: isMobile ? 12 : 15, color: COL.gray, marginLeft: 8 }}>
                                 {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
                               </span>

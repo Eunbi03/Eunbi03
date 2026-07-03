@@ -47,6 +47,8 @@ export default function Employee({ user }) {
 
   const isCheckedIn = !!today?.checkIn?.time;
   const isCheckedOut = !!today?.checkOut?.time;
+  // 외근 목적지 자동 채우기용 (근무노트 작성 시 목적지 목록만 미리 채움)
+  const outingDests = [...new Set((today?.outings || []).map((o) => o.destination).filter(Boolean))].join(", ");
   // 퇴근 완료 시 외출 알림 항상 숨김
   const activeOuting = isCheckedOut ? null : (today?.outings?.find((o) => !o.endTime) ?? null);
 
@@ -135,7 +137,7 @@ export default function Employee({ user }) {
   );
   if (view === "out") return (
     <div style={{ padding: "16px 16px 40px" }}>
-      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || ""} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
     </div>
   );
   if (view === "history") return (
@@ -172,6 +174,18 @@ export default function Employee({ user }) {
         {today?.checkIn?.time ? (
           <div style={{ padding: "14px 18px" }}>
             <TimeRow label="출근" time={today.checkIn.time} color={C.green} />
+            {/* 오늘 다녀온 외근 목록 (시간 · 목적지) */}
+            {today.outings?.length > 0 && (
+              <div style={{ margin: "8px 0 4px", paddingLeft: 4, display: "flex", flexDirection: "column", gap: 4 }}>
+                {today.outings.map((o) => (
+                  <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.inkSoft }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, background: C.amberSoft, padding: "1px 7px", borderRadius: 7 }}>외근</span>
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtTime(o.startTime)}{o.endTime ? `~${fmtTime(o.endTime)}` : "~"}</span>
+                    <span style={{ color: C.ink }}>{o.destination}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {today.checkOut?.time && <TimeRow label="퇴근" time={today.checkOut.time} color={C.ink} />}
             {today.workMinutes != null && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
@@ -180,10 +194,10 @@ export default function Employee({ user }) {
               </div>
             )}
 
-            {/* 외출 중 안내 */}
+            {/* 외근 중 안내 */}
             {activeOuting && (
               <div style={{ marginTop: 10, padding: "8px 12px", background: C.amberSoft, borderRadius: 8, fontSize: 12, color: C.amber, fontWeight: 700 }}>
-                외출 중{activeOuting.destination ? ` · ${activeOuting.destination}` : ""}
+                외근 중{activeOuting.destination ? ` · ${activeOuting.destination}` : ""}
               </div>
             )}
             {today.leaveType && (
@@ -214,15 +228,9 @@ export default function Employee({ user }) {
             )}
             {isCheckedIn && !isCheckedOut && (
               <div style={{ padding: "0 18px 16px", display: "flex", gap: 8 }}>
-                {activeOuting ? (
-                  <button style={{ ...S.primary, flex: 1, background: C.green, opacity: busy ? 0.6 : 1 }} onClick={endOuting} disabled={busy}>
-                    {busy ? "처리 중…" : "복귀"}
-                  </button>
-                ) : (
-                  <button style={{ ...S.primary, flex: 1, background: C.amberSoft, color: C.amber, boxShadow: "none", border: `1px solid ${C.amber}` }} onClick={() => setView("outing")}>
-                    외출
-                  </button>
-                )}
+                <button style={{ ...S.primary, flex: 1, background: C.amberSoft, color: C.amber, boxShadow: "none", border: `1px solid ${C.amber}` }} onClick={() => setView("outing")}>
+                  외근
+                </button>
                 <button style={{ ...S.primary, flex: 2 }} onClick={() => setView("out")}>퇴근</button>
               </div>
             )}
@@ -233,17 +241,14 @@ export default function Employee({ user }) {
       {/* ── 오늘 근무노트 (출근 후 언제든 작성·수정) ── */}
       {isCheckedIn && today?.leaveType !== "연차" && (
         <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden", marginBottom: 12, padding: "16px 18px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>오늘 근무노트</span>
-            {!noteEditing && (
-              <button
-                style={{ ...S.subGhost, width: "auto", padding: "5px 12px", fontSize: 12 }}
-                onClick={() => { setNoteDraft(today?.noteToday || ""); setNoteEditing(true); }}
-              >
-                {today?.noteToday ? "수정" : "작성"}
-              </button>
-            )}
-          </div>
+          {!noteEditing && (
+            <button
+              style={{ ...S.subGhost, width: "100%", fontSize: 14, fontWeight: 700, padding: "11px" }}
+              onClick={() => { setNoteDraft(today?.noteToday || outingDests); setNoteEditing(true); }}
+            >
+              근무노트 작성
+            </button>
+          )}
           {noteEditing ? (
             <>
               <textarea
@@ -259,11 +264,11 @@ export default function Employee({ user }) {
                 </button>
               </div>
             </>
-          ) : (
-            <div style={{ fontSize: 13, color: today?.noteToday ? C.ink : C.inkSoft, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
-              {today?.noteToday || "아직 작성된 근무노트가 없습니다."}
+          ) : today?.noteToday ? (
+            <div style={{ fontSize: 13, color: C.ink, lineHeight: 1.6, whiteSpace: "pre-wrap", marginTop: 10 }}>
+              {today.noteToday}
             </div>
-          )}
+          ) : null}
         </div>
       )}
 

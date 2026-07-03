@@ -54,7 +54,7 @@ export default function OutForm({ onClose, onDone, workplaceName, initialNote = 
         onChange={(e) => setWorkNoteField(e.target.value)}
       />
 
-      <label style={S.fieldLabel}>오늘 업무 내용 (선택 · 근무노트에서 나중에 작성·수정 가능)</label>
+      <label style={S.fieldLabel}>오늘 업무 내용</label>
       <textarea
         style={{ ...S.input, minHeight: 80, resize: "vertical" }}
         placeholder="오늘 진행한 업무를 입력해주세요"

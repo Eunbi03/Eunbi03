@@ -63,7 +63,7 @@ router.post('/check-in', requireAuth,
 
 // POST /api/attendance/outing/start
 router.post('/outing/start', requireAuth,
-  [body('lat').isFloat(), body('lng').isFloat(), body('destination').notEmpty(), body('reason').notEmpty()],
+  [body('lat').isFloat(), body('lng').isFloat(), body('destination').notEmpty()],
   async (req: Request, res: Response): Promise<void> => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
@@ -78,10 +78,13 @@ router.post('/outing/start', requireAuth,
     if (!attRows[0]?.check_in_time) { res.status(409).json({ error: '출근 기록이 없습니다.' }); return; }
     if (attRows[0].check_out_time) { res.status(409).json({ error: '이미 퇴근 처리되었습니다.' }); return; }
 
+    // 이동 중이던(종료되지 않은) 외근은 자동 종료 후 새 외근 시작 (장소를 옮겨다니며 연속 외근 가능)
+    await pool.query('UPDATE outing_records SET end_time=now() WHERE attendance_record_id=$1 AND end_time IS NULL', [attRows[0].id]);
+
     const { rows } = await pool.query(
       `INSERT INTO outing_records (attendance_record_id, user_id, start_time, start_lat, start_lng, destination, reason)
        VALUES ($1,$2,now(),$3,$4,$5,$6) RETURNING id, start_time`,
-      [attRows[0].id, userId, lat, lng, destination, reason]
+      [attRows[0].id, userId, lat, lng, destination, reason || null]
     );
     res.status(201).json({ success: true, outing: rows[0] });
   }
