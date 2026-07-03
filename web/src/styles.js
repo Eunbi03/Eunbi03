@@ -73,6 +73,8 @@ export const S = {
   detail: { padding: "10px 12px", margin: "-2px 0 0", border: `1px solid ${C.line}`, borderTop: "none", borderRadius: "0 0 12px 12px", background: "#FCFBF8" },
   detailEmpty: { padding: "12px", fontSize: 13, color: C.inkSoft, textAlign: "center" },
   miniBtn: { border: `1px solid ${C.line}`, background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 11, color: C.inkSoft, marginLeft: 6 },
+  // 툴바/액션 버튼 공용 크기 (전체현황 다운로드 버튼 기준: 높이·글자 크기 통일)
+  toolbarBtn: { borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1.2, boxSizing: "border-box", whiteSpace: "nowrap" },
 
   select: { flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 10, padding: "11px 12px", fontSize: 14, color: C.ink, background: "#fff" },
   totalCard: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", border: `1px solid ${C.line}`, borderRadius: 12, background: "linear-gradient(180deg,#FFFDF8,#F6F4EC)" },

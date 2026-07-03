@@ -141,7 +141,7 @@ function WorkplaceSection() {
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
             <button onClick={() => fileRef.current?.click()} disabled={busy}
-              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer" }}>엑셀 업로드</button>
+              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>엑셀 업로드</button>
             <AddButton onClick={() => { setForm(emptyWp); setAdding(true); setMsg(null); }}>+ 근무지 추가</AddButton>
           </div>
         )}
@@ -461,7 +461,7 @@ function HolidaySection() {
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
             <button onClick={() => fileRef.current?.click()} disabled={busy}
-              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer" }}>엑셀 업로드</button>
+              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>엑셀 업로드</button>
             <AddButton onClick={() => { setForm({ date: "", name: "" }); setAdding(true); setMsg(null); }}>+ 공휴일 추가</AddButton>
           </div>
         )}
