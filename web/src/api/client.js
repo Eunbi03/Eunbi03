@@ -88,6 +88,7 @@ export const getOverview = (params = {}) => { const qs = new URLSearchParams(par
 export const getIndividualReport = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/individual-report${qs ? `?${qs}` : ""}`); };
 export const getMonthlyOverview = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/monthly-overview${qs ? `?${qs}` : ""}`); };
 export const searchWorkers = (name) => request(`/admin/worker-search?name=${encodeURIComponent(name)}`);
+export const getReportScores = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/report-scores${qs ? `?${qs}` : ""}`); };
 
 /* 관리자 — 연차 */
 export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day", { method: "POST", body: data });

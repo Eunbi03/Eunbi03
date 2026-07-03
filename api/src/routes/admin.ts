@@ -468,6 +468,62 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   });
 });
 
+// GET /api/admin/report-scores?from&to — 기간 내 전 직원의 KPI 점수 일괄 계산 (관리대상 라벨/헤더 KPI 사전 표시용)
+router.get('/report-scores', async (req: Request, res: Response): Promise<void> => {
+  const { from, to } = req.query;
+  if (!from || !to) { res.status(400).json({ error: 'from, to가 필요합니다.' }); return; }
+
+  const workdays = workdaysBetween(from as string, to as string);
+  const workdaySet = new Set(workdays);
+
+  const { rows: users } = await pool.query(
+    `SELECT id FROM users WHERE role='worker' AND is_active=TRUE`
+  );
+  const ids = users.map((u: any) => u.id);
+  if (!ids.length) { res.json({ scores: {} }); return; }
+
+  const { rows: records } = await pool.query(
+    `SELECT user_id, date::text AS date, check_in_time, check_out_time, status,
+            work_note_today, daily_report, leave_type
+     FROM attendance_records WHERE user_id=ANY($1) AND date>=$2 AND date<=$3`,
+    [ids, from, to]
+  );
+
+  // user|date -> record
+  const recByUD: Record<string, any> = {};
+  const weekendWorkByUser: Record<string, Set<string>> = {};
+  for (const r of records) {
+    recByUD[`${r.user_id}|${r.date}`] = r;
+    const [dy, dm, dd] = r.date.split('-').map(Number);
+    const dow = new Date(Date.UTC(dy, dm - 1, dd, 12)).getUTCDay();
+    if ((dow === 0 || dow === 6) && !workdaySet.has(r.date)) {
+      const worked = Boolean(r.check_in_time) || r.leave_type === '연차' || leaveCountsAsCheckIn(r.leave_type);
+      if (worked) (weekendWorkByUser[r.user_id] ||= new Set()).add(r.date);
+    }
+  }
+
+  const scores: Record<string, any> = {};
+  for (const uid of ids) {
+    let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
+    const days = [...workdays, ...(weekendWorkByUser[uid] || [])];
+    for (const day of days) {
+      const isWorkday = workdaySet.has(day);
+      const r = recByUD[`${uid}|${day}`];
+      const k = classifyDay(r);
+      if (k.isLeave) continue;
+      if (!k.present) { if (isWorkday) missingIn++; continue; }
+      if (isWorkday || Boolean(r?.check_in_time)) {
+        if (k.isLate) lateCount++;
+        if (k.missingOut) missingOut++;
+        if (k.missingNote) missingNote++;
+      }
+    }
+    scores[uid] = { lateCount, missingIn, missingOut, missingNote, score: lateCount + missingIn + missingOut + missingNote };
+  }
+
+  res.json({ scores });
+});
+
 // ── 출퇴근 기록 조회 ───────────────────────────────────────────
 
 router.get('/attendance', async (req: Request, res: Response): Promise<void> => {

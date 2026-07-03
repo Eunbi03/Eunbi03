@@ -1,34 +1,264 @@
 import { useState, useEffect } from "react";
+import { C, S } from "../../styles.js";
+import * as api from "../../api/client.js";
 
-function useIsMobile(breakpoint = 640) {
+const COL = {
+  black: "#3a3a3a", gray: "#787878", lgray: "#eeeeee",
+  blue: "#2f6d8f", red: "#cb6156", lred: "#fef5f5", white: "#ffffff",
+  amber: "#b9820f", green: "#3E7C5A", detailBg: "#f5f6f8",
+};
+
+function useIsMobile(breakpoint = 760) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
   useEffect(() => {
     const h = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener('resize', h);
-    return () => window.removeEventListener('resize', h);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
   }, [breakpoint]);
   return isMobile;
 }
-import { C, S } from "../../styles.js";
-import * as api from "../../api/client.js";
 
 function todayStr() { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); }
 function monthStart() { return todayStr().slice(0, 7) + "-01"; }
 function fmtTime(t) { if (!t) return "—"; return new Date(t).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }); }
 function fmtDist(m) { if (m == null) return null; return m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`; }
 function mapsUrl(lat, lng) { return `https://maps.google.com/?q=${lat},${lng}`; }
+function openMap(lat, lng) { if (lat != null && lng != null) window.open(mapsUrl(lat, lng), "_blank", "noopener"); }
+function dayOfWeek(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return ["일", "월", "화", "수", "목", "금", "토"][new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()];
+}
 
-// leave_type 파싱/조합 헬퍼
+// leave_type 파싱/조합
 function parseLt(lt) {
   if (!lt) return { primary: null, noteOn: false };
-  if (lt === '노트') return { primary: null, noteOn: true };
-  const hasNote = lt.endsWith('+노트');
-  return { primary: hasNote ? lt.slice(0, -'+노트'.length) : lt, noteOn: hasNote };
+  if (lt === "노트") return { primary: null, noteOn: true };
+  const hasNote = lt.endsWith("+노트");
+  return { primary: hasNote ? lt.slice(0, -"+노트".length) : lt, noteOn: hasNote };
 }
 function buildLt(primary, noteOn) {
   if (!primary && !noteOn) return null;
-  if (!primary) return '노트';
-  return noteOn ? primary + '+노트' : primary;
+  if (!primary) return "노트";
+  return noteOn ? primary + "+노트" : primary;
+}
+
+// 전체현황과 동일한 느낌표 아이콘
+function WarnIcon({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ verticalAlign: "middle", flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" fill={COL.red} />
+      <rect x="11" y="6" width="2" height="8" rx="1" fill="#fff" />
+      <rect x="11" y="16" width="2" height="2" rx="1" fill="#fff" />
+    </svg>
+  );
+}
+function CheckIcon({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ verticalAlign: "middle", flexShrink: 0 }}>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill={COL.green} />
+      <path d="M7 12.5l3.2 3.2L17 8.5" stroke="#fff" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// 시간 텍스트 (좌표 있으면 클릭 시 지도)
+function TimeText({ time, lat, lng, color, bold }) {
+  const clickable = lat != null && lng != null;
+  return (
+    <span
+      onClick={clickable ? (e) => { e.stopPropagation(); openMap(lat, lng); } : undefined}
+      style={{
+        color: color || COL.black, fontVariantNumeric: "tabular-nums", fontWeight: bold ? 700 : 400,
+        cursor: clickable ? "pointer" : "default", textDecoration: clickable ? "underline" : "none", textUnderlineOffset: 2,
+      }}
+    >{fmtTime(time)}</span>
+  );
+}
+
+// 출퇴근지 + 거리 배지 (근무노트로 다르게 기입 시 '?' 배지)
+function PlaceDist({ note, workplaceName, dist }) {
+  const noted = note && note.trim();
+  const place = noted || workplaceName || "";
+  const useNote = noted && noted !== workplaceName;
+  const badge = useNote
+    ? { text: "?", bg: COL.lgray, fg: COL.gray }
+    : dist != null
+      ? { text: fmtDist(dist), bg: dist > 200 ? "#f6dcd8" : "#dcece2", fg: dist > 200 ? COL.red : COL.green }
+      : null;
+  return (
+    <>
+      {place && <span style={{ color: COL.gray }}>{place}</span>}
+      {badge && (
+        <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 8, background: badge.bg, color: badge.fg, flexShrink: 0 }}>
+          {badge.text}
+        </span>
+      )}
+    </>
+  );
+}
+
+// 랜덤확인 3개 표시
+function RandomChecks({ checks }) {
+  if (!checks?.length) return <span style={{ color: COL.gray, fontSize: 12 }}>랜덤확인 없음</span>;
+  return (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+      {checks.map((rc, i) => {
+        const done = !!rc.submitted_time;
+        const ok = done && rc.is_within_radius;
+        const missed = !done && !rc.skipped && (Date.now() - new Date(rc.scheduled_time).getTime() > 5 * 60 * 1000);
+        const fail = (done && !ok) || missed;
+        const t = rc.submitted_time || rc.scheduled_time;
+        return (
+          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            {ok ? <CheckIcon /> : fail ? <WarnIcon /> : <span style={{ color: COL.gray }}>⏳</span>}
+            <TimeText time={t} lat={rc.lat} lng={rc.lng} color={fail ? COL.red : COL.black} />
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
+  const [open, setOpen] = useState(false);
+  const [leavePopup, setLeavePopup] = useState(false);
+  const dow = dayOfWeek(day.date);
+  const isWeekend = dow === "토" || dow === "일";
+  const isAlert = day.missing || day.isLate || day.noOut || day.noNote;
+  const { primary: ltP, noteOn: ltN } = parseLt(day.leaveType);
+  const isLeaveFull = day.leaveType === "연차" || ltP === "출퇴근";
+  const rowBg = isLeaveFull ? "#fff" : isAlert ? COL.lred : "#fff";
+
+  const popup = leavePopup && onLeaveChange && (
+    <LeavePopup day={day} onSelect={(t) => onLeaveChange(day, t)} onClose={() => setLeavePopup(false)} />
+  );
+  const leaveBtn = onLeaveChange && (
+    <button style={{ ...S.miniBtn, marginLeft: 0, fontSize: 11, flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); setLeavePopup(true); }}>인정 ▾</button>
+  );
+
+  const DateCell = (
+    <div style={{ width: 42, flexShrink: 0, textAlign: "center", lineHeight: 1.3 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: isAlert || isWeekend ? COL.red : COL.black }}>{day.date.slice(5)}</div>
+      <div style={{ fontSize: 11, color: isAlert || isWeekend ? COL.red : COL.gray }}>{dow}</div>
+    </div>
+  );
+
+  const Divider = <span style={{ width: 1, alignSelf: "stretch", background: C.lineAdmin, flexShrink: 0 }} />;
+
+  const hasOutingsOrNote = (day.outings && day.outings.length) || day.noteToday || day.noteField || day.timeChangeReason;
+
+  // 연차 / 출퇴근 인정 전체
+  if (isLeaveFull) {
+    return (
+      <>{popup}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderBottom: `1px solid ${C.lineAdmin}` }}>
+          {DateCell}
+          <span style={{ ...S.badge, background: COL.blue === "#2f6d8f" ? "#dce9f0" : C.blueSoft, color: COL.blue, fontSize: 12 }}>
+            {day.leaveType === "연차" ? "연차" : "출퇴근 인정"}
+          </span>
+          {ltN && <span style={{ ...S.badge, background: "#dce9f0", color: COL.blue, fontSize: 12 }}>노트 인정</span>}
+          <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
+        </div>
+      </>
+    );
+  }
+
+  // 출근 누락 (기록 없음)
+  if (day.missing) {
+    return (
+      <>{popup}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderBottom: `1px solid ${C.lineAdmin}`, background: COL.lred }}>
+          {DateCell}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: COL.red, fontWeight: 700, fontSize: 13 }}>
+            <WarnIcon /> 출근 누락
+          </span>
+          <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
+        </div>
+      </>
+    );
+  }
+
+  // 시계 구간
+  const clock = (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+      <TimeText time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} color={day.isLate ? COL.red : COL.black} bold />
+      <PlaceDist note={day.checkIn?.note} workplaceName={workplaceName} dist={day.checkIn?.distanceM} />
+      {day.checkOut ? (
+        <>
+          <TimeText time={day.checkOut.time} lat={day.checkOut.lat} lng={day.checkOut.lng} bold />
+          <PlaceDist note={day.checkOut.note} workplaceName={workplaceName} dist={day.checkOut.distanceM} />
+        </>
+      ) : (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: COL.red, fontWeight: 700 }}><WarnIcon /> 퇴근 누락</span>
+      )}
+    </div>
+  );
+
+  const outN = day.outings?.length || 0;
+  const tail = (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+      <span style={{ color: COL.amber, fontWeight: 700 }}>외근 {outN}</span>
+      {day.noteToday && <span style={{ color: COL.blue, fontWeight: 700 }}>근무노트</span>}
+      {leaveBtn}
+      {hasOutingsOrNote && <span style={{ color: COL.gray, fontSize: 12 }}>{open ? "▲" : "▼"}</span>}
+    </div>
+  );
+
+  return (
+    <>{popup}
+      <div style={{ borderBottom: `1px solid ${C.lineAdmin}`, background: rowBg }}>
+        <div
+          style={{ padding: "9px 14px", cursor: hasOutingsOrNote ? "pointer" : "default", fontSize: 13 }}
+          onClick={() => hasOutingsOrNote && setOpen((o) => !o)}
+        >
+          {isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>{DateCell}<div style={{ flex: 1, minWidth: 0 }}>{clock}</div></div>
+              <div style={{ paddingLeft: 52 }}><RandomChecks checks={day.randomChecks} /></div>
+              <div style={{ paddingLeft: 52 }}>{tail}</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {DateCell}
+              {Divider}
+              <div style={{ flex: "2 1 260px", minWidth: 0 }}>{clock}</div>
+              {Divider}
+              <div style={{ flex: "1 1 200px", minWidth: 0 }}><RandomChecks checks={day.randomChecks} /></div>
+              {Divider}
+              <div style={{ marginLeft: "auto" }}>{tail}</div>
+            </div>
+          )}
+        </div>
+
+        {open && hasOutingsOrNote && (
+          <div style={{ background: COL.detailBg, padding: "10px 16px 12px 56px", fontSize: 13, display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${C.lineAdmin}` }}>
+            {outN > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                <span style={{ color: COL.amber, fontWeight: 700, marginRight: 4 }}>외근</span>
+                {day.outings.map((o, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {i > 0 && <span style={{ color: C.lineAdmin, margin: "0 4px" }}>|</span>}
+                    <TimeText time={o.start_time} lat={o.start_lat} lng={o.start_lng} color={COL.blue} />
+                    <span style={{ color: COL.black, fontWeight: 600 }}>{o.destination}</span>
+                    {o.reason && <span style={{ color: COL.gray }}>{o.reason}</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+            {day.noteField && (
+              <div><span style={{ color: COL.amber, fontWeight: 700, marginRight: 8 }}>외근장소</span><span style={{ color: COL.black }}>{day.noteField}</span></div>
+            )}
+            {day.noteToday && (
+              <div><span style={{ color: COL.blue, fontWeight: 700, marginRight: 8 }}>근무노트</span><span style={{ color: COL.black }}>{day.noteToday}</span></div>
+            )}
+            {day.timeChangeReason && (
+              <div><span style={{ color: COL.gray, fontWeight: 700, marginRight: 8 }}>근무시간변경사유</span><span style={{ color: COL.black }}>{day.timeChangeReason}</span></div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
 }
 
 function LeavePopup({ day, onSelect, onClose }) {
@@ -37,243 +267,53 @@ function LeavePopup({ day, onSelect, onClose }) {
   const [noteOn, setNoteOn] = useState(init.noteOn);
   useEffect(() => { const p = parseLt(day.leaveType); setPrimary(p.primary); setNoteOn(p.noteOn); }, [day.leaveType]);
 
-  const PRIMARY_OPTIONS = [
-    { key: "연차",   label: "연차",       sub: "하루 전체 인정" },
+  const OPTIONS = [
+    { key: "연차", label: "연차", sub: "하루 전체 인정" },
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
-    { key: "출근",   label: "출근 인정",   sub: "출근 누락·지각 해소" },
-    { key: "퇴근",   label: "퇴근 인정",   sub: "퇴근 누락 해소" },
+    { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
+    { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
   ];
-
   const handlePrimary = (key) => {
     const next = primary === key ? null : key;
     setPrimary(next);
-    // 연차 선택 시 노트 해제
     const keepNote = noteOn && key !== "연차";
     setNoteOn(keepNote);
     onSelect(buildLt(next, keepNote));
   };
-
-  const handleNote = () => {
-    const next = !noteOn;
-    setNoteOn(next);
-    onSelect(buildLt(primary, next));
-  };
-
+  const handleNote = () => { const next = !noteOn; setNoteOn(next); onSelect(buildLt(primary, next)); };
   const btnStyle = (active) => ({
-    padding: "11px", borderRadius: 10,
-    border: `1px solid ${active ? C.green : C.line}`,
-    background: active ? C.greenSoft : "#fff",
-    color: active ? C.green : C.ink,
+    padding: "11px", borderRadius: 10, border: `1px solid ${active ? COL.green : C.line}`,
+    background: active ? C.greenSoft : "#fff", color: active ? COL.green : COL.black,
     fontWeight: 700, fontSize: 14, cursor: "pointer", textAlign: "left",
     display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
   });
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", minWidth: 240, textAlign: "center" }}>
-        <p style={{ fontWeight: 800, fontSize: 14, color: C.ink, marginBottom: 14 }}>
-          {day.date.slice(5)} 출퇴근 인정 설정
-        </p>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", minWidth: 260, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+        <p style={{ fontWeight: 800, fontSize: 14, color: COL.black, marginBottom: 14 }}>{day.date.slice(5)} 출퇴근 인정 설정</p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {PRIMARY_OPTIONS.map(({ key, label, sub }) => (
+          {OPTIONS.map(({ key, label, sub }) => (
             <button key={key} style={btnStyle(primary === key)} onClick={() => handlePrimary(key)}>
               <span>{label}</span>
-              <span style={{ fontSize: 11, fontWeight: 400, color: primary === key ? C.green : C.inkSoft }}>{sub}{primary === key ? " ✓" : ""}</span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: primary === key ? COL.green : COL.gray }}>{sub}{primary === key ? " ✓" : ""}</span>
             </button>
           ))}
-          {/* 구분선 */}
           <div style={{ borderTop: `1px solid ${C.lineAdmin}`, margin: "2px 0" }} />
-          {/* 근무 노트 인정 — 단독 또는 중복 선택 가능 */}
-          <button
-            style={btnStyle(noteOn)}
-            onClick={handleNote}
-          >
+          <button style={btnStyle(noteOn)} onClick={handleNote}>
             <span>근무 노트 인정</span>
-            <span style={{ fontSize: 11, fontWeight: 400, color: noteOn ? C.green : C.inkSoft }}>
-              노트 누락 해소{noteOn ? " ✓" : ""}
-            </span>
+            <span style={{ fontSize: 11, fontWeight: 400, color: noteOn ? COL.green : COL.gray }}>노트 누락 해소{noteOn ? " ✓" : ""}</span>
           </button>
         </div>
-        <button style={{ marginTop: 12, background: "none", border: "none", fontSize: 13, color: C.inkSoft, cursor: "pointer" }} onClick={onClose}>
-          닫기
-        </button>
+        <button style={{ marginTop: 12, background: "none", border: "none", fontSize: 13, color: COL.gray, cursor: "pointer" }} onClick={onClose}>닫기</button>
       </div>
     </div>
   );
 }
 
-function dayOfWeek(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return ["일", "월", "화", "수", "목", "금", "토"][new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()];
-}
-
-function DayRow({ day, onLeaveChange }) {
-  const isMobile = useIsMobile();
-  const [open, setOpen] = useState(false);
-  const [leavePopup, setLeavePopup] = useState(false);
-  const isAlert = day.isLate || day.noOut || day.missing;
-  const dow = dayOfWeek(day.date);
-  const isWeekend = dow === "토" || dow === "일";
-
-  const openPopup = (e) => { e.stopPropagation(); setLeavePopup(true); };
-
-  const popup = leavePopup && onLeaveChange && (
-    <LeavePopup
-      day={day}
-      onSelect={(t) => { onLeaveChange(day, t); }}
-      onClose={() => setLeavePopup(false)}
-    />
-  );
-
-  const leaveBtn = onLeaveChange && (
-    <button style={{ ...S.miniBtn, fontSize: 11, flexShrink: 0 }} onClick={openPopup}>인정 ▾</button>
-  );
-
-  const DateCell = ({ alert }) => (
-    <div style={{ width: 44, flexShrink: 0, textAlign: "center" }}>
-      <div style={{ fontSize: 12, color: alert ? C.seal : isWeekend ? C.seal : C.inkSoft, fontWeight: isWeekend ? 700 : 400 }}>{day.date.slice(5)}</div>
-      <div style={{ fontSize: 10, color: alert ? C.seal : isWeekend ? C.seal : C.inkSoft, marginTop: 1 }}>{dow}</div>
-    </div>
-  );
-
-  const { primary: ltP2, noteOn: ltN2 } = parseLt(day.leaveType);
-  if (day.leaveType === '연차' || ltP2 === '출퇴근') {
-    return (
-      <>
-        {popup}
-        <div style={{ padding: isMobile ? "8px 12px" : "11px 16px", borderBottom: `1px solid ${C.lineAdmin}`, display: "flex", alignItems: "center", gap: 8 }}>
-          <DateCell />
-          <span style={{ ...S.badge, background: C.greenSoft, color: C.green, fontSize: 11 }}>
-            {day.leaveType === '연차' ? '연차' : '출퇴근인정'}
-          </span>
-          {ltN2 && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 11 }}>노트인정</span>}
-          <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
-        </div>
-      </>
-    );
-  }
-
-  if (day.missing) {
-    return (
-      <>
-        {popup}
-        <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineAdmin}`, display: "flex", alignItems: "center", gap: 8, background: "#fff5f5" }}>
-          <DateCell alert />
-          <span style={{ ...S.badge, background: C.sealSoft, color: C.seal, fontSize: 11 }}>출근 누락</span>
-          <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
-        </div>
-      </>
-    );
-  }
-
-  const { primary: ltPrimary, noteOn: ltNote } = parseLt(day.leaveType);
-  const hasBadges = !!ltPrimary || ltNote || day.isLate || day.noOut || day.noNote;
-
-  return (
-    <>
-      {popup}
-      <div style={{ borderBottom: `1px solid ${C.lineAdmin}` }}>
-        <div
-          style={{ padding: isMobile ? "8px 12px" : "11px 16px", cursor: "pointer", background: isAlert ? "#fff5f5" : "#fff" }}
-          onClick={() => setOpen((o) => !o)}
-        >
-          {/* 날짜 + 시간 행 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <DateCell alert={isAlert} />
-            <span style={{ flex: 1, fontSize: 13, color: isAlert ? C.seal : C.ink, fontVariantNumeric: "tabular-nums", minWidth: 0 }}>
-              {fmtTime(day.checkIn?.time)} → {day.checkOut ? fmtTime(day.checkOut.time) : "퇴근 누락"}
-            </span>
-            <span style={{ fontSize: 11, color: C.inkSoft, flexShrink: 0 }}>{open ? "▲" : "▼"}</span>
-          </div>
-          {/* 배지 + 인정 버튼 행 (내용 있을 때만) */}
-          {(hasBadges || leaveBtn) && (
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5, paddingLeft: 50, alignItems: "center" }}
-              onClick={(e) => e.stopPropagation()}>
-              {(ltPrimary === '출근' || ltPrimary === '출퇴근') && <Badge color={C.green} bg={C.greenSoft} text={ltPrimary === '출퇴근' ? "출퇴근인정" : "출근인정"} />}
-              {ltPrimary === '퇴근' && <Badge color={C.green} bg={C.greenSoft} text="퇴근인정" />}
-              {ltNote && <Badge color={C.blue}  bg={C.blueSoft}  text="노트인정" />}
-              {day.isLate && <Badge color={C.amber} bg={C.amberSoft} text="지각" />}
-              {day.noOut  && <Badge color={C.seal}  bg={C.sealSoft}  text="퇴근누락" />}
-              {day.noNote && <Badge color={C.blue}  bg={C.blueSoft}  text="노트누락" />}
-              <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
-            </div>
-          )}
-        </div>
-
-        {open && (
-          <div style={{ padding: "10px 14px", background: C.paper, fontSize: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <LocRow label="출근지" time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} dist={day.checkIn?.distanceM} note={day.checkIn?.note} />
-            {day.checkOut && <LocRow label="퇴근지" time={day.checkOut.time} lat={day.checkOut.lat} lng={day.checkOut.lng} dist={day.checkOut.distanceM} note={day.checkOut.note} isField={day.checkOut.isField} />}
-
-            {day.outings?.map((o, i) => (
-              <div key={i} style={{ paddingLeft: 8, borderLeft: `3px solid ${C.amberSoft}` }}>
-                <span style={{ fontWeight: 700, color: C.amber }}>외근</span>
-                <span style={{ color: C.inkSoft, marginLeft: 6 }}>{fmtTime(o.start_time)} → {fmtTime(o.end_time)}</span>
-                <span style={{ marginLeft: 6 }}>{o.destination}</span>
-                {o.start_lat && <a href={mapsUrl(o.start_lat, o.start_lng)} target="_blank" rel="noreferrer" style={{ marginLeft: 8, fontSize: 11, color: C.blue }}>지도</a>}
-              </div>
-            ))}
-
-            {day.noteField && <NoteRow label="외근장소" text={day.noteField} />}
-            {day.noteToday && <NoteRow label="오늘업무" text={day.noteToday} />}
-            {day.timeChangeReason && <NoteRow label="근무시간변경사유" text={day.timeChangeReason} />}
-
-            {day.randomChecks?.map((rc, i) => {
-              let label;
-              if (rc.submitted_time) label = rc.is_within_radius ? "✅ 근무지 내" : "⚠️ 근무지 외";
-              else if (rc.skipped) label = "➖ 제외(출근직후)";
-              else if (Date.now() - new Date(rc.scheduled_time).getTime() > 5 * 60 * 1000) label = "미응답";
-              else label = "⏳ 예정";
-              return (
-                <div key={i} style={{ fontSize: 11, color: C.inkSoft }}>
-                  랜덤확인 {fmtTime(rc.scheduled_time)}: {label}
-                  {rc.lat && <a href={mapsUrl(rc.lat, rc.lng)} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: C.blue }}>지도</a>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function LocRow({ label, time, lat, lng, dist, note, isField }) {
-  const distBadge = dist != null ? (
-    <span style={{
-      fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 7, flexShrink: 0,
-      background: dist > 200 ? C.sealSoft : C.greenSoft,
-      color: dist > 200 ? C.seal : C.green,
-    }}>
-      {dist > 200 ? "⚠ " : ""}{fmtDist(dist)}
-    </span>
-  ) : null;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 700, color: C.inkSoft, width: 44, flexShrink: 0 }}>{label}</span>
-        <span style={{ color: C.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(time)}</span>
-        {distBadge}
-        {isField && <span style={{ ...S.badge, background: C.amberSoft, color: C.amber, fontSize: 10 }}>외근</span>}
-        {lat && <a href={mapsUrl(lat, lng)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.blue, marginLeft: "auto" }}>지도</a>}
-      </div>
-      {note && <div style={{ paddingLeft: 50, fontSize: 11, color: C.inkSoft, lineHeight: 1.4 }}>{note}</div>}
-    </div>
-  );
-}
-
-function NoteRow({ label, text }) {
-  return (
-    <div style={{ display: "flex", gap: 6 }}>
-      <span style={{ fontWeight: 700, color: C.inkSoft, width: 44, flexShrink: 0 }}>{label}</span>
-      <span style={{ color: C.ink, lineHeight: 1.5 }}>{text}</span>
-    </div>
-  );
-}
-
-function Badge({ color, bg, text }) {
-  return <span style={{ ...S.badge, color, background: bg, fontSize: 10, flexShrink: 0 }}>{text}</span>;
+function Kpi({ label, v, color }) {
+  if (!v) return null;
+  return <span style={{ color, fontWeight: 700, whiteSpace: "nowrap" }}>{label} {v}</span>;
 }
 
 export default function AdminIndividual({ filters, isHR }) {
@@ -282,6 +322,7 @@ export default function AdminIndividual({ filters, isHR }) {
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today);
   const [workers, setWorkers] = useState([]);
+  const [scores, setScores] = useState({});
   const [openId, setOpenId] = useState(null);
   const [reportMap, setReportMap] = useState({});
   const [loadingId, setLoadingId] = useState(null);
@@ -290,23 +331,42 @@ export default function AdminIndividual({ filters, isHR }) {
 
   useEffect(() => {
     setListLoading(true);
-    api.getWorkers({}).then((d) => { setWorkers(d.workers); }).finally(() => setListLoading(false));
+    api.getWorkers({}).then((d) => setWorkers(d.workers)).finally(() => setListLoading(false));
   }, []);
+
+  // 기간별 KPI 점수 사전 로드 (관리대상 라벨/헤더 KPI 사전 표시)
+  useEffect(() => {
+    if (!from || !to) return;
+    api.getReportScores({ from, to }).then((d) => setScores(d.scores || {})).catch(() => setScores({}));
+  }, [from, to]);
 
   const visibleWorkers = workers
     .filter((w) => {
-      if (w.role === 'admin' || w.role === 'hr') return false;
-      if (filters.corp     && w.corp     !== filters.corp)     return false;
+      if (w.role === "admin" || w.role === "hr") return false;
+      if (filters.corp && w.corp !== filters.corp) return false;
       if (filters.division && w.division !== filters.division) return false;
-      if (filters.team     && w.team     !== filters.team)     return false;
+      if (filters.team && w.team !== filters.team) return false;
       return true;
     })
-    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
-  const toggle = async (w) => {
-    if (openId === w.id) { setOpenId(null); return; }
-    setOpenId(w.id);
-    if (reportMap[w.id]?.from === from && reportMap[w.id]?.to === to) return;
+  // 법인 → 본부 → 팀 그룹화 (등장 순서 유지)
+  const groups = [];
+  const gIndex = {};
+  for (const w of visibleWorkers) {
+    const corp = w.corp || "미지정";
+    const div = w.division || "미지정";
+    const team = w.team || "미지정";
+    const ck = corp;
+    if (!(ck in gIndex)) { gIndex[ck] = { name: corp, divs: [], di: {} }; groups.push(gIndex[ck]); }
+    const g = gIndex[ck];
+    if (!(div in g.di)) { g.di[div] = { name: div, teams: [], ti: {} }; g.divs.push(g.di[div]); }
+    const dv = g.di[div];
+    if (!(team in dv.ti)) { dv.ti[team] = { name: team, workers: [] }; dv.teams.push(dv.ti[team]); }
+    dv.ti[team].workers.push(w);
+  }
+
+  const loadReport = async (w) => {
     setLoadingId(w.id);
     try {
       const r = await api.getIndividualReport({ userId: w.id, from, to });
@@ -315,107 +375,113 @@ export default function AdminIndividual({ filters, isHR }) {
     finally { setLoadingId(null); }
   };
 
+  const toggle = async (w) => {
+    if (openId === w.id) { setOpenId(null); return; }
+    setOpenId(w.id);
+    if (reportMap[w.id]?.from === from && reportMap[w.id]?.to === to) return;
+    loadReport(w);
+  };
+
   const handleLeave = async (worker, day, leaveType) => {
     try {
       await api.setLeaveDday({ userId: worker.id, date: day.date, leaveType });
       setMsg(leaveType ? `${day.date} ${leaveType} 인정 처리 완료` : `${day.date} 인정 설정 취소`);
       const r = await api.getIndividualReport({ userId: worker.id, from, to });
       setReportMap((m) => ({ ...m, [worker.id]: { ...r, from, to } }));
+      api.getReportScores({ from, to }).then((d) => setScores(d.scores || {})).catch(() => {});
     } catch (e) { setMsg(e.message); }
   };
 
   if (listLoading) return <div style={S.empty}>불러오는 중…</div>;
+
+  const dateInput = { border: `1px solid #bb8414`, borderRadius: 8, padding: "8px 12px", fontSize: isMobile ? 13 : 14, color: COL.black, background: "#fff", flex: 1, minWidth: 130, boxSizing: "border-box" };
 
   return (
     <div>
       {msg && <div style={{ ...S.busy, marginBottom: 10 }}>{msg}</div>}
 
       {/* 기간 설정 */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft, fontWeight: 700 }}>기간</span>
-        <input type="date" max={today} value={from} onChange={(e) => { setFrom(e.target.value); setReportMap({}); }}
-          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
-        <span style={{ fontSize: isMobile ? 12 : 14, color: C.inkSoft }}>~</span>
-        <input type="date" max={today} value={to} onChange={(e) => { setTo(e.target.value); setReportMap({}); }}
-          style={{ ...S.input, padding: "6px 10px", fontSize: isMobile ? 12 : 14, flex: 1, minWidth: 120 }} />
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+        <span style={{ fontSize: isMobile ? 13 : 15, color: COL.black, fontWeight: 800, flexShrink: 0 }}>기간</span>
+        <input type="date" max={today} value={from} onChange={(e) => { setFrom(e.target.value); setReportMap({}); }} style={dateInput} />
+        <span style={{ color: COL.gray }}>~</span>
+        <input type="date" max={today} value={to} onChange={(e) => { setTo(e.target.value); setReportMap({}); }} style={dateInput} />
       </div>
 
-      {/* 직원 리스트 */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {visibleWorkers.map((w) => {
-          const isOpen = openId === w.id;
-          const report = reportMap[w.id];
+      {/* 법인 → 본부 → 팀 그룹 */}
+      {groups.map((g) => (
+        <div key={g.name} style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ width: 4, height: 18, background: COL.blue, borderRadius: 2 }} />
+            <span style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: COL.blue }}>{g.name}</span>
+          </div>
+          {g.divs.map((dv) => (
+            <div key={dv.name} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: isMobile ? 14 : 16, fontWeight: 800, color: COL.black, margin: "0 0 6px 12px" }}>{dv.name}</div>
+              {dv.teams.map((tm) => (
+                <div key={tm.name} style={{ marginBottom: 8, marginLeft: 24 }}>
+                  <div style={{ fontSize: isMobile ? 13 : 15, fontWeight: 600, color: COL.gray, margin: "0 0 6px" }}>{tm.name}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {tm.workers.map((w) => {
+                      const isOpen = openId === w.id;
+                      const report = reportMap[w.id];
+                      const sc = scores[w.id];
+                      const over = sc && sc.score >= 5;
+                      return (
+                        <div key={w.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+                          <div style={{ padding: isMobile ? "11px 14px" : "14px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }} onClick={() => toggle(w)}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontWeight: 800, fontSize: isMobile ? 15 : 18, color: COL.black }}>{w.name}</span>
+                              {over && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COL.red, background: COL.lred, border: `1px solid ${COL.red}`, padding: "2px 8px", borderRadius: 10 }}>관리대상</span>}
+                              <span style={{ fontSize: isMobile ? 12 : 15, color: COL.gray, marginLeft: 8 }}>
+                                {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
+                              </span>
+                            </div>
+                            {isOpen && sc && !isMobile && (
+                              <div style={{ display: "flex", gap: 12, fontSize: 15, flexShrink: 0 }}>
+                                <Kpi label="지각" v={sc.lateCount} color={COL.amber} />
+                                <Kpi label="출근누락" v={sc.missingIn} color={COL.red} />
+                                <Kpi label="퇴근누락" v={sc.missingOut} color={COL.red} />
+                                <Kpi label="노트누락" v={sc.missingNote} color={COL.blue} />
+                              </div>
+                            )}
+                            {isOpen && (
+                              <button style={{ ...S.miniBtn, marginLeft: 0, fontSize: 12, flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); loadReport(w); }}>↻</button>
+                            )}
+                            <span style={{ fontSize: 13, color: COL.gray, flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
+                          </div>
 
-          return (
-            <div key={w.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
-              <div
-                style={{ padding: isMobile ? "10px 14px" : "14px 18px", cursor: "pointer" }}
-                onClick={() => toggle(w)}
-              >
-                {/* 이름 + 소속 + (데스크탑: KPI + 버튼들) */}
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, fontSize: isMobile ? 14 : 18, color: C.ink }}>{w.name}</span>
-                    {report && (report.kpi.lateCount + report.kpi.missingIn + report.kpi.missingOut + report.kpi.missingNote) >= 5 && (
-                      <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 7px", borderRadius: 10 }}>관리대상</span>
-                    )}
-                    <span style={{ fontSize: isMobile ? 12 : 15, color: C.inkSoft, marginLeft: 8 }}>
-                      {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
-                      {w.job_title && <span style={{ marginLeft: 6 }}>| {w.job_title}</span>}
-                    </span>
-                  </div>
-                  {!isMobile && isOpen && report && (
-                    <div style={{ display: "flex", gap: 8, fontSize: isMobile ? 11 : 15, flexShrink: 0 }}>
-                      <KpiBadge label="지각" v={report.kpi.lateCount} color={C.amber} />
-                      <KpiBadge label="출근누락" v={report.kpi.missingIn} color={C.seal} />
-                      <KpiBadge label="퇴근누락" v={report.kpi.missingOut} color={C.seal} />
-                      <KpiBadge label="노트누락" v={report.kpi.missingNote} color={C.blue} />
-                    </div>
-                  )}
-                  {isOpen && (
-                    <button
-                      style={{ ...S.miniBtn, fontSize: 11, flexShrink: 0 }}
-                      onClick={(e) => { e.stopPropagation(); setLoadingId(w.id); api.getIndividualReport({ userId: w.id, from, to }).then((r) => setReportMap((m) => ({ ...m, [w.id]: { ...r, from, to } }))).catch((e) => setMsg(e.message)).finally(() => setLoadingId(null)); }}
-                    >↻</button>
-                  )}
-                  <span style={{ fontSize: 13, color: C.inkSoft, flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
-                </div>
-                {/* 모바일: KPI 두 번째 줄 */}
-                {isMobile && isOpen && report && (
-                  <div style={{ display: "flex", gap: 10, fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.lineAdmin}` }}
-                    onClick={(e) => e.stopPropagation()}>
-                    <KpiBadge label="지각" v={report.kpi.lateCount} color={C.amber} />
-                    <KpiBadge label="출근누락" v={report.kpi.missingIn} color={C.seal} />
-                    <KpiBadge label="퇴근누락" v={report.kpi.missingOut} color={C.seal} />
-                    <KpiBadge label="노트누락" v={report.kpi.missingNote} color={C.blue} />
-                  </div>
-                )}
-              </div>
+                          {isOpen && sc && isMobile && (
+                            <div style={{ display: "flex", gap: 12, fontSize: 13, padding: "0 14px 10px", flexWrap: "wrap" }}>
+                              <Kpi label="지각" v={sc.lateCount} color={COL.amber} />
+                              <Kpi label="출근누락" v={sc.missingIn} color={COL.red} />
+                              <Kpi label="퇴근누락" v={sc.missingOut} color={COL.red} />
+                              <Kpi label="노트누락" v={sc.missingNote} color={COL.blue} />
+                            </div>
+                          )}
 
-              {isOpen && (
-                <div style={{ borderTop: `1px solid ${C.lineAdmin}` }}>
-                  {loadingId === w.id && <div style={S.empty}>불러오는 중…</div>}
-                  {report && report.days.length === 0 && <div style={S.empty}>이 기간에 근무일이 없습니다.</div>}
-                  {report && report.days.map((day, i) => (
-                    <DayRow key={i} day={day}
-                      onLeaveChange={isHR ? (d, t) => handleLeave(w, d, t) : undefined} />
-                  ))}
+                          {isOpen && (
+                            <div style={{ borderTop: `1px solid ${C.lineAdmin}` }}>
+                              {loadingId === w.id && <div style={S.empty}>불러오는 중…</div>}
+                              {report && report.days.length === 0 && <div style={S.empty}>이 기간에 근무일이 없습니다.</div>}
+                              {report && report.days.map((day, i) => (
+                                <DayRow key={i} day={day} workplaceName={w.workplace_name} isMobile={isMobile}
+                                  onLeaveChange={isHR ? (d, t) => handleLeave(w, d, t) : undefined} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      ))}
 
       {visibleWorkers.length === 0 && <div style={S.empty}>해당 조건의 직원이 없습니다.</div>}
     </div>
-  );
-}
-
-function KpiBadge({ label, v, color }) {
-  return (
-    <span style={{ color: v > 0 ? color : C.inkSoft, fontWeight: v > 0 ? 700 : 400 }}>
-      {label} {v}
-    </span>
   );
 }
