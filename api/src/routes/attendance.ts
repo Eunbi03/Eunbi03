@@ -101,9 +101,6 @@ router.post('/outing/:outingId/end', requireAuth, async (req: Request, res: Resp
 router.post('/check-out', requireAuth,
   [
     body('lat').isFloat(), body('lng').isFloat(), body('accuracyM').isFloat({ min: 0 }), body('isMocked').isBoolean(),
-    body('workNoteIn').notEmpty().withMessage('출근 장소를 입력해주세요.'),
-    body('workNoteOut').notEmpty().withMessage('퇴근 장소를 입력해주세요.'),
-    body('workNoteToday').notEmpty().withMessage('오늘 한 업무를 입력해주세요.'),
   ],
   async (req: Request, res: Response): Promise<void> => {
     const errors = validationResult(req);
@@ -139,12 +136,43 @@ router.post('/check-out', requireAuth,
       `UPDATE attendance_records
        SET check_out_time=now(), check_out_lat=$1, check_out_lng=$2, check_out_is_field=FALSE,
            check_out_distance_m=$3,
-           work_note_in=$4, work_note_out=$5, work_note_field=$6, work_note_today=$7,
-           daily_report=$7, report_locked=TRUE, status=$8, work_minutes=$9
+           work_note_in=COALESCE(NULLIF($4,''), work_note_in),
+           work_note_out=COALESCE(NULLIF($5,''), work_note_out),
+           work_note_field=COALESCE(NULLIF($6,''), work_note_field),
+           work_note_today=COALESCE(NULLIF($7,''), work_note_today),
+           daily_report=COALESCE(NULLIF($7,''), daily_report),
+           status=$8, work_minutes=$9
        WHERE id=$10 RETURNING id, check_out_time, status`,
-      [lat, lng, distanceM, workNoteIn, workNoteOut, workNoteField || null, workNoteToday, newStatus, workMinutes, record.id]
+      [lat, lng, distanceM, workNoteIn || '', workNoteOut || '', workNoteField || '', workNoteToday || '', newStatus, workMinutes, record.id]
     );
     res.json({ success: true, record: rows[0], message: '오늘 하루 수고하셨습니다.' });
+  }
+);
+
+// PUT /api/attendance/work-note — 당일 근무노트 상시 작성/수정 (출근 후 언제든, 퇴근 후에도 당일 내 수정 가능)
+router.put('/work-note', requireAuth,
+  [
+    body('workNoteToday').notEmpty().withMessage('오늘 한 업무를 입력해주세요.'),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
+
+    const { workNoteToday, workNoteField } = req.body;
+    const userId = req.user.userId;
+    const date = todayKST();
+
+    const { rows: attRows } = await pool.query('SELECT id, check_in_time FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, date]);
+    if (!attRows[0]?.check_in_time) { res.status(409).json({ error: '출근 기록이 없습니다.' }); return; }
+
+    const { rows } = await pool.query(
+      `UPDATE attendance_records
+       SET work_note_today=$1, daily_report=$1,
+           work_note_field=COALESCE(NULLIF($2,''), work_note_field)
+       WHERE id=$3 RETURNING work_note_today, work_note_field`,
+      [workNoteToday, workNoteField || '', attRows[0].id]
+    );
+    res.json({ success: true, noteToday: rows[0].work_note_today, noteField: rows[0].work_note_field });
   }
 );
 
@@ -197,6 +225,10 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
     status: att.status,
     leaveType: att.leave_type,
     timeChangeStatus: att.temp_time_change_status,
+    noteIn: att.work_note_in,
+    noteOut: att.work_note_out,
+    noteField: att.work_note_field,
+    noteToday: att.work_note_today,
   };
   res.json({ record, schedule });
 });

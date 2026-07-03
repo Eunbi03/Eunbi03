@@ -40,6 +40,9 @@ export default function Employee({ user }) {
   const [showWeekly, setShowWeekly] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
   const [gpsBanner, setGpsBanner] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteEditing, setNoteEditing] = useState(false);
+  const [noteBusy, setNoteBusy] = useState(false);
 
 
   const isCheckedIn = !!today?.checkIn?.time;
@@ -101,6 +104,18 @@ export default function Employee({ user }) {
     finally { setBusy(false); }
   };
 
+  const saveNote = async () => {
+    if (!noteDraft.trim()) { setErr("오늘 업무 내용을 입력해주세요."); return; }
+    setNoteBusy(true); setErr(""); setMsg("");
+    try {
+      await api.saveWorkNote({ workNoteToday: noteDraft });
+      setNoteEditing(false);
+      await load(true);
+      setMsg("근무노트가 저장되었습니다.");
+    } catch (e) { setErr(e.message); }
+    finally { setNoteBusy(false); }
+  };
+
   const loadMonthly = async () => {
     if (monthly) { setShowMonthly(!showMonthly); return; }
     try {
@@ -120,7 +135,7 @@ export default function Employee({ user }) {
   );
   if (view === "out") return (
     <div style={{ padding: "16px 16px 40px" }}>
-      <OutForm workplaceName={schedule.workplaceName} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || ""} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
     </div>
   );
   if (view === "history") return (
@@ -214,6 +229,43 @@ export default function Employee({ user }) {
           </>
         )}
       </div>
+
+      {/* ── 오늘 근무노트 (출근 후 언제든 작성·수정) ── */}
+      {isCheckedIn && today?.leaveType !== "연차" && (
+        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden", marginBottom: 12, padding: "16px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>오늘 근무노트</span>
+            {!noteEditing && (
+              <button
+                style={{ ...S.subGhost, width: "auto", padding: "5px 12px", fontSize: 12 }}
+                onClick={() => { setNoteDraft(today?.noteToday || ""); setNoteEditing(true); }}
+              >
+                {today?.noteToday ? "수정" : "작성"}
+              </button>
+            )}
+          </div>
+          {noteEditing ? (
+            <>
+              <textarea
+                style={{ ...S.input, minHeight: 90, resize: "vertical" }}
+                placeholder="오늘 진행한 업무를 입력해주세요"
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button style={{ ...S.subGhost, flex: 1 }} onClick={() => setNoteEditing(false)} disabled={noteBusy}>취소</button>
+                <button style={{ ...S.subPrimary, flex: 1, background: C.ink, opacity: noteBusy ? 0.6 : 1 }} onClick={saveNote} disabled={noteBusy}>
+                  {noteBusy ? "저장 중…" : "저장"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: today?.noteToday ? C.ink : C.inkSoft, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+              {today?.noteToday || "아직 작성된 근무노트가 없습니다."}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── 이번 주 요약 ── */}
       <div style={{ marginBottom: 8 }}>

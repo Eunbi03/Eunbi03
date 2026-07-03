@@ -20,11 +20,11 @@ export async function downloadAttendanceRegister({ year, month, daysInMonth, dow
   groups.forEach((group, gi) => {
     const ws = wb.addWorksheet(groups.length > 1 ? `근태관리대장 ${gi + 1}` : "근태관리대장");
 
-    // 열 너비: A=3, B~C=4.43, D~S(4..19)=7.86
-    ws.getColumn(1).width = 3;
-    ws.getColumn(2).width = 4.43;
-    ws.getColumn(3).width = 4.43;
-    for (let c = 4; c <= 19; c++) ws.getColumn(c).width = 7.86;
+    // 열 너비: A=3.16, B=5.83, C=6, D~S(4..19)=10
+    ws.getColumn(1).width = 3.16;
+    ws.getColumn(2).width = 5.83;
+    ws.getColumn(3).width = 6;
+    for (let c = 4; c <= 19; c++) ws.getColumn(c).width = 10;
 
     const dayRowStart = 7;
     const lastDayRow = dayRowStart + daysInMonth - 1;
@@ -43,10 +43,11 @@ export async function downloadAttendanceRegister({ year, month, daysInMonth, dow
     };
     const merge = (range) => ws.mergeCells(range);
 
-    // 행 높이
+    // 행 높이: 1행=19, 2행(제목)=71, 3행=25.25, 4~6행=19, 7행~=42
     ws.getRow(1).height = 19;
     ws.getRow(2).height = 71;
-    for (let r = 3; r <= 6; r++) ws.getRow(r).height = 19;
+    ws.getRow(3).height = 25.25;
+    for (let r = 4; r <= 6; r++) ws.getRow(r).height = 19;
     for (let r = 7; r <= sumRow + 2; r++) ws.getRow(r).height = 42;
 
     // 1행: 담당/팀장/본부장

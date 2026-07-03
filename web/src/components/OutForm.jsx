@@ -3,16 +3,15 @@ import { C, S } from "../styles.js";
 import { getLocation } from "../utils/device.js";
 import * as api from "../api/client.js";
 
-export default function OutForm({ onClose, onDone, workplaceName }) {
+export default function OutForm({ onClose, onDone, workplaceName, initialNote = "" }) {
   const [workNoteIn, setWorkNoteIn] = useState(workplaceName || "");
   const [workNoteOut, setWorkNoteOut] = useState(workplaceName || "");
   const [workNoteField, setWorkNoteField] = useState("");
-  const [workNoteToday, setWorkNoteToday] = useState("");
+  const [workNoteToday, setWorkNoteToday] = useState(initialNote);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   const submit = async () => {
-    if (!workNoteToday.trim()) { setErr("오늘 업무 내용을 입력해주세요."); return; }
     setBusy(true);
     setErr("");
     try {
@@ -55,7 +54,7 @@ export default function OutForm({ onClose, onDone, workplaceName }) {
         onChange={(e) => setWorkNoteField(e.target.value)}
       />
 
-      <label style={S.fieldLabel}>오늘 업무 내용 *</label>
+      <label style={S.fieldLabel}>오늘 업무 내용 (선택 · 근무노트에서 나중에 작성·수정 가능)</label>
       <textarea
         style={{ ...S.input, minHeight: 80, resize: "vertical" }}
         placeholder="오늘 진행한 업무를 입력해주세요"

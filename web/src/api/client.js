@@ -51,6 +51,7 @@ export const endOuting = (outingId) => request(`/attendance/outing/${outingId}/e
 export const checkOut = (location, { workNoteIn, workNoteOut, workNoteField, workNoteToday }) => request("/attendance/check-out", {
   method: "POST", body: { lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false, workNoteIn, workNoteOut, workNoteField, workNoteToday },
 });
+export const saveWorkNote = ({ workNoteToday, workNoteField }) => request("/attendance/work-note", { method: "PUT", body: { workNoteToday, workNoteField } });
 export const getAttendanceToday = () => request("/attendance/today");
 export const getWeeklySummary = () => request("/attendance/weekly-summary");
 export const getMonthlySummary = () => request("/attendance/monthly-summary");
