@@ -360,7 +360,7 @@ export default function AdminIndividual({ filters, isHR }) {
                       <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "2px 7px", borderRadius: 10 }}>관리대상</span>
                     )}
                     <span style={{ fontSize: isMobile ? 12 : 15, color: C.inkSoft, marginLeft: 8 }}>
-                      {[w.corp, w.division, w.team].filter(Boolean).join(" · ")}
+                      {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
                       {w.job_title && <span style={{ marginLeft: 6 }}>| {w.job_title}</span>}
                     </span>
                   </div>

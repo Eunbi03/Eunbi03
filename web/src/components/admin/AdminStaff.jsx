@@ -250,12 +250,9 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <p style={{ ...S.h1, margin: 0 }}>관리자 정보</p>
             <div style={{ display: "flex", gap: 4 }}>
-              {worker?.is_authority_holder && (
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, background: C.amberSoft, padding: "2px 8px", borderRadius: 20 }}>권한자</span>
-              )}
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#2d4a7a", background: "#e8eaf6", padding: "2px 8px", borderRadius: 20 }}>
-                관리자
-              </span>
+              {worker?.is_authority_holder
+                ? <span style={{ fontSize: 11, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "2px 8px", borderRadius: 20 }}>권한자</span>
+                : <span style={{ fontSize: 11, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "2px 8px", borderRadius: 20 }}>관리자</span>}
             </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, color: C.inkSoft, cursor: "pointer" }}>✕</button>
@@ -334,11 +331,11 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {adminDevices.map((d) => (
-                <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, background: d.is_approved ? C.greenSoft : C.amberSoft, borderRadius: 10, padding: "8px 12px" }}>
+                <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, background: d.is_approved ? "#fff" : "#fef5f5", border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 12px" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 6 }}>
                       {d.device_name || worker?.name || "기기"}
-                      {worker?.is_authority_holder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: 10 }}>권한자</span>}
+                      {worker?.is_authority_holder && <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>}
                     </div>
                     <div style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.device_id}</div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
@@ -353,7 +350,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                         >승인</button>
                       )}
                       <button
-                        style={{ border: `1px solid ${C.seal}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.seal, fontWeight: 700, cursor: "pointer" }}
+                        style={{ border: "none", background: "#fef5f5", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.seal, fontWeight: 700, cursor: "pointer" }}
                         onClick={() => onRemoveDevice(d.id)}
                         disabled={busy}
                       >삭제</button>
@@ -727,9 +724,8 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: C.ink, fontSize: isMobile ? 14 : 18, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {w.name}
-                  {isThisHolder && <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>권한자</span>}
                   {isAdminRole ? (
-                    <span style={{ ...S.badge, background: C.blueSoft, color: C.blue, fontSize: isMobile ? 10 : 13 }}>관리자</span>
+                    <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: isMobile ? 10 : 13 }}>관리자</span>
                   ) : (
                     <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 15 }}>
                       {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
@@ -754,11 +750,11 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
               </div>
 
               {(() => {
-                const mod = { color: "#787878" };       // 수정 진회색
-                const del = { color: "#cb6156" };         // 삭제 붉은색
-                const dev = { color: "#2f6d8f", borderColor: C.blueSoft }; // 기기변경 푸른색
+                const mod = { color: "#636a7a", borderColor: "#636a7a" }; // 수정
+                const del = { color: "#c8594e", borderColor: "#c8594e" }; // 삭제
+                const dev = { color: "#2f6d8f", borderColor: C.blueSoft }; // 기기변경
                 const pw  = { color: "#be8b29", borderColor: C.amberSoft }; // 비번초기화
-                const base = isMobile ? S.miniBtn : { ...S.miniBtn, fontSize: 13, padding: "7px 12px" };
+                const base = isMobile ? { ...S.miniBtn, flex: 1 } : { ...S.miniBtn, fontSize: 13, padding: "7px 12px" };
                 const status = (
                   <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 2 }}>
                     {w.must_change_password && <span style={{ ...S.badge, color: C.amber, background: C.amberSoft, fontSize: 10 }}>비번미변경</span>}

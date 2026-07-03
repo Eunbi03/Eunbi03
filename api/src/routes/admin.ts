@@ -1082,9 +1082,10 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
       const noteMiss = present && hasOut && !w.note_exempt && !r?.work_note_today && !r?.daily_report && !leaveCountsAsNote(lt);
 
       if (present) workedDays++;
-      if (late) lateMissing++;
+      // 하루당 최대 1건: 출근누락 > 퇴근누락 > 지각 우선순위 (지각+퇴근누락은 퇴근누락으로 1건)
       if (missingIn) lateMissing++;
-      if (missingOut) lateMissing++;
+      else if (missingOut) lateMissing++;
+      else if (late) lateMissing++;
       if (noteMiss) noteMissing++;
 
       const bothMissing = !hasIn && !hasOutRec && !r?.work_note_today && !r?.daily_report; // 출퇴근·노트 모두 없음 → 'X'

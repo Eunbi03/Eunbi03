@@ -9,6 +9,7 @@ const COL = {
   blue: "#2f6d8f", red: "#cb6156", lred: "#fff0f0", white: "#ffffff",
   formBg: "#f3f9fc",
 };
+const HEADER_BG_H = "#d8e8f0"; // 공휴일 그리드 헤더 배경
 
 function useIsMobile(breakpoint = 640) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
@@ -484,13 +485,45 @@ function HolidaySection() {
           </div>
         </div>
       )}
-      {loading ? <div style={S.empty}>불러오는 중…</div> : !yearList.length ? <div style={S.empty}>{year}년 등록된 공휴일이 없습니다.</div> : yearList.map((h) => (
-        <CardRow key={h.id}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: C.ink }}>{fmt(h.date)}</span>
-          <span style={{ flex: 1, fontSize: 15, color: COL.gray, marginLeft: 10 }}>{h.name}</span>
-          <DeleteButton onClick={() => del(h.id)} disabled={busy} />
-        </CardRow>
-      ))}
+      {loading ? <div style={S.empty}>불러오는 중…</div> : (
+        <div style={{ overflowX: "auto", border: `1px solid ${C.lineAdmin}`, borderRadius: 8 }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900, background: "#fff", tableLayout: "fixed" }}>
+            <thead>
+              <tr>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <th key={i} style={{ border: `1px solid ${C.lineAdmin}`, background: HEADER_BG_H, padding: "6px 4px", fontSize: 13, color: C.ink }}>{i + 1}월</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {Array.from({ length: 12 }, (_, mi) => {
+                  const list = yearList.filter((h) => Number(h.date.split("-")[1]) === mi + 1);
+                  return (
+                    <td key={mi} style={{ border: `1px solid ${C.lineAdmin}`, verticalAlign: "top", padding: "6px 4px", minWidth: 74 }}>
+                      {list.map((h) => (
+                        <div key={h.id} style={{ display: "flex", alignItems: "flex-start", gap: 3, marginBottom: 6, fontSize: 12, color: C.ink }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700 }}>{h.date.slice(5)}</div>
+                            <div style={{ color: COL.gray }}>{h.name}</div>
+                          </div>
+                          <button onClick={() => del(h.id)} disabled={busy} aria-label="삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+                        </div>
+                      ))}
+                    </td>
+                  );
+                })}
+              </tr>
+              <tr>
+                {Array.from({ length: 12 }, (_, mi) => {
+                  const cnt = yearList.filter((h) => Number(h.date.split("-")[1]) === mi + 1).length;
+                  return <td key={mi} style={{ border: `1px solid ${C.lineAdmin}`, textAlign: "center", padding: "5px 4px", fontSize: 13, fontWeight: 700, color: COL.blue }}>{cnt || "-"}</td>;
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
