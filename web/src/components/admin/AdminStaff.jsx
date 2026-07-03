@@ -628,6 +628,46 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     catch (e) { setMsg(e.message); }
   };
 
+  // 상태 배지 + 관리 버튼 (모바일 카드 / 데스크톱 표 공용)
+  const renderActions = (w, compact) => {
+    const isAdminRole = w.role !== "worker";
+    const mod = { color: "#636a7a", borderColor: "#636a7a" };
+    const del = { color: "#c8594e", borderColor: "#c8594e" };
+    const dev = { color: "#2f6d8f", borderColor: C.blueSoft };
+    const pw  = { color: "#be8b29", borderColor: C.amberSoft };
+    const base = compact
+      ? { ...S.miniBtn, flex: 1 }
+      : { ...S.miniBtn, fontSize: 13, padding: "7px 12px" };
+    const status = (
+      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 2 }}>
+        {w.must_change_password && <span style={{ ...S.badge, color: C.amber, background: C.amberSoft, fontSize: 10 }}>비번미변경</span>}
+        <span style={{ ...S.badge, color: w.is_locked ? C.seal : C.green, background: w.is_locked ? C.sealSoft : C.greenSoft }}>{w.is_locked ? "잠김" : "정상"}</span>
+      </div>
+    );
+    if (isAdminRole) return (
+      <div style={{ display: "flex", flexDirection: "column", gap: compact ? 3 : 4, alignItems: "flex-end" }}>
+        {status}
+        <button style={{ ...base, ...mod }} onClick={() => openAdminProfile(w)}>수정</button>
+      </div>
+    );
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: compact ? 3 : 4, alignItems: "flex-end" }}>
+        {status}
+        <div style={{ display: "flex", gap: 4 }}>
+          <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
+          {isHR && <button style={{ ...base, ...pw }} onClick={() => setResetTarget(w)}>비번초기화</button>}
+        </div>
+        {isHR && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>
+            <button style={{ ...base, ...dev }} onClick={() => resetDevice(w)}>기기변경</button>
+          </div>
+        )}
+        {w.is_locked && isHR && <button style={{ ...base, color: C.green }} onClick={() => unlock(w)}>잠금해제</button>}
+      </div>
+    );
+  };
+
   if (loading) return <div style={S.empty}>불러오는 중…</div>;
 
   return (
@@ -709,83 +749,106 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>본부를 설정해 주세요.</div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {pageRows.map((w) => {
-          const isAdminRole = w.role !== "worker";
-          const isThisHolder = w.is_authority_holder;
-          return (
-            <div key={w.id} style={{
-              ...S.hrRow,
-              background: isThisHolder ? C.blueSoft : isAdminRole ? "#f0f6fa" : "#fff",
-              borderColor: isThisHolder ? C.blue : isAdminRole ? C.blue : C.lineAdmin,
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: C.ink, fontSize: isMobile ? 14 : 18, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  {w.name}
-                  {isAdminRole ? (
-                    <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: isMobile ? 10 : 13 }}>관리자</span>
-                  ) : (
-                    <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: isMobile ? 12 : 15 }}>
-                      {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
-                    </span>
-                  )}
-                </div>
-                {w.email && <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{w.email}</div>}
-                {!isAdminRole && <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>{w.phone}</div>}
-                {!isAdminRole && (
-                  <div style={{ fontSize: isMobile ? 11 : 14, color: C.inkSoft, lineHeight: 1.6 }}>
-                    근무지: {w.workplace_name || "미지정"} / {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
-                  </div>
-                )}
-                {!isAdminRole && (w.note_exempt || w.irregular_worker) && (
-                  <div style={{ fontSize: isMobile ? 11 : 14, color: C.amber, lineHeight: 1.6 }}>
-                    {[w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(" · ")}
-                  </div>
-                )}
-                <div style={{ fontSize: isMobile ? 11 : 14, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600, lineHeight: 1.6 }}>
-                  기기: {isAdminRole ? "다중 기기 관리" : (w.device_id ? "등록됨" : "미등록")}
-                </div>
-              </div>
-
-              {(() => {
-                const mod = { color: "#636a7a", borderColor: "#636a7a" }; // 수정
-                const del = { color: "#c8594e", borderColor: "#c8594e" }; // 삭제
-                const dev = { color: "#2f6d8f", borderColor: C.blueSoft }; // 기기변경
-                const pw  = { color: "#be8b29", borderColor: C.amberSoft }; // 비번초기화
-                const base = isMobile ? { ...S.miniBtn, flex: 1 } : { ...S.miniBtn, fontSize: 13, padding: "7px 12px" };
-                const status = (
-                  <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 2 }}>
-                    {w.must_change_password && <span style={{ ...S.badge, color: C.amber, background: C.amberSoft, fontSize: 10 }}>비번미변경</span>}
-                    <span style={{ ...S.badge, color: w.is_locked ? C.seal : C.green, background: w.is_locked ? C.sealSoft : C.greenSoft }}>{w.is_locked ? "잠김" : "정상"}</span>
-                  </div>
-                );
-                if (isAdminRole) return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4, alignItems: "flex-end" }}>
-                    {status}
-                    <button style={{ ...base, ...mod }} onClick={() => openAdminProfile(w)}>수정</button>
-                  </div>
-                );
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 3 : 4, alignItems: "flex-end" }}>
-                    {status}
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
-                      {isHR && <button style={{ ...base, ...pw }} onClick={() => setResetTarget(w)}>비번초기화</button>}
-                    </div>
-                    {isHR && (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>
-                        <button style={{ ...base, ...dev }} onClick={() => resetDevice(w)}>기기변경</button>
-                      </div>
+      {isMobile ? (
+        /* ── 모바일: 카드 목록 ── */
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {pageRows.map((w) => {
+            const isAdminRole = w.role !== "worker";
+            return (
+              <div key={w.id} style={{
+                ...S.hrRow,
+                background: isAdminRole ? "#f0f6fa" : "#fff",
+                borderColor: isAdminRole ? C.blue : C.lineAdmin,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: C.ink, fontSize: 14, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {w.name}
+                    {isAdminRole ? (
+                      <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: 10 }}>관리자</span>
+                    ) : (
+                      <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: 12 }}>
+                        {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
+                      </span>
                     )}
-                    {w.is_locked && isHR && <button style={{ ...base, color: C.green }} onClick={() => unlock(w)}>잠금해제</button>}
                   </div>
+                  {w.email && <div style={{ fontSize: 11, color: C.inkSoft, lineHeight: 1.6 }}>{w.email}</div>}
+                  {!isAdminRole && <div style={{ fontSize: 11, color: C.inkSoft, lineHeight: 1.6 }}>{w.phone}</div>}
+                  {!isAdminRole && (
+                    <div style={{ fontSize: 11, color: C.inkSoft, lineHeight: 1.6 }}>
+                      근무지: {w.workplace_name || "미지정"} / {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
+                    </div>
+                  )}
+                  {!isAdminRole && (w.note_exempt || w.irregular_worker) && (
+                    <div style={{ fontSize: 11, color: C.amber, lineHeight: 1.6 }}>
+                      {[w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600, lineHeight: 1.6 }}>
+                    기기: {isAdminRole ? "다중 기기 관리" : (w.device_id ? "등록됨" : "미등록")}
+                  </div>
+                </div>
+                {renderActions(w, true)}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── 데스크톱: 표 ── */
+        <div style={{ overflowX: "auto", border: `1px solid ${C.lineAdmin}`, borderRadius: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "16%" }} />
+            </colgroup>
+            <thead>
+              <tr style={{ background: "#d8e8f0", color: C.ink }}>
+                {["이름", "소속 · 직책", "연락처", "근무지 · 근무시간", "기기", "관리"].map((h, i) => (
+                  <th key={h} style={{ padding: "10px 12px", textAlign: i === 5 ? "right" : "left", fontWeight: 700, borderBottom: `1px solid ${C.lineAdmin}`, whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((w) => {
+                const isAdminRole = w.role !== "worker";
+                const td = { padding: "10px 12px", borderBottom: `1px solid ${C.lineAdmin}`, verticalAlign: "top", color: C.inkSoft, wordBreak: "break-word" };
+                return (
+                  <tr key={w.id} style={{ background: isAdminRole ? "#f0f6fa" : "#fff" }}>
+                    <td style={{ ...td, color: C.ink }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 700 }}>
+                        {w.name}
+                        {isAdminRole && <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: 12 }}>관리자</span>}
+                      </div>
+                      {!isAdminRole && (w.note_exempt || w.irregular_worker) && (
+                        <div style={{ fontSize: 12, color: C.amber, marginTop: 3 }}>
+                          {[w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                    </td>
+                    <td style={td}>
+                      {isAdminRole ? "—" : [w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ") || "—"}
+                    </td>
+                    <td style={td}>
+                      {w.email && <div>{w.email}</div>}
+                      {!isAdminRole && <div>{w.phone}</div>}
+                    </td>
+                    <td style={td}>
+                      {isAdminRole ? "—" : `${w.workplace_name || "미지정"} / ${w.scheduled_start?.slice(0, 5)}~${w.scheduled_end?.slice(0, 5)}`}
+                    </td>
+                    <td style={{ ...td, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 600 }}>
+                      {isAdminRole ? "다중 기기" : (w.device_id ? "등록됨" : "미등록")}
+                    </td>
+                    <td style={{ ...td, textAlign: "right" }}>{renderActions(w, false)}</td>
+                  </tr>
                 );
-              })()}
-            </div>
-          );
-        })}
-      </div>
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {totalPages > 1 && (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 16 }}>
