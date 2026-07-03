@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-export interface AuthPayload { userId: string; role: string }
+export interface AuthPayload { userId: string; role: string; deviceId?: string; isAuthority?: boolean }
 
 declare global {
   namespace Express {

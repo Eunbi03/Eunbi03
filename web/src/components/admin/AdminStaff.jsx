@@ -233,11 +233,11 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
     finally { setBusy(false); }
   };
 
-  const handleTransfer = async () => {
-    if (!confirm(`${worker.name}에게 권한자를 이전하시겠습니까?\n이전 후 본인은 권한자 기능을 잃습니다.`)) return;
+  const handleTransfer = async (device) => {
+    if (!confirm(`이 기기(${device.device_name || "기기"})로 권한자를 이전하시겠습니까?\n이전 후 현재 권한자는 일반 관리자가 됩니다.`)) return;
     setBusy(true);
     try {
-      await onTransfer(worker.id);
+      await onTransfer(device.id);
     } catch (e) { setMsg({ text: e.message, ok: false }); }
     finally { setBusy(false); }
   };
@@ -334,13 +334,15 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                 <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, background: d.is_approved ? "#fff" : "#fef5f5", border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 12px" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 6 }}>
-                      {d.device_name || worker?.name || "기기"}
-                      {worker?.is_authority_holder && <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>}
+                      {d.device_name || "기기"}
+                      {d.is_authority
+                        ? <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>
+                        : <span style={{ fontSize: 10, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "1px 7px", borderRadius: 20 }}>관리자</span>}
                     </div>
                     <div style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.device_id}</div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
                   </div>
-                  {isHolder && (
+                  {isHolder && !d.is_authority && (
                     <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                       {!d.is_approved && (
                         <button
@@ -348,6 +350,13 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                           onClick={() => onApproveDevice(d.id)}
                           disabled={busy}
                         >승인</button>
+                      )}
+                      {d.is_approved && (
+                        <button
+                          style={{ border: `1px solid #b9820f`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: "#b9820f", fontWeight: 700, cursor: "pointer" }}
+                          onClick={() => handleTransfer(d)}
+                          disabled={busy}
+                        >권한자 변경</button>
                       )}
                       <button
                         style={{ border: "none", background: "#fef5f5", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.seal, fontWeight: 700, cursor: "pointer" }}
@@ -360,21 +369,10 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               ))}
             </div>
           )}
-          {isHolder && !isSelf && (
-            <div style={{ fontSize: 11, color: C.inkSoft }}>관리자 PC·태블릿·폰 모두 등록 가능합니다.</div>
+          {isHolder && (
+            <div style={{ fontSize: 11, color: C.inkSoft }}>권한자 기기는 삭제할 수 없고, 권한 이전 후 삭제할 수 있습니다.</div>
           )}
         </div>
-
-        {/* 권한자 이전 — 권한자가 다른 관리자 볼 때만 */}
-        {isHolder && !isSelf && !worker?.is_authority_holder && (
-          <button
-            style={{ width: "100%", border: `1px solid ${C.amber}`, background: C.amberSoft, borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: C.amber, cursor: "pointer" }}
-            onClick={handleTransfer}
-            disabled={busy}
-          >
-            이 관리자를 권한자로 지정
-          </button>
-        )}
 
         <button style={{ ...S.subGhost, width: "100%" }} onClick={onClose}>닫기</button>
       </div>
@@ -534,8 +532,8 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     } catch (e) { setMsg(e.message); }
   };
 
-  const handleTransferAuthority = async (targetUserId) => {
-    await api.transferAuthority(targetUserId);
+  const handleTransferAuthority = async (targetDeviceId) => {
+    await api.transferAuthority(targetDeviceId);
     setMsg("권한자가 이전되었습니다. 새로고침 후 적용됩니다.");
     setAdminTarget(null);
     load();

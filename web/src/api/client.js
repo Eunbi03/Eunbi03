@@ -96,7 +96,7 @@ export const getMyAdminDevices = () => request("/admin/my-devices");
 export const getAdminDevices = (userId) => request(`/admin/admin-devices/${userId}`);
 export const approveAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}/approve`, { method: "POST" });
 export const removeAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}`, { method: "DELETE" });
-export const transferAuthority = (targetUserId) => request("/admin/authority/transfer", { method: "PUT", body: { targetUserId } });
+export const transferAuthority = (targetDeviceId) => request("/admin/authority/transfer", { method: "PUT", body: { targetDeviceId } });
 
 /* 관리자 — 설정 */
 export const getCompanySettings = () => request("/admin/company-settings");

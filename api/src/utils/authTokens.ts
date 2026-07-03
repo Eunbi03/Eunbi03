@@ -11,7 +11,7 @@ export function hashToken(plainToken: string): string {
   return crypto.createHash('sha256').update(plainToken).digest('hex');
 }
 
-export function generateAccessToken(payload: { userId: string; role: string }): string {
+export function generateAccessToken(payload: { userId: string; role: string; deviceId?: string; isAuthority?: boolean }): string {
   return jwt.sign(payload, process.env.JWT_SECRET as string, {
     expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN || '1h') as any,
   });

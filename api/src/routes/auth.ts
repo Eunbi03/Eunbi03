@@ -8,6 +8,14 @@ import { requireAuth } from '../middleware/auth';
 const router = Router();
 const MAX_FAILED = parseInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS || '5', 10);
 
+// 이 기기(admin_devices)가 권한자 기기인지
+async function deviceIsAuthority(userId: string, deviceId: string): Promise<boolean> {
+  const { rows } = await pool.query(
+    'SELECT is_authority FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
+  );
+  return !!rows[0]?.is_authority;
+}
+
 async function logAttempt(data: {
   userId?: string; email: string; deviceId: string;
   success: boolean; failReason?: string; req: Request;
@@ -88,18 +96,12 @@ router.post('/login',
         );
 
         if (approvedDevices.length === 0) {
-          // 첫 번째 기기: 자동 승인
+          // 첫 번째 기기: 자동 승인 + 권한자 기기가 하나도 없으면 이 기기를 권한자로
+          const { rows: anyAuth } = await pool.query('SELECT 1 FROM admin_devices WHERE is_authority=TRUE LIMIT 1');
           await pool.query(
-            'INSERT INTO admin_devices (user_id, device_id, device_name, is_approved, approved_at) VALUES ($1,$2,$3,TRUE,now())',
-            [user.id, deviceId, deviceName || '첫 번째 기기']
+            'INSERT INTO admin_devices (user_id, device_id, device_name, is_approved, approved_at, is_authority) VALUES ($1,$2,$3,TRUE,now(),$4)',
+            [user.id, deviceId, deviceName || '첫 번째 기기', anyAuth.length === 0]
           );
-          // 전체 권한자가 없으면 이 계정을 권한자로 설정
-          const { rows: holderRows } = await pool.query(
-            'SELECT id FROM users WHERE is_authority_holder=TRUE AND is_active=TRUE LIMIT 1'
-          );
-          if (holderRows.length === 0) {
-            await pool.query('UPDATE users SET is_authority_holder=TRUE WHERE id=$1', [user.id]);
-          }
         } else {
           // 추가 기기: 승인 대기 등록
           await pool.query(
@@ -129,8 +131,8 @@ router.post('/login',
       }
     }
 
-    // 최신 is_authority_holder 값 조회
-    const { rows: freshUser } = await pool.query('SELECT is_authority_holder FROM users WHERE id=$1', [user.id]);
+    // 권한자 여부는 '이 기기(admin_devices)' 기준으로 판단
+    const isAuthority = isAdminUser ? await deviceIsAuthority(user.id, deviceId) : false;
 
     const { plainToken, tokenHash } = generateRefreshToken();
     await pool.query(
@@ -140,13 +142,13 @@ router.post('/login',
     await logAttempt({ userId: user.id, email, deviceId, success: true, req });
 
     res.json({
-      accessToken: generateAccessToken({ userId: user.id, role: user.role }),
+      accessToken: generateAccessToken({ userId: user.id, role: user.role, deviceId, isAuthority }),
       refreshToken: plainToken,
       user: {
         id: user.id, name: user.name, role: user.role,
         mustChangePassword: user.must_change_password,
         locationConsentGiven: user.location_consent_given,
-        isAuthorityHolder: freshUser[0]?.is_authority_holder || false,
+        isAuthorityHolder: isAuthority,
       },
     });
   }
@@ -184,13 +186,14 @@ router.post('/auto-login',
       res.status(403).json({ error: '로그인 세션이 만료되었습니다.' }); return;
     }
 
+    const isAuthority = isAdminUser ? await deviceIsAuthority(user.id, deviceId) : false;
     res.json({
-      accessToken: generateAccessToken({ userId: user.id, role: user.role }),
+      accessToken: generateAccessToken({ userId: user.id, role: user.role, deviceId, isAuthority }),
       user: {
         id: user.id, name: user.name, role: user.role,
         mustChangePassword: user.must_change_password,
         locationConsentGiven: user.location_consent_given,
-        isAuthorityHolder: user.is_authority_holder || false,
+        isAuthorityHolder: isAuthority,
       },
     });
   }

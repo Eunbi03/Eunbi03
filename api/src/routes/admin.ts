@@ -638,16 +638,11 @@ router.get('/dashboard', async (req: Request, res: Response): Promise<void> => {
 
 // 내 기기 목록 + 권한자면 전체 대기 기기 목록
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
-  const { rows: userRows } = await pool.query(
-    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
-  );
-  const isHolder = userRows[0]?.is_authority_holder || false;
-
+  const isHolder = !!req.user.isAuthority;
   const { rows: myDevices } = await pool.query(
-    'SELECT id, device_id, device_name, is_approved, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
   );
-
   let pendingDevices: any[] = [];
   if (isHolder) {
     const { rows } = await pool.query(
@@ -657,31 +652,21 @@ router.get('/my-devices', async (req: Request, res: Response): Promise<void> => 
     );
     pendingDevices = rows;
   }
-
   res.json({ myDevices, pendingDevices, isAuthorityHolder: isHolder });
 });
 
-// 특정 관리자의 기기 목록 (권한자 전용)
+// 특정 관리자의 기기 목록 (모든 관리자 조회 가능 — 편집 권한은 별도)
 router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
-  const { rows: holderRows } = await pool.query(
-    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
-  );
-  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 조회할 수 있습니다.' }); return; }
-
   const { rows } = await pool.query(
-    'SELECT id, device_id, device_name, is_approved, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.params.userId]
   );
   res.json({ devices: rows });
 });
 
-// 기기 승인 (권한자 전용)
+// 기기 승인 (권한자 기기만)
 router.post('/devices/:id/approve', async (req: Request, res: Response): Promise<void> => {
-  const { rows: holderRows } = await pool.query(
-    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
-  );
-  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 승인할 수 있습니다.' }); return; }
-
+  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 승인할 수 있습니다.' }); return; }
   const { rows } = await pool.query(
     'UPDATE admin_devices SET is_approved=TRUE, approved_by=$1, approved_at=now() WHERE id=$2 AND is_approved=FALSE RETURNING id',
     [req.user.userId, req.params.id]
@@ -690,34 +675,27 @@ router.post('/devices/:id/approve', async (req: Request, res: Response): Promise
   res.json({ success: true });
 });
 
-// 기기 삭제 (권한자 전용)
+// 기기 삭제 (권한자 기기만, 권한자 기기 자신은 삭제 불가)
 router.delete('/devices/:id', async (req: Request, res: Response): Promise<void> => {
-  const { rows: holderRows } = await pool.query(
-    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
-  );
-  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
-
+  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
+  const { rows } = await pool.query('SELECT is_authority FROM admin_devices WHERE id=$1', [req.params.id]);
+  if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
+  if (rows[0].is_authority) { res.status(400).json({ error: '권한자 기기는 삭제할 수 없습니다. 먼저 권한을 이전하세요.' }); return; }
   await pool.query('DELETE FROM admin_devices WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
 
-// 권한자 이전 (현재 권한자만 가능)
+// 권한자 이전 (현재 권한자 기기 → 대상 기기). 이전 후에는 재로그인 시 반영.
 router.put('/authority/transfer', async (req: Request, res: Response): Promise<void> => {
-  const { targetUserId } = req.body;
-  if (!targetUserId) { res.status(400).json({ error: 'targetUserId가 필요합니다.' }); return; }
-
-  const { rows: holderRows } = await pool.query(
-    'SELECT is_authority_holder FROM users WHERE id=$1', [req.user.userId]
+  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 이전할 수 있습니다.' }); return; }
+  const { targetDeviceId } = req.body; // admin_devices.id
+  if (!targetDeviceId) { res.status(400).json({ error: 'targetDeviceId가 필요합니다.' }); return; }
+  const { rows: target } = await pool.query(
+    'SELECT id FROM admin_devices WHERE id=$1 AND is_approved=TRUE', [targetDeviceId]
   );
-  if (!holderRows[0]?.is_authority_holder) { res.status(403).json({ error: '권한자만 이전할 수 있습니다.' }); return; }
-
-  const { rows: targetRows } = await pool.query(
-    "SELECT id FROM users WHERE id=$1 AND is_active=TRUE AND role IN ('admin','hr')", [targetUserId]
-  );
-  if (!targetRows[0]) { res.status(400).json({ error: '대상 관리자를 찾을 수 없습니다.' }); return; }
-
-  await pool.query('UPDATE users SET is_authority_holder=FALSE WHERE is_authority_holder=TRUE');
-  await pool.query('UPDATE users SET is_authority_holder=TRUE WHERE id=$1', [targetUserId]);
+  if (!target[0]) { res.status(400).json({ error: '승인된 대상 기기를 찾을 수 없습니다.' }); return; }
+  await pool.query('UPDATE admin_devices SET is_authority=FALSE WHERE is_authority=TRUE');
+  await pool.query('UPDATE admin_devices SET is_authority=TRUE WHERE id=$1', [targetDeviceId]);
   res.json({ success: true });
 });
 
