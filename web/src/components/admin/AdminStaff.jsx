@@ -764,7 +764,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                   {isAdminRole ? (
                     <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: fsSub - 2 }}>관리자</span>
                   ) : (
-                    <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: fsSub }}>
+                    <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: fsBody }}>
                       {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
                     </span>
                   )}
