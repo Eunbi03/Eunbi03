@@ -43,7 +43,7 @@ const THEMES = {
     subtitle: "Admin Console",
     titleColor: "#fff",
     subColor: "#8b94a8",
-    icon: "🛡️",
+    icon: "",
     badge: { text: "관리자·인사팀 전용", bg: "#2d4a7a", color: "#cfe0f5" },
     titleSize: 28,               // 크게
     labelSize: 14,               // 크게
