@@ -33,28 +33,27 @@ const pad = (n) => String(n).padStart(2, "0");
 
 function Cell({ cell, isMobile, over, height }) {
   const fs = isMobile ? 10 : 12;
+  // 노트 누락이면 칸(td) 전체 폭 기준으로 하단에 빨간 줄
   const base = {
     padding: "3px 2px", textAlign: "center", fontSize: fs, lineHeight: 1.25,
-    borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
+    borderRight: `1px solid ${BORDER}`,
+    borderBottom: cell?.noteMiss ? `2px solid ${COL.red}` : `1px solid ${HBORDER}`,
+    verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
   };
   if (!cell || cell.off) return <td style={{ ...base, color: COL.gray }}>-</td>;
-  // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반 — 노트 누락이면 하단 빨간 밑줄
+  // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반
   if (cell.leave) return (
     <td style={{ ...base, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>
-      <div style={{ display: "inline-block", borderBottom: cell.noteMiss ? `2px solid ${COL.red}` : "none", paddingBottom: 1, minWidth: "80%" }}>
-        {cell.leave}
-      </div>
+      {cell.leave}
     </td>
   );
   return (
     <td style={base}>
-      <div style={{ display: "inline-block", borderBottom: cell.noteMiss ? `2px solid ${COL.red}` : "none", paddingBottom: 1, minWidth: "80%" }}>
-        <div style={{ color: cell.late ? COL.red : COL.black, fontWeight: cell.late ? 700 : 400, fontVariantNumeric: "tabular-nums" }}>
-          {cell.missingIn ? <WarnIcon /> : (cell.checkIn || "")}
-        </div>
-        <div style={{ color: COL.black, fontVariantNumeric: "tabular-nums" }}>
-          {cell.missingOut ? <WarnIcon /> : (cell.checkOut || "")}
-        </div>
+      <div style={{ color: cell.late ? COL.red : COL.black, fontWeight: cell.late ? 700 : 400, fontVariantNumeric: "tabular-nums" }}>
+        {cell.missingIn ? <WarnIcon /> : (cell.checkIn || "")}
+      </div>
+      <div style={{ color: COL.black, fontVariantNumeric: "tabular-nums" }}>
+        {cell.missingOut ? <WarnIcon /> : (cell.checkOut || "")}
       </div>
     </td>
   );
