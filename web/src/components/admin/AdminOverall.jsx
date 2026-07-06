@@ -31,29 +31,43 @@ function useIsMobile(breakpoint = 640) {
 
 const pad = (n) => String(n).padStart(2, "0");
 
-function Cell({ cell, isMobile, over, height }) {
-  const fs = isMobile ? 10 : 12;
-  // 노트 누락이면 칸(td) 전체 폭 기준으로 하단에 빨간 줄
-  const base = {
-    padding: "3px 2px", textAlign: "center", fontSize: fs, lineHeight: 1.25,
-    borderRight: `1px solid ${BORDER}`,
-    borderBottom: cell?.noteMiss ? `2px solid ${COL.red}` : `1px solid ${HBORDER}`,
+// 관리대상 행: 검은 가로선(td 하단)은 유지하고, 빨간 하이라이트는 위아래 간격을 두고 뜬 안쪽 블록으로.
+// 노트 누락 빨간줄은 그 안쪽 블록 하단(=간격에 맞춘 위치)에 표시.
+const OVER_GAP = 4;
+function cellTd(over, height, isMobile) {
+  return {
+    padding: 0, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`,
     verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
   };
-  if (!cell || cell.off) return <td style={{ ...base, color: COL.gray }}>-</td>;
+}
+function cellInner(over, noteMiss, fs) {
+  return {
+    height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column",
+    alignItems: "center", justifyContent: "center", lineHeight: 1.25, fontSize: fs,
+    padding: "3px 2px",
+    margin: over ? `${OVER_GAP}px 0` : 0,
+    background: over ? COL.lred : "transparent",
+    borderBottom: noteMiss ? `2px solid ${COL.red}` : "none",
+  };
+}
+function Cell({ cell, isMobile, over, height }) {
+  const fs = isMobile ? 10 : 12;
+  const td = cellTd(over, height, isMobile);
+  const inner = cellInner(over, !!cell?.noteMiss, fs);
+  if (!cell || cell.off) return <td style={td}><div style={{ ...inner, color: COL.gray }}>-</div></td>;
   // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반
   if (cell.leave) return (
-    <td style={{ ...base, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>
-      {cell.leave}
-    </td>
+    <td style={td}><div style={{ ...inner, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>{cell.leave}</div></td>
   );
   return (
-    <td style={base}>
-      <div style={{ color: cell.late ? COL.red : COL.black, fontWeight: cell.late ? 700 : 400, fontVariantNumeric: "tabular-nums" }}>
-        {cell.missingIn ? <WarnIcon /> : (cell.checkIn || "")}
-      </div>
-      <div style={{ color: COL.black, fontVariantNumeric: "tabular-nums" }}>
-        {cell.missingOut ? <WarnIcon /> : (cell.checkOut || "")}
+    <td style={td}>
+      <div style={inner}>
+        <div style={{ color: cell.late ? COL.red : COL.black, fontWeight: cell.late ? 700 : 400, fontVariantNumeric: "tabular-nums" }}>
+          {cell.missingIn ? <WarnIcon /> : (cell.checkIn || "")}
+        </div>
+        <div style={{ color: COL.black, fontVariantNumeric: "tabular-nums" }}>
+          {cell.missingOut ? <WarnIcon /> : (cell.checkOut || "")}
+        </div>
       </div>
     </td>
   );
@@ -207,15 +221,19 @@ export default function AdminOverall({ filters, onDirectActive }) {
                 </thead>
                 <tbody>
                   {data.workers.map((w) => (
-                    <tr key={w.id} style={{ height: ROW_H, background: w.over ? COL.lred : "#fff" }}>
+                    <tr key={w.id} style={{ height: ROW_H, background: "#fff" }}>
                       <td style={{ position: "sticky", left: 0, zIndex: 1, background: HEADER_BG, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, whiteSpace: "nowrap" }}>{w.name}</td>
                       {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} over={w.over} height={ROW_H} />)}
-                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, fontVariantNumeric: "tabular-nums" }}>
-                        <span style={{ color: w.over ? COL.red : COL.black }}>{w.lateMissing}</span>
-                        <span style={{ color: COL.black }}>/{w.workedDays}</span>
+                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle" }}>
+                        <div style={{ ...cellInner(w.over, false, isMobile ? 11 : 13), flexDirection: "row", fontWeight: 800, padding: "4px 6px" }}>
+                          <span style={{ color: w.over ? COL.red : COL.black }}>{w.lateMissing}</span>
+                          <span style={{ color: COL.black }}>/{w.workedDays}</span>
+                        </div>
                       </td>
-                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: w.over ? COL.red : COL.black, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, fontVariantNumeric: "tabular-nums" }}>
-                        {w.noteMissing || "-"}
+                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle" }}>
+                        <div style={{ ...cellInner(w.over, false, isMobile ? 11 : 13), fontWeight: 700, color: w.over ? COL.red : COL.black, padding: "4px 6px" }}>
+                          {w.noteMissing || "-"}
+                        </div>
                       </td>
                     </tr>
                   ))}
