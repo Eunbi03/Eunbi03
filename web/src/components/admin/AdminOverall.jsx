@@ -42,12 +42,13 @@ function cellTd(over, height, isMobile) {
 }
 function cellInner(over, noteMiss, fs) {
   return {
-    // 위아래 margin만큼 높이를 빼서, 검은선과 하이라이트 사이 간격이 위·아래 모두 생기도록
-    height: over ? `calc(100% - ${OVER_GAP * 2}px)` : "100%",
+    // 모든 행을 동일하게 위아래 OVER_GAP 인셋 → 노트누락 빨간줄 높이가 행마다 일정해짐.
+    // 배경만 관리대상=빨강 / 그 외=투명. 검은 가로선(td 하단)과 사이에 간격이 생김.
+    height: `calc(100% - ${OVER_GAP * 2}px)`,
     boxSizing: "border-box", display: "flex", flexDirection: "column",
-    alignItems: "center", justifyContent: "center", lineHeight: 1.25, fontSize: fs,
-    padding: "3px 2px",
-    margin: over ? `${OVER_GAP}px 0` : 0,
+    justifyContent: "center", textAlign: "center", lineHeight: 1.25, fontSize: fs,
+    padding: "1px 2px",
+    margin: `${OVER_GAP}px 0`,
     background: over ? COL.lred : "transparent",
     borderBottom: noteMiss ? `2px solid ${COL.red}` : "none",
   };
