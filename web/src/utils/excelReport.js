@@ -47,9 +47,9 @@ export async function downloadAttendanceRegister({ year, month, daysInMonth, dow
     };
     const merge = (range) => ws.mergeCells(range);
 
-    // 행 높이: 1행=19, 2행(제목)=71, 3행=25.25, 4·5행=18(기본), 6행=19, 7행~=42
+    // 행 높이: 1행=19, 2행(제목)=76, 3행=25.25, 4·5행=18(기본), 6행=19, 7행~=42
     ws.getRow(1).height = 19;
-    ws.getRow(2).height = 71;
+    ws.getRow(2).height = 76;
     ws.getRow(3).height = 25.25;
     ws.getRow(4).height = 18;
     ws.getRow(5).height = 18;
