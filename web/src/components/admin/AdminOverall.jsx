@@ -42,7 +42,9 @@ function cellTd(over, height, isMobile) {
 }
 function cellInner(over, noteMiss, fs) {
   return {
-    height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column",
+    // 위아래 margin만큼 높이를 빼서, 검은선과 하이라이트 사이 간격이 위·아래 모두 생기도록
+    height: over ? `calc(100% - ${OVER_GAP * 2}px)` : "100%",
+    boxSizing: "border-box", display: "flex", flexDirection: "column",
     alignItems: "center", justifyContent: "center", lineHeight: 1.25, fontSize: fs,
     padding: "3px 2px",
     margin: over ? `${OVER_GAP}px 0` : 0,
