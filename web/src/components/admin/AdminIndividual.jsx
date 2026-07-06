@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 
@@ -19,7 +19,7 @@ function useIsMobile(breakpoint = 760) {
 }
 
 function todayStr() { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); }
-function monthStart() { return todayStr().slice(0, 7) + "-01"; }
+const pad2 = (n) => String(n).padStart(2, "0");
 function fmtTime(t) { if (!t) return "—"; return new Date(t).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }); }
 function fmtDist(m) { if (m == null) return null; return m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`; }
 function mapsUrl(lat, lng) { return `https://maps.google.com/?q=${lat},${lng}`; }
@@ -318,8 +318,15 @@ function Kpi({ label, v, color }) {
 export default function AdminIndividual({ filters, isHR }) {
   const isMobile = useIsMobile();
   const today = todayStr();
-  const [from, setFrom] = useState(monthStart());
-  const [to, setTo] = useState(today);
+  const monthRef = useRef(null);
+  const [ym, setYm] = useState(() => { const [y, m] = todayStr().split("-").map(Number); return { year: y, month: m }; });
+  // 선택 월 → 조회 기간 (해당 월 1일 ~ 말일, 단 이번 달이면 오늘까지)
+  const lastDay = new Date(ym.year, ym.month, 0).getDate();
+  const from = `${ym.year}-${pad2(ym.month)}-01`;
+  const isCurrentMonth = today.slice(0, 7) === `${ym.year}-${pad2(ym.month)}`;
+  const to = isCurrentMonth ? today : `${ym.year}-${pad2(ym.month)}-${pad2(lastDay)}`;
+  const periodText = `${ym.year}. ${pad2(ym.month)}. 01. ~ ${pad2(ym.month)}. ${pad2(isCurrentMonth ? Number(today.slice(8)) : lastDay)}.`;
+  const shiftMonth = (delta) => setYm((p) => { const d = new Date(p.year, p.month - 1 + delta, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
   const [workers, setWorkers] = useState([]);
   const [scores, setScores] = useState({});
   const [openId, setOpenId] = useState(null);
@@ -333,9 +340,11 @@ export default function AdminIndividual({ filters, isHR }) {
     api.getWorkers({}).then((d) => setWorkers(d.workers)).finally(() => setListLoading(false));
   }, []);
 
-  // 기간별 KPI 점수 사전 로드 (관리대상 라벨/헤더 KPI 사전 표시)
+  // 기간별 KPI 점수 사전 로드 (관리대상 라벨/헤더 KPI 사전 표시) + 기간 변경 시 펼침·캐시 초기화
   useEffect(() => {
     if (!from || !to) return;
+    setReportMap({});
+    setOpenId(null);
     api.getReportScores({ from, to }).then((d) => setScores(d.scores || {})).catch(() => setScores({}));
   }, [from, to]);
 
@@ -393,18 +402,26 @@ export default function AdminIndividual({ filters, isHR }) {
 
   if (listLoading) return <div style={S.empty}>불러오는 중…</div>;
 
-  const dateInput = { border: `1px solid #bb8414`, borderRadius: 8, padding: "8px 12px", fontSize: isMobile ? 13 : 14, color: COL.black, background: "#fff", flex: 1, minWidth: 130, boxSizing: "border-box" };
-
   return (
     <div>
       {msg && <div style={{ ...S.busy, marginBottom: 10 }}>{msg}</div>}
 
-      {/* 기간 설정 */}
+      {/* 기간 설정 — 전체현황과 동일한 월 선택기 */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-        <span style={{ fontSize: isMobile ? 13 : 15, color: COL.black, fontWeight: 800, flexShrink: 0 }}>기간</span>
-        <input type="date" max={today} value={from} onChange={(e) => { setFrom(e.target.value); setReportMap({}); }} style={dateInput} />
-        <span style={{ color: COL.gray }}>~</span>
-        <input type="date" max={today} value={to} onChange={(e) => { setTo(e.target.value); setReportMap({}); }} style={dateInput} />
+        <span style={{ fontWeight: 400, color: COL.black, fontSize: isMobile ? 14 : 16 }}>조회 기간</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid #bb8414`, borderRadius: 8, padding: "0 10px", height: 40, boxSizing: "border-box", background: "#fff", position: "relative" }}>
+          <button onClick={() => (monthRef.current?.showPicker ? monthRef.current.showPicker() : monthRef.current?.focus())} title="연월 선택" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={COL.black} strokeWidth="2" strokeLinecap="round"><rect x="3" y="4.5" width="18" height="17" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>
+          </button>
+          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 400, color: COL.black, fontSize: isMobile ? 13 : 15 }}>{periodText}</span>
+          <input ref={monthRef} type="month" max={today.slice(0, 7)} value={`${ym.year}-${pad2(ym.month)}`}
+            onChange={(e) => { const [y, m] = e.target.value.split("-").map(Number); if (y && m) setYm({ year: y, month: m }); }}
+            style={{ width: 1, height: 1, opacity: 0, position: "absolute", left: 8, bottom: 0, pointerEvents: "none" }} />
+          <div style={{ display: "flex", flexDirection: "column", marginLeft: 2 }}>
+            <button onClick={() => shiftMonth(1)} aria-label="다음 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.black, lineHeight: 0.8, fontSize: 11 }}>▲</button>
+            <button onClick={() => shiftMonth(-1)} aria-label="지난 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.black, lineHeight: 0.8, fontSize: 11 }}>▼</button>
+          </div>
+        </div>
       </div>
 
       {/* 법인 → 본부 → 팀 그룹 */}

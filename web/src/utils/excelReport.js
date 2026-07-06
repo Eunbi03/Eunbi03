@@ -7,6 +7,10 @@ const pad = (n) => String(n).padStart(2, "0");
 
 const thin = { style: "thin", color: { argb: "FF999999" } };
 const borderAll = { top: thin, left: thin, right: thin, bottom: thin };
+// A열(월)·C열(요일): 오른쪽 테두리 없음 → 옆 칸과 병합된 것처럼 보임
+const borderNoRight = { top: thin, left: thin, bottom: thin };
+// B열(/일): 왼쪽 테두리 없음 → A열과 이어져 보임
+const borderNoLeft = { top: thin, right: thin, bottom: thin };
 
 export async function downloadAttendanceRegister({ year, month, daysInMonth, dow, workers }) {
   const ExcelJS = (await import("exceljs")).default;
@@ -37,17 +41,19 @@ export async function downloadAttendanceRegister({ year, month, daysInMonth, dow
       cell.value = value;
       cell.font = { name: "맑은 고딕", size: opts.size || 12, bold: !!opts.bold, color: opts.color ? { argb: opts.color } : undefined };
       cell.alignment = { vertical: "middle", horizontal: opts.align || "center", wrapText: true };
-      if (!opts.noBorder) cell.border = borderAll;
+      if (!opts.noBorder) cell.border = opts.border || borderAll;
       if (opts.fill) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill } };
       return cell;
     };
     const merge = (range) => ws.mergeCells(range);
 
-    // 행 높이: 1행=19, 2행(제목)=71, 3행=25.25, 4~6행=19, 7행~=42
+    // 행 높이: 1행=19, 2행(제목)=71, 3행=25.25, 4·5행=18(기본), 6행=19, 7행~=42
     ws.getRow(1).height = 19;
     ws.getRow(2).height = 71;
     ws.getRow(3).height = 25.25;
-    for (let r = 4; r <= 6; r++) ws.getRow(r).height = 19;
+    ws.getRow(4).height = 18;
+    ws.getRow(5).height = 18;
+    ws.getRow(6).height = 19;
     for (let r = 7; r <= sumRow + 2; r++) ws.getRow(r).height = 42;
 
     // 1행: 담당/팀장/본부장
@@ -86,9 +92,9 @@ export async function downloadAttendanceRegister({ year, month, daysInMonth, dow
     // 7행~: 일자별 (A~C 음영)
     for (let d = 1; d <= daysInMonth; d++) {
       const row = dayRowStart + d - 1;
-      set(`A${row}`, d === 1 ? pad(month) : "", { bold: true, fill: GRAY });
-      set(`B${row}`, `/${pad(d)}`, { bold: true, fill: GRAY });
-      set(`C${row}`, DOW[dow[d - 1]], { bold: true, fill: GRAY });
+      set(`A${row}`, pad(month), { bold: true, fill: GRAY, border: borderNoRight });
+      set(`B${row}`, `/ ${pad(d)}`, { bold: true, fill: GRAY, border: borderNoLeft, align: "left" });
+      set(`C${row}`, DOW[dow[d - 1]], { bold: true, fill: GRAY, border: borderNoRight });
       for (let g = 0; g < 4; g++) {
         const start = 4 + g * 4;
         const w = group[g];

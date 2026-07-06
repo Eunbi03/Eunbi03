@@ -10,7 +10,8 @@ const COL = {
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const HEADER_BG = "#d8e8f0"; // 가로/세로 헤더 배경
 const ROW_H = 44;            // 헤더와 데이터 행 높이 동일
-const BORDER = "#787878";    // 표 내외부 테두리
+const BORDER = "#787878";    // 표 세로/외곽 테두리
+const HBORDER = "#3a3a3a";   // 표 가로 구분선
 
 function WarnIcon() {
   return (
@@ -34,12 +35,18 @@ function Cell({ cell, isMobile, over, height }) {
   const fs = isMobile ? 10 : 12;
   const base = {
     padding: "3px 2px", textAlign: "center", fontSize: fs, lineHeight: 1.25,
-    borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
+    borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
     ...(over ? { borderTop: `4px solid ${COL.white}`, borderBottom: `4px solid ${COL.white}` } : {}), // 관리대상 여백(2배)
   };
   if (!cell || cell.off) return <td style={{ ...base, color: COL.gray }}>-</td>;
-  // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반
-  if (cell.leave) return <td style={{ ...base, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>{cell.leave}</td>;
+  // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반 — 노트 누락이면 하단 빨간 밑줄
+  if (cell.leave) return (
+    <td style={{ ...base, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>
+      <div style={{ display: "inline-block", borderBottom: cell.noteMiss ? `2px solid ${COL.red}` : "none", paddingBottom: 1, minWidth: "80%" }}>
+        {cell.leave}
+      </div>
+    </td>
+  );
   return (
     <td style={base}>
       <div style={{ display: "inline-block", borderBottom: cell.noteMiss ? `2px solid ${COL.red}` : "none", paddingBottom: 1, minWidth: "80%" }}>
@@ -187,29 +194,29 @@ export default function AdminOverall({ filters, onDirectActive }) {
               <table style={{ borderCollapse: "collapse", width: "100%", background: "#fff" }}>
                 <thead>
                   <tr style={{ height: ROW_H }}>
-                    <th style={{ position: "sticky", left: 0, zIndex: 2, background: HEADER_BG, padding: "6px 8px", fontSize: isMobile ? 11 : 13, color: COL.black, borderRight: `1px solid ${BORDER}`, minWidth: isMobile ? 54 : 70 }}>구분</th>
+                    <th style={{ position: "sticky", left: 0, zIndex: 2, background: HEADER_BG, padding: "6px 8px", fontSize: isMobile ? 11 : 13, color: COL.black, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, minWidth: isMobile ? 54 : 70 }}>구분</th>
                     {Array.from({ length: dim }, (_, i) => {
                       const d = i + 1; const dow = data.dow[i];
                       const isRed = dow === 0 || dow === 6 || !!data.holidays[`${ym.year}-${pad(ym.month)}-${pad(d)}`];
                       return (
-                        <th key={d} style={{ padding: "4px 2px", fontSize: isMobile ? 10 : 12, borderRight: `1px solid ${BORDER}`, color: isRed ? COL.red : COL.black, background: HEADER_BG }}>
+                        <th key={d} style={{ padding: "4px 2px", fontSize: isMobile ? 10 : 12, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, color: isRed ? COL.red : COL.black, background: HEADER_BG }}>
                           <div>{d}</div><div style={{ fontWeight: 400 }}>{DOW[dow]}</div>
                         </th>
                       );
                     })}
-                    <th colSpan={2} style={{ padding: "4px 8px", fontSize: isMobile ? 11 : 13, color: COL.black, background: HEADER_BG, borderLeft: `1px solid ${BORDER}` }}>합계</th>
+                    <th colSpan={2} style={{ padding: "4px 8px", fontSize: isMobile ? 11 : 13, color: COL.black, background: HEADER_BG, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}` }}>합계</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.workers.map((w) => (
                     <tr key={w.id} style={{ height: ROW_H, background: w.over ? COL.lred : "#fff" }}>
-                      <td style={{ position: "sticky", left: 0, zIndex: 1, background: HEADER_BG, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, whiteSpace: "nowrap" }}>{w.name}</td>
+                      <td style={{ position: "sticky", left: 0, zIndex: 1, background: HEADER_BG, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, whiteSpace: "nowrap" }}>{w.name}</td>
                       {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} over={w.over} height={ROW_H} />)}
-                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, fontVariantNumeric: "tabular-nums", ...(w.over ? { borderTop: `4px solid ${COL.white}`, borderBottom: `4px solid ${COL.white}` } : {}) }}>
+                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, fontVariantNumeric: "tabular-nums", ...(w.over ? { borderTop: `4px solid ${COL.white}`, borderBottom: `4px solid ${COL.white}` } : {}) }}>
                         <span style={{ color: w.over ? COL.red : COL.black }}>{w.lateMissing}</span>
                         <span style={{ color: COL.black }}>/{w.workedDays}</span>
                       </td>
-                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: w.over ? COL.red : COL.black, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, fontVariantNumeric: "tabular-nums", ...(w.over ? { borderTop: `4px solid ${COL.white}`, borderBottom: `4px solid ${COL.white}` } : {}) }}>
+                      <td style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: w.over ? COL.red : COL.black, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, fontVariantNumeric: "tabular-nums", ...(w.over ? { borderTop: `4px solid ${COL.white}`, borderBottom: `4px solid ${COL.white}` } : {}) }}>
                         {w.noteMissing || "-"}
                       </td>
                     </tr>
