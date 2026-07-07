@@ -249,6 +249,11 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
                     {i > 0 && <span style={{ color: C.lineAdmin, margin: "0 4px" }}>|</span>}
                     <TimeText time={o.start_time} lat={o.start_lat} lng={o.start_lng} color={COL.blue} />
                     <span style={{ color: COL.black, fontWeight: 600 }}>{o.destination}</span>
+                    {o.distance_m != null ? (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 8, background: o.distance_m > 200 ? "#f6dcd8" : "#dcece2", color: o.distance_m > 200 ? COL.red : COL.green }}>{fmtDist(o.distance_m)}</span>
+                    ) : (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 8, background: COL.lgray, color: COL.gray }}>?</span>
+                    )}
                     {o.reason && <span style={{ color: COL.gray }}>{o.reason}</span>}
                   </span>
                 ))}

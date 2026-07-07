@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
-import { isWithinRadius, validateGpsReport } from '../utils/geo';
+import { isWithinRadius, validateGpsReport, haversineDistanceMeters } from '../utils/geo';
 import { requireAuth } from '../middleware/auth';
 import { workdaysBetween } from '../utils/holidays';
 import { classifyDay } from '../utils/attendanceKpi';
@@ -61,6 +61,12 @@ router.post('/check-in', requireAuth,
   }
 );
 
+// GET /api/attendance/workplaces — 외근 목적지 자동완성용 근무지 목록 (근로자 접근 가능)
+router.get('/workplaces', requireAuth, async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query('SELECT id, name FROM workplaces WHERE is_active=TRUE ORDER BY name');
+  res.json({ workplaces: rows });
+});
+
 // POST /api/attendance/outing/start
 router.post('/outing/start', requireAuth,
   [body('lat').isFloat(), body('lng').isFloat(), body('destination').notEmpty()],
@@ -68,7 +74,7 @@ router.post('/outing/start', requireAuth,
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
 
-    const { lat, lng, destination, reason } = req.body;
+    const { lat, lng, destination, reason, workplaceId } = req.body;
     const userId = req.user.userId;
     const date = todayKST();
 
@@ -78,13 +84,21 @@ router.post('/outing/start', requireAuth,
     if (!attRows[0]?.check_in_time) { res.status(409).json({ error: '출근 기록이 없습니다.' }); return; }
     if (attRows[0].check_out_time) { res.status(409).json({ error: '이미 퇴근 처리되었습니다.' }); return; }
 
+    // 등록된 근무지를 목적지로 선택한 경우 거리 계산 (직접 입력이면 거리 없음)
+    let wpId: string | null = null;
+    let distanceM: number | null = null;
+    if (workplaceId) {
+      const { rows: wp } = await pool.query('SELECT id, lat, lng FROM workplaces WHERE id=$1 AND is_active=TRUE', [workplaceId]);
+      if (wp[0]) { wpId = wp[0].id; distanceM = haversineDistanceMeters(lat, lng, wp[0].lat, wp[0].lng); }
+    }
+
     // 이동 중이던(종료되지 않은) 외근은 자동 종료 후 새 외근 시작 (장소를 옮겨다니며 연속 외근 가능)
     await pool.query('UPDATE outing_records SET end_time=now() WHERE attendance_record_id=$1 AND end_time IS NULL', [attRows[0].id]);
 
     const { rows } = await pool.query(
-      `INSERT INTO outing_records (attendance_record_id, user_id, start_time, start_lat, start_lng, destination, reason)
-       VALUES ($1,$2,now(),$3,$4,$5,$6) RETURNING id, start_time`,
-      [attRows[0].id, userId, lat, lng, destination, reason || null]
+      `INSERT INTO outing_records (attendance_record_id, user_id, start_time, start_lat, start_lng, destination, reason, workplace_id, distance_m)
+       VALUES ($1,$2,now(),$3,$4,$5,$6,$7,$8) RETURNING id, start_time`,
+      [attRows[0].id, userId, lat, lng, destination, reason || null, wpId, distanceM]
     );
     res.status(201).json({ success: true, outing: rows[0] });
   }
