@@ -756,7 +756,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         {pageRows.map((w) => {
           const isAdminRole = w.role !== "worker";
           const flags = [w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(", ");
-          const fsMain = isMobile ? 15 : 18;
+          const fsMain = isMobile ? 14 : 16;
           const fsSub = isMobile ? 13 : 15;
           const fsBody = isMobile ? 12 : 14;
           return (

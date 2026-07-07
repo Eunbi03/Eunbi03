@@ -517,9 +517,9 @@ export default function AdminIndividual({ filters, isHR }) {
                         <div key={w.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
                           <div style={{ padding: isMobile ? "11px 14px" : "14px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }} onClick={() => toggle(w)}>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontWeight: 800, fontSize: isMobile ? 15 : 18, color: COL.black }}>{w.name}</span>
+                              <span style={{ fontWeight: 800, fontSize: isMobile ? 14 : 16, color: COL.black }}>{w.name}</span>
                               {over && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COL.red, background: COL.lred, padding: "2px 8px", borderRadius: 10 }}>관리대상</span>}
-                              <span style={{ fontSize: isMobile ? 12 : 15, color: COL.gray, marginLeft: 8 }}>
+                              <span style={{ fontSize: isMobile ? 12 : 14, color: COL.gray, marginLeft: 8 }}>
                                 {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
                               </span>
                             </div>
