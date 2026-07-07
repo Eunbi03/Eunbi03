@@ -171,7 +171,7 @@ export default function Employee({ user }) {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div>
             <div style={{ fontSize: 13, color: W.sub, fontWeight: 600, marginBottom: 8 }}>오늘 근무</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: W.ink, lineHeight: 1.1 }}>{todayLabel()}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: W.ink, lineHeight: 1.2 }}>{todayLabel()}</div>
             <div style={{ fontSize: 14, color: W.sub, marginTop: 2 }}>{schedule.start} ~ {schedule.end}</div>
           </div>
           <StatusBadge isCheckedIn={isCheckedIn} isCheckedOut={isCheckedOut} leaveType={today?.leaveType} />
@@ -197,7 +197,7 @@ export default function Employee({ user }) {
               </div>
             )}
             {today.workMinutes != null && isCheckedOut && (
-              <div style={{ marginTop: 8, fontSize: 15, color: W.ink }}>총 근로시간 <b style={{ color: W.green }}>{fmtDur(today.workMinutes)}</b></div>
+              <div style={{ marginTop: 8, fontSize: 16, color: W.ink }}>총 근로시간 <b style={{ color: W.green }}>{fmtDur(today.workMinutes)}</b></div>
             )}
           </div>
         )}
@@ -268,8 +268,8 @@ export default function Employee({ user }) {
               <span style={{ fontSize: 16, fontWeight: 700, color: W.ink }}>이번 주 근무</span>
               <button style={{ background: "none", border: "none", cursor: "pointer", color: W.sub, fontSize: 14 }} onClick={() => setShowWeekly(false)}>▲</button>
             </div>
-            <WeeklyGrid days={weekly.days || []} />
-            <div style={{ textAlign: "center", fontSize: 20, fontWeight: 800, color: W.ink, marginTop: 14 }}>
+            <WeeklyGrid days={buildWeek(weekly.days)} />
+            <div style={{ textAlign: "center", fontSize: 16, fontWeight: 800, color: W.ink, marginTop: 14 }}>
               총 {fmtDur(weekly.totalWorkMinutes || 0)} 근무
             </div>
           </div>
@@ -287,7 +287,7 @@ export default function Employee({ user }) {
               <button style={{ background: "none", border: "none", cursor: "pointer", color: W.sub, fontSize: 14 }} onClick={() => setShowMonthly(false)}>▲</button>
             </div>
             <MonthlyGrid monthly={monthly} />
-            <div style={{ textAlign: "center", fontSize: 20, fontWeight: 800, color: W.ink, marginTop: 14 }}>
+            <div style={{ textAlign: "center", fontSize: 16, fontWeight: 800, color: W.ink, marginTop: 14 }}>
               총 {fmtDur(monthly.totalWorkMinutes || 0)} 근무
             </div>
           </div>
@@ -302,6 +302,27 @@ export default function Employee({ user }) {
   );
 }
 
+// 이번 주(일~토) 7칸을 항상 보장 — 백엔드 응답을 날짜로 매핑, 없는 날은 합성
+function buildWeek(serverDays) {
+  const byDate = {};
+  (serverDays || []).forEach((d) => { byDate[d.date] = d; });
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const [y, m, dd] = todayStr.split("-").map(Number);
+  const todayDow = new Date(Date.UTC(y, m - 1, dd, 12)).getUTCDay();
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(Date.UTC(y, m - 1, dd - todayDow + i, 12));
+    const ds = dt.toISOString().slice(0, 10);
+    const dow = dt.getUTCDay();
+    if (byDate[ds]) { out.push({ ...byDate[ds], dow, isToday: ds === todayStr }); }
+    else {
+      const isWeekend = dow === 0 || dow === 6;
+      out.push({ date: ds, dow, isToday: ds === todayStr, isFuture: ds > todayStr, off: isWeekend, present: false });
+    }
+  }
+  return out;
+}
+
 // 이번 주 근무 7일 그리드 (항목10)
 function WeeklyGrid({ days }) {
   return (
@@ -311,8 +332,8 @@ function WeeklyGrid({ days }) {
         const bg = d.isToday ? W.cellBlue : isAlert ? W.redBg : W.cellBg;
         let content;
         if (d.leave) content = <span style={{ fontSize: 12, fontWeight: 700, color: W.green }}>연차</span>;
-        else if (d.isFuture) content = <span style={{ color: W.sub }}>-</span>;
         else if (d.off) content = <span style={{ color: W.sub }}>X</span>;
+        else if (d.isFuture) content = <span style={{ color: W.sub }}>-</span>;
         else if (d.missing) content = <WarnIcon />;
         else if (d.present) content = (
           <div style={{ fontVariantNumeric: "tabular-nums", color: d.late ? W.red : W.ink, fontWeight: d.late ? 700 : 400, fontSize: 12, lineHeight: 1.5 }}>
