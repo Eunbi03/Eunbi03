@@ -82,7 +82,7 @@ export default function AdminApp({ user }) {
   const showFilter = tab !== "settings";
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 0 }}>
+    <div style={{ maxWidth: 1600, margin: "0 auto", padding: 0 }}>
       {/* 탭 */}
       <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "12px 0 6px", borderBottom: `1px solid ${C.lineAdmin}`, marginBottom: 12 }}>
         {TABS.filter((t) => t.key !== "settings" || isHR).map((t) => (

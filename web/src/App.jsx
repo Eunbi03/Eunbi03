@@ -98,7 +98,7 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: isAdmin ? undefined : "#f4f6f7" }}>
       <Header user={user} onLogout={handleLogout} />
-      <div style={{ padding: isAdmin ? "12px clamp(14px, 4vw, 48px)" : 0 }}>
+      <div style={{ padding: isAdmin ? "12px clamp(12px, 2vw, 28px)" : 0 }}>
         {isAdmin ? <AdminApp user={user} /> : <Employee user={user} />}
       </div>
     </div>

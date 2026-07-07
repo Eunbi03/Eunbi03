@@ -37,7 +37,7 @@ const OVER_GAP = 4;
 function cellTd(over, height, isMobile) {
   return {
     padding: 0, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`,
-    verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
+    verticalAlign: "middle", minWidth: isMobile ? 34 : 36, height,
   };
 }
 function cellInner(over, fs) {
@@ -233,13 +233,13 @@ export default function AdminOverall({ filters, onDirectActive }) {
                     <tr key={w.id} style={{ height: ROW_H, background: "#fff" }}>
                       <td style={{ position: "sticky", left: 0, zIndex: 1, background: HEADER_BG, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, whiteSpace: "nowrap" }}>{w.name}</td>
                       {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} over={w.over} height={ROW_H} />)}
-                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle" }}>
+                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", height: ROW_H }}>
                         <div style={{ ...cellInner(w.over, isMobile ? 11 : 13), flexDirection: "row", fontWeight: 800, padding: "4px 6px" }}>
                           <span style={{ color: w.over ? COL.red : COL.black }}>{w.lateMissing}</span>
                           <span style={{ color: COL.black }}>/{w.workedDays}</span>
                         </div>
                       </td>
-                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle" }}>
+                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", height: ROW_H }}>
                         <div style={{ ...cellInner(w.over, isMobile ? 11 : 13), fontWeight: 700, color: w.over ? COL.red : COL.black, padding: "4px 6px" }}>
                           {w.noteMissing || "-"}
                         </div>
