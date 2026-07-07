@@ -653,13 +653,13 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     if (isAdminRole) return (
       <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
         {status}
-        <button style={{ ...base, ...mod, width: 84 }} onClick={() => openAdminProfile(w)}>수정</button>
+        <button style={{ ...base, ...mod, width: 56 }} onClick={() => openAdminProfile(w)}>수정</button>
       </div>
     );
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
         {status}
-        <div style={{ display: "grid", gridTemplateColumns: "84px 84px", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "56px 84px", gap: 6 }}>
           <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
           {isHR && <button style={{ ...base, ...pw }} onClick={() => resetPw(w)}>비번초기화</button>}
           {isHR && <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>}
