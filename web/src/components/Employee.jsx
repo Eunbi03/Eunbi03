@@ -170,7 +170,7 @@ export default function Employee({ user }) {
       <div style={{ ...cardStyle, padding: "18px 18px 16px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <div style={{ fontSize: 13, color: W.sub, fontWeight: 600, marginBottom: 8 }}>오늘 근무</div>
+            <div style={{ fontSize: 13, color: W.sub, fontWeight: 600, marginBottom: 14 }}>오늘 근무</div>
             <div style={{ fontSize: 16, fontWeight: 800, color: W.ink, lineHeight: 1.2 }}>{todayLabel()}</div>
             <div style={{ fontSize: 14, color: W.sub, marginTop: 2 }}>{schedule.start} ~ {schedule.end}</div>
           </div>
