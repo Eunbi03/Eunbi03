@@ -5,6 +5,9 @@ import { requireAuth, requireAdmin, requireHR } from '../middleware/auth';
 import { workdaysBetween, refreshHolidayCache } from '../utils/holidays';
 import { classifyDay, leaveCountsAsCheckIn, leaveCountsAsCheckOut, leaveCountsAsNote } from '../utils/attendanceKpi';
 import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
+import jwt from 'jsonwebtoken';
+import { buildIndividualReport } from '../services/reportBuilder';
+import { sendReportLink } from '../services/reportSender';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -531,6 +534,30 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
   }
 
   res.json({ scores });
+});
+
+// POST /api/admin/send-report — 지정 인원에게 기간 리포트 링크를 수동 발송 (이메일 우선, 없으면 문자)
+router.post('/send-report', requireHR, async (req: Request, res: Response): Promise<void> => {
+  const { userIds, from, to } = req.body;
+  if (!Array.isArray(userIds) || !userIds.length || !from || !to) { res.status(400).json({ error: '발송 대상과 기간이 필요합니다.' }); return; }
+  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const m = Number(String(from).split('-')[1]);
+  const monthLabel = `${m}월`;
+  const results: any[] = [];
+  for (const uid of userIds) {
+    const rep = await buildIndividualReport(uid, from, to);
+    if (!rep) { results.push({ userId: uid, ok: false, reason: '대상 없음' }); continue; }
+    const token = jwt.sign({ uid, from, to }, process.env.JWT_SECRET as string, { expiresIn: '60d' });
+    const link = `${base}/api/report?t=${token}`;
+    try {
+      const via = await sendReportLink({ name: rep.user.name, email: rep.user.email, phone: rep.user.phone, monthLabel, link });
+      results.push({ userId: uid, name: rep.user.name, ok: via !== 'none', via });
+    } catch (e: any) {
+      results.push({ userId: uid, name: rep.user.name, ok: false, reason: e.message });
+    }
+  }
+  const sent = results.filter((r) => r.ok).length;
+  res.json({ sent, total: results.length, results });
 });
 
 // ── 출퇴근 기록 조회 ───────────────────────────────────────────

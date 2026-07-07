@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import app from './app';
 import { startScheduler } from './jobs/scheduler';
-import { startMonthlyReportScheduler } from './jobs/monthlyReport';
 import { loadHolidayCache } from './utils/holidays';
 
 const PORT = process.env.PORT || 3000;
@@ -16,7 +15,7 @@ app.listen(PORT, async () => {
   console.log(`근태관리 API 서버 포트 ${PORT} 실행 중`);
   await loadHolidayCache().catch((e) => console.warn('[공휴일 캐시 로드 실패]', e.message));
   startScheduler();
-  startMonthlyReportScheduler();
+  // 월간 리포트는 자동 발송하지 않고 관리자가 개별 리포트 페이지에서 수동 발송한다.
 });
 
 process.on('SIGTERM', () => { console.log('SIGTERM — 종료'); process.exit(0); });

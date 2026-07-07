@@ -178,15 +178,15 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
     );
   }
 
-  // 시계 구간
+  // 시계 구간 — 출근/퇴근 정보를 한 줄로 (줄바꿈 없음)
   const clock = (
-    <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap", minWidth: 0 }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
         <TimeText time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} color={day.isLate ? COL.red : COL.black} bold />
         <PlaceDist note={day.checkIn?.note} workplaceName={workplaceName} dist={day.checkIn?.distanceM} />
       </span>
       {day.checkOut ? (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
           <TimeText time={day.checkOut.time} lat={day.checkOut.lat} lng={day.checkOut.lng} bold />
           <PlaceDist note={day.checkOut.note} workplaceName={workplaceName} dist={day.checkOut.distanceM} />
         </span>
@@ -197,10 +197,16 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
   );
 
   const outN = day.outings?.length || 0;
-  const tail = (
+  // 외근/근무노트 표시(정보)
+  const info = (
     <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
       <span style={{ color: COL.amber, fontWeight: 700 }}>외근 {outN}</span>
       {day.noteToday && <span style={{ color: COL.blue, fontWeight: 700 }}>근무노트</span>}
+    </div>
+  );
+  // 인정 버튼 + 펼침 화살표 (오른쪽 정렬)
+  const controls = (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
       {leaveBtn}
       {hasOutingsOrNote && <span style={{ color: COL.gray, fontSize: 12 }}>{open ? "▲" : "▼"}</span>}
     </div>
@@ -215,19 +221,20 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
         >
           {isMobile ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>{DateCell}<div style={{ flex: 1, minWidth: 0 }}>{clock}</div></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>{DateCell}<div style={{ flex: 1, minWidth: 0, overflowX: "auto" }}>{clock}</div></div>
               <div style={{ paddingLeft: 52 }}><RandomChecks checks={day.randomChecks} /></div>
-              <div style={{ paddingLeft: 52 }}>{tail}</div>
+              <div style={{ paddingLeft: 52, display: "flex", alignItems: "center", gap: 12 }}>{info}<div style={{ marginLeft: "auto" }}>{controls}</div></div>
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 18 }}>
               {DateCell}
               {Divider}
-              <div style={{ flex: "0 0 260px" }}>{clock}</div>
+              <div style={{ flexShrink: 0 }}>{clock}</div>
               {Divider}
-              <div style={{ flex: "0 0 200px" }}><RandomChecks checks={day.randomChecks} /></div>
+              <div style={{ flexShrink: 0 }}><RandomChecks checks={day.randomChecks} /></div>
               {Divider}
-              <div style={{ flexShrink: 0 }}>{tail}</div>
+              {info}
+              <div style={{ marginLeft: "auto" }}>{controls}</div>
             </div>
           )}
         </div>
@@ -334,11 +341,27 @@ export default function AdminIndividual({ filters, isHR }) {
   const [loadingId, setLoadingId] = useState(null);
   const [listLoading, setListLoading] = useState(true);
   const [msg, setMsg] = useState("");
+  // 인원 직접 입력 + 리포트 발송
+  const [nameInput, setNameInput] = useState("");
+  const [selected, setSelected] = useState([]); // [{id, name}]
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     setListLoading(true);
     api.getWorkers({}).then((d) => setWorkers(d.workers)).finally(() => setListLoading(false));
   }, []);
+
+  const doSearch = async () => {
+    const name = nameInput.trim(); if (!name) return;
+    try {
+      const d = await api.searchWorkers(name);
+      const found = (d.workers || []).filter((w) => w.role === "worker");
+      if (!found.length) { setMsg("해당 이름의 직원을 찾을 수 없습니다."); return; }
+      setSelected((s) => { const add = found.filter((f) => !s.some((x) => x.id === f.id)); return [...s, ...add]; });
+      setNameInput("");
+    } catch (e) { setMsg(e.message); }
+  };
+  const removeSelected = (id) => setSelected((s) => s.filter((x) => x.id !== id));
 
   // 기간별 KPI 점수 사전 로드 (관리대상 라벨/헤더 KPI 사전 표시) + 기간 변경 시 펼침·캐시 초기화
   useEffect(() => {
@@ -348,15 +371,31 @@ export default function AdminIndividual({ filters, isHR }) {
     api.getReportScores({ from, to }).then((d) => setScores(d.scores || {})).catch(() => setScores({}));
   }, [from, to]);
 
+  const selectedIds = new Set(selected.map((s) => s.id));
   const visibleWorkers = workers
     .filter((w) => {
       if (w.role === "admin" || w.role === "hr") return false;
+      // 인원 직접 입력이 있으면 그 인원만, 없으면 상단 필터 기준
+      if (selected.length) return selectedIds.has(w.id);
       if (filters.corp && w.corp !== filters.corp) return false;
       if (filters.division && w.division !== filters.division) return false;
       if (filters.team && w.team !== filters.team) return false;
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+  // 리포트 수동 발송 — 현재 화면에 보이는 인원 대상
+  const sendReports = async () => {
+    const ids = visibleWorkers.map((w) => w.id);
+    if (!ids.length) { setMsg("발송할 인원이 없습니다."); return; }
+    if (!confirm(`${ids.length}명에게 ${ym.month}월 근태 리포트를 발송하시겠습니까?`)) return;
+    setSending(true); setMsg("");
+    try {
+      const r = await api.sendMonthlyReport({ userIds: ids, from, to });
+      setMsg(`리포트 발송 완료: ${r.sent}/${r.total}명` + (r.sent < r.total ? " (이메일/문자 미설정 인원은 발송 실패)" : ""));
+    } catch (e) { setMsg(e.message); }
+    finally { setSending(false); }
+  };
 
   // 법인 → 본부 → 팀 그룹화 (등장 순서 유지)
   const groups = [];
@@ -422,6 +461,28 @@ export default function AdminIndividual({ filters, isHR }) {
             <button onClick={() => shiftMonth(-1)} aria-label="지난 달" style={{ border: "none", background: "transparent", cursor: "pointer", color: COL.black, lineHeight: 0.8, fontSize: 11 }}>▼</button>
           </div>
         </div>
+
+        {/* 인원 직접 입력 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", border: `1px solid ${selected.length ? COL.blue : COL.black}`, borderRadius: 8, padding: "0 10px", minHeight: 40, boxSizing: "border-box", background: "#fff", flex: "1 1 220px" }}>
+          {selected.map((s) => (
+            <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: COL.blue, color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 12 }}>
+              {s.name}<button onClick={() => removeSelected(s.id)} style={{ border: "none", background: "transparent", color: "#fff", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+            </span>
+          ))}
+          <input value={nameInput} placeholder={selected.length ? "" : "인원 직접 입력"}
+            onChange={(e) => setNameInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+            style={{ flex: 1, minWidth: 80, border: "none", outline: "none", background: "transparent", color: COL.black, fontSize: 14 }} />
+          {selected.length > 0 && (
+            <button onClick={() => { setSelected([]); setNameInput(""); }} style={{ border: "none", background: "transparent", color: COL.gray, cursor: "pointer", fontSize: 13 }}>초기화</button>
+          )}
+        </div>
+
+        {/* 리포트 발송 (현재 보이는 인원 대상) */}
+        <button onClick={sendReports} disabled={sending}
+          style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer", opacity: sending ? 0.6 : 1, whiteSpace: "nowrap" }}>
+          {sending ? "발송 중…" : "리포트 발송"}
+        </button>
       </div>
 
       {/* 법인 → 본부 → 팀 그룹 */}
