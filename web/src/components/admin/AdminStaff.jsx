@@ -582,12 +582,12 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     return true;
   });
 
-  // 게이팅: 관리자는 항상 노출. 근로자는 본부 필터가 있어야 전체 노출,
-  // 없으면 기기 미등록/비번 미변경 근로자만 노출.
-  const hasDivision = !!filters.division;
-  const visible = filtered.filter((w) => isAdmin(w) || hasDivision || needsAttention(w));
+  // 게이팅: 관리자는 항상 노출. 근로자는 법인/본부/팀/직위 중 하나라도 필터가 있으면 전체 노출,
+  // 아무 필터도 없으면 기기 미등록/비번 미변경 등 확인 필요 근로자만 노출.
+  const hasAnyFilter = !!(filters.corp || filters.division || filters.team || filters.position);
+  const visible = filtered.filter((w) => isAdmin(w) || hasAnyFilter || needsAttention(w));
   const nonAdminVisible = visible.filter((w) => !isAdmin(w));
-  const showGuidance = !hasDivision && nonAdminVisible.length === 0;
+  const showGuidance = !hasAnyFilter && nonAdminVisible.length === 0;
 
   const sorted = [...visible].sort((a, b) => {
     if (isAdmin(a) !== isAdmin(b)) return isAdmin(a) ? -1 : 1; // 관리자 먼저
@@ -748,7 +748,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
       )}
 
       {showGuidance && (
-        <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>본부를 설정해 주세요.</div>
+        <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>법인·본부·팀·직위 중 하나를 선택하면 전체 직원이 표시됩니다.</div>
       )}
 
       {/* 직원 카드 목록 (데스크톱·모바일 공통 반응형) */}
