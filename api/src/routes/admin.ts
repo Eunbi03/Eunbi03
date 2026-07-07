@@ -258,14 +258,23 @@ router.delete('/workers/:id', async (req: Request, res: Response): Promise<void>
 
 router.put('/workers/:id/reset-password', requireHR, async (req: Request, res: Response): Promise<void> => {
   const { newPassword } = req.body;
-  if (!newPassword || !/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(newPassword)) { res.status(400).json({ error: '비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다.' }); return; }
-  const passwordHash = await bcrypt.hash(newPassword, 12);
-  const { rows } = await pool.query(
-    'UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2 AND is_active=TRUE RETURNING id, name',
-    [passwordHash, req.params.id]
-  );
-  if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
-  res.json({ success: true });
+  const { rows: users } = await pool.query('SELECT id, name, phone FROM users WHERE id=$1 AND is_active=TRUE', [req.params.id]);
+  if (!users[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
+
+  let plain: string;
+  if (newPassword) {
+    // 관리자가 비밀번호를 직접 지정한 경우 — 정책 검증
+    if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(newPassword)) { res.status(400).json({ error: '비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다.' }); return; }
+    plain = newPassword;
+  } else {
+    // 비밀번호 미지정 — 전화번호(하이픈 제외)로 자동 초기화
+    plain = (users[0].phone || '').replace(/\D/g, '');
+    if (!plain) { res.status(400).json({ error: '전화번호가 없어 자동 초기화할 수 없습니다.' }); return; }
+  }
+
+  const passwordHash = await bcrypt.hash(plain, 12);
+  await pool.query('UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2', [passwordHash, users[0].id]);
+  res.json({ success: true, initPassword: plain });
 });
 
 router.post('/workers/:id/reset-device', requireHR, async (req: Request, res: Response): Promise<void> => {

@@ -424,7 +424,6 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [adminTarget, setAdminTarget] = useState(null);
   const [adminDevices, setAdminDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
-  const [resetTarget, setResetTarget] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [page, setPage] = useState(1);
   const PER_PAGE = 10;
@@ -591,10 +590,8 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const showGuidance = !hasDivision && nonAdminVisible.length === 0;
 
   const sorted = [...visible].sort((a, b) => {
-    if (a.is_authority_holder !== b.is_authority_holder) return a.is_authority_holder ? -1 : 1;
-    if (isAdmin(a) !== isAdmin(b)) return isAdmin(a) ? -1 : 1;               // 관리자 먼저
-    if (needsAttention(a) !== needsAttention(b)) return needsAttention(a) ? -1 : 1; // 미변경자 먼저
-    return (a.name || "").localeCompare(b.name || "", "ko");
+    if (isAdmin(a) !== isAdmin(b)) return isAdmin(a) ? -1 : 1; // 관리자 먼저
+    return (a.name || "").localeCompare(b.name || "", "ko");   // 이름 오름차순
   });
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
@@ -629,6 +626,16 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     catch (e) { setMsg(e.message); }
   };
 
+  // 근로자 비밀번호를 전화번호로 자동 초기화 (관리자가 새 비번을 입력하지 않음)
+  const resetPw = async (w) => {
+    if (!confirm(`${w.name}의 비밀번호를 전화번호(${fmtPhone(w.phone)})로 초기화하시겠습니까?`)) return;
+    try {
+      const r = await api.resetWorkerPassword(w.id);
+      setMsg(`${w.name} 비밀번호가 전화번호로 초기화되었습니다. (임시 비번: ${r?.initPassword || fmtPhone(w.phone)})`);
+      load();
+    } catch (e) { setMsg(e.message); }
+  };
+
   // 상태 배지 + 관리 버튼 (카드 공용) — 버튼은 2열 균등 폭 그리드
   const renderActions = (w) => {
     const isAdminRole = w.role !== "worker";
@@ -654,7 +661,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         {status}
         <div style={{ display: "grid", gridTemplateColumns: "84px 84px", gap: 6 }}>
           <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
-          {isHR && <button style={{ ...base, ...pw }} onClick={() => setResetTarget(w)}>비번초기화</button>}
+          {isHR && <button style={{ ...base, ...pw }} onClick={() => resetPw(w)}>비번초기화</button>}
           {isHR && <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>}
           {isHR && <button style={{ ...base, ...dev }} onClick={() => resetDevice(w)}>기기변경</button>}
           {w.is_locked && isHR && <button style={{ ...base, color: C.green, gridColumn: "1 / -1", width: "100%" }} onClick={() => unlock(w)}>잠금해제</button>}
@@ -837,13 +844,6 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         />
       )}
 
-      {resetTarget !== null && (
-        <ResetPasswordModal
-          worker={resetTarget}
-          onClose={() => setResetTarget(null)}
-          onDone={(pw) => { setMsg(`${resetTarget.name} 비밀번호 초기화: ${pw}`); setResetTarget(null); load(); }}
-        />
-      )}
     </div>
   );
 }
