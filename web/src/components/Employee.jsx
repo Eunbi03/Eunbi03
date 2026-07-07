@@ -181,19 +181,19 @@ export default function Employee({ user }) {
         {isCheckedIn && (
           <div style={{ marginTop: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: 17, color: W.ink }}>출근</span>
-              <span style={{ fontSize: 17, color: W.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(today.checkIn.time)}</span>
+              <span style={{ fontSize: 14, color: W.ink }}>출근</span>
+              <span style={{ fontSize: 14, color: W.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(today.checkIn.time)}</span>
             </div>
             {/* 종료된 외근 이력 (일반 텍스트) */}
             {pastOutings.map((o) => (
-              <div key={o.id} style={{ fontSize: 17, color: W.ink, marginTop: 6, paddingLeft: 18 }}>
+              <div key={o.id} style={{ fontSize: 14, color: W.ink, marginTop: 6, paddingLeft: 18 }}>
                 외근 {fmtTime(o.startTime)}  {o.destination}
               </div>
             ))}
             {isCheckedOut && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 8 }}>
-                <span style={{ fontSize: 17, color: W.ink }}>퇴근</span>
-                <span style={{ fontSize: 17, color: W.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(today.checkOut.time)}</span>
+                <span style={{ fontSize: 14, color: W.ink }}>퇴근</span>
+                <span style={{ fontSize: 14, color: W.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(today.checkOut.time)}</span>
               </div>
             )}
             {today.workMinutes != null && isCheckedOut && (
