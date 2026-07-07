@@ -182,12 +182,12 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
   const clock = (
     <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
-        <TimeText time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} color={day.isLate ? COL.red : COL.black} bold />
+        <TimeText time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} color={day.isLate ? COL.red : COL.black} bold={day.isLate} />
         <PlaceDist note={day.checkIn?.note} workplaceName={workplaceName} dist={day.checkIn?.distanceM} />
       </span>
       {day.checkOut ? (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
-          <TimeText time={day.checkOut.time} lat={day.checkOut.lat} lng={day.checkOut.lng} bold />
+          <TimeText time={day.checkOut.time} lat={day.checkOut.lat} lng={day.checkOut.lng} />
           <PlaceDist note={day.checkOut.note} workplaceName={workplaceName} dist={day.checkOut.distanceM} />
         </span>
       ) : (
