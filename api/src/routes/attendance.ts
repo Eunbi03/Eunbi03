@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
 import { isWithinRadius, validateGpsReport, haversineDistanceMeters } from '../utils/geo';
 import { requireAuth } from '../middleware/auth';
-import { workdaysBetween } from '../utils/holidays';
+import { workdaysBetween, isHoliday } from '../utils/holidays';
 import { classifyDay } from '../utils/attendanceKpi';
 
 const router = Router();
@@ -262,33 +262,35 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
   const recByDate: Record<string, any> = {};
   for (const r of rows) recByDate[r.date] = r;
 
-  // Compute Mon–Fri of the current KST week
+  // 이번 주 일~토 (KST) 7일
   const [y, mo, dy] = today.split('-').map(Number);
-  const todayDow = new Date(Date.UTC(y, mo - 1, dy, 12)).getUTCDay(); // 0=Sun
-  const daysFromMon = todayDow === 0 ? 6 : todayDow - 1;
-  const weekdays: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    const d2 = new Date(Date.UTC(y, mo - 1, dy - daysFromMon + i, 12));
-    const ds = d2.toISOString().slice(0, 10);
-    if (ds <= today) weekdays.push(ds);
+  const todayDow = new Date(Date.UTC(y, mo - 1, dy, 12)).getUTCDay(); // 0=일
+  const weekDates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d2 = new Date(Date.UTC(y, mo - 1, dy - todayDow + i, 12));
+    weekDates.push(d2.toISOString().slice(0, 10));
   }
-
-  // Weekend days that actually have records
-  const weekendWithRecords = Object.keys(recByDate).filter(d => !weekdays.includes(d)).sort();
-  const allDays = [...weekdays, ...weekendWithRecords].sort();
 
   let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0, leaveDays = 0;
   let workedDays = 0, missingIn = 0, missingOut = 0, missingNote = 0;
 
-  const days = allDays.map((date) => {
+  const days = weekDates.map((date) => {
+    const dow = new Date(date + 'T12:00:00Z').getUTCDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const isFuture = date > today;
+    const isToday = date === today;
+    const isWorkday = !isWeekend && !isHoliday(date);
     const r = recByDate[date];
     const k = classifyDay(r);
-    if (k.isLeave) { leaveDays++; return { date, minutesWorked: 0, status: r.status, leaveType: r.leave_type }; }
 
-    const isWeekday = weekdays.includes(date);
+    const base: any = { date, dow, isToday, isFuture, isWorkday, off: !isWorkday, leaveType: r?.leave_type ?? null };
+
+    if (k.isLeave) { leaveDays++; return { ...base, leave: true }; }
+
     if (!k.present) {
-      if (isWeekday) missingIn++;
-      return { date, minutesWorked: 0, status: r?.status ?? null, leaveType: r?.leave_type ?? null };
+      // 근무일인데 미출근 → 출근누락 (미래/비근무일은 집계 제외)
+      if (isWorkday && !isFuture) missingIn++;
+      return { ...base, present: false, missing: isWorkday && !isFuture };
     }
 
     const m = r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
@@ -298,7 +300,11 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
     if (k.isEarlyLeave) earlyLeaveDays++;
     if (k.missingOut) missingOut++;
     if (k.missingNote) missingNote++;
-    return { date, minutesWorked: m, status: r.status, leaveType: r.leave_type };
+    return {
+      ...base, present: true, minutesWorked: m,
+      checkInTime: r.check_in_time, checkOutTime: r.check_out_time,
+      late: k.isLate, noOut: k.missingOut, noteMiss: k.missingNote,
+    };
   });
 
   res.json({ workedDays, leaveDays, lateDays, earlyLeaveDays, missingIn, missingOut, missingNote, totalWorkMinutes, days });

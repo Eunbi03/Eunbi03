@@ -7,6 +7,15 @@ import OutForm from "./OutForm.jsx";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
 import * as api from "../api/client.js";
 
+// 근로자 화면 색상
+const W = {
+  bg: "#f4f6f7", card: "#ffffff", ink: "#333333", sub: "#787878",
+  blue: "#2f6d8f", cellBlue: "#c9e6f4", border: "#c9e6f4",
+  red: "#cb6156", redBg: "#fff0f0", amber: "#b9820f", amberBg: "#f6ebcf",
+  green: "#3E7C5A", greenBg: "#DCEBE1", noteBorder: "#c2c2c2", cellBg: "#F4F6F7",
+};
+const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+
 function todayLabel() {
   const now = new Date();
   const opt = { timeZone: "Asia/Seoul" };
@@ -16,18 +25,45 @@ function todayLabel() {
   return `${m}/${d} (${dow})`;
 }
 
-function StatusBadge({ isCheckedIn, isCheckedOut, leaveType }) {
-  if (leaveType === "연차")
-    return <span style={{ ...badgeStyle, background: C.greenSoft, color: C.green }}>연차</span>;
-  if (isCheckedOut)
-    return <span style={{ ...badgeStyle, background: "#f0f0f0", color: C.inkSoft }}>퇴근 완료</span>;
-  if (isCheckedIn)
-    return <span style={{ ...badgeStyle, background: C.greenSoft, color: C.green }}>근무 중</span>;
-  return <span style={{ ...badgeStyle, background: C.amberSoft, color: C.amber }}>미출근</span>;
+function WarnIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ verticalAlign: "middle" }} aria-label="누락">
+      <circle cx="12" cy="12" r="10" fill={W.red} />
+      <rect x="10.7" y="6" width="2.6" height="8" rx="1.3" fill="#fff" />
+      <circle cx="12" cy="17.2" r="1.5" fill="#fff" />
+    </svg>
+  );
 }
-const badgeStyle = { fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, flexShrink: 0 };
+
+function StatusBadge({ isCheckedIn, isCheckedOut, leaveType }) {
+  const base = { fontSize: 13, fontWeight: 700, padding: "4px 12px", borderRadius: 20, flexShrink: 0 };
+  if (leaveType === "연차") return <span style={{ ...base, background: W.greenBg, color: W.green }}>연차</span>;
+  if (isCheckedOut) return <span style={{ ...base, background: "#eceff1", color: W.sub }}>퇴근 완료</span>;
+  if (isCheckedIn) return <span style={{ ...base, background: W.greenBg, color: W.green }}>근무 중</span>;
+  return <span style={{ ...base, background: W.amberBg, color: W.amber }}>미출근</span>;
+}
+
+// 오프닝(스플래시) — 1초 후 자동 전환 + 터치 시 즉시 전환
+function Splash({ onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 1000); return () => clearTimeout(t); }, [onDone]);
+  return (
+    <div onClick={onDone} style={{ position: "fixed", inset: 0, zIndex: 2000, cursor: "pointer",
+      background: "linear-gradient(180deg,#cfe6f4 0%,#d8ecdf 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <img src="/splash.png" alt="TimeCard" style={{ maxWidth: "80%", maxHeight: "72%", objectFit: "contain" }}
+        onError={(e) => { e.currentTarget.style.display = "none"; const n = e.currentTarget.nextSibling; if (n) n.style.display = "block"; }} />
+      <div style={{ display: "none", textAlign: "center" }}>
+        <div style={{ fontSize: 42, fontWeight: 800, color: "#333" }}>TimeCard</div>
+        <div style={{ fontSize: 16, color: "#555", marginTop: 8 }}>근태관리 어플리케이션</div>
+      </div>
+    </div>
+  );
+}
+
+const cardStyle = { background: W.card, borderRadius: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 12 };
+const ghostBtn = { width: "100%", background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, color: W.ink, cursor: "pointer" };
 
 export default function Employee({ user }) {
+  const [showSplash, setShowSplash] = useState(true);
   const [today, setToday] = useState(null);
   const [schedule, setSchedule] = useState({ start: "09:00", end: "18:00" });
   const [weekly, setWeekly] = useState(null);
@@ -44,15 +80,13 @@ export default function Employee({ user }) {
   const [noteEditing, setNoteEditing] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
 
-
   const isCheckedIn = !!today?.checkIn?.time;
   const isCheckedOut = !!today?.checkOut?.time;
-  // 외근 목적지 자동 채우기용 (근무노트 작성 시 목적지 목록만 미리 채움)
-  const outingDests = [...new Set((today?.outings || []).map((o) => o.destination).filter(Boolean))].join(", ");
-  // 퇴근 완료 시 외출 알림 항상 숨김
-  const activeOuting = isCheckedOut ? null : (today?.outings?.find((o) => !o.endTime) ?? null);
+  const outings = today?.outings || [];
+  const outingDests = [...new Set(outings.map((o) => o.destination).filter(Boolean))].join(", ");
+  const activeOuting = isCheckedOut ? null : (outings.find((o) => !o.endTime) ?? null);
+  const pastOutings = outings.filter((o) => o.endTime); // 종료된 외근 (일반 텍스트로 표기)
 
-  // 랜덤 위치 확인: 슬롯 감지 시 버튼 없이 자동으로 위치 수집·제출
   useRandomCheckPolling(isCheckedIn && !isCheckedOut, () => load(true));
 
   const load = async (silent = false) => {
@@ -62,18 +96,13 @@ export default function Employee({ user }) {
       setToday(t.record || null);
       if (t.schedule) setSchedule(t.schedule);
       setWeekly(w);
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      if (!silent) setLoading(false);
-    }
+    } catch (e) { setErr(e.message); }
+    finally { if (!silent) setLoading(false); }
   };
 
   useEffect(() => {
     load();
-    checkLocationPermission().then((state) => {
-      if (state !== "granted") setGpsBanner(true);
-    });
+    checkLocationPermission().then((state) => { if (state !== "granted") setGpsBanner(true); });
   }, []);
 
   useEffect(() => {
@@ -95,17 +124,6 @@ export default function Employee({ user }) {
     finally { setBusy(false); }
   };
 
-  const endOuting = async () => {
-    if (!activeOuting) return;
-    setBusy(true); setErr("");
-    try {
-      await api.endOuting(activeOuting.id);
-      setMsg("복귀 완료!");
-      load(true);
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
-  };
-
   const saveNote = async () => {
     if (!noteDraft.trim()) { setErr("오늘 업무 내용을 입력해주세요."); return; }
     setNoteBusy(true); setErr(""); setMsg("");
@@ -120,278 +138,228 @@ export default function Employee({ user }) {
 
   const loadMonthly = async () => {
     if (monthly) { setShowMonthly(!showMonthly); return; }
-    try {
-      const m = await api.getMonthlySummary();
-      setMonthly(m); setShowMonthly(true);
-    } catch (e) { setErr(e.message); }
+    try { const m = await api.getMonthlySummary(); setMonthly(m); setShowMonthly(true); }
+    catch (e) { setErr(e.message); }
   };
 
-  const loadHistory = () => { setView("history"); };
-
-  if (loading) return <div style={S.empty}>불러오는 중…</div>;
+  if (showSplash) return <Splash onDone={() => setShowSplash(false)} />;
+  if (loading) return <div style={{ ...S.empty, background: W.bg }}>불러오는 중…</div>;
 
   if (view === "outing") return (
-    <div style={{ padding: "16px 16px 40px" }}>
+    <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
       <MoveForm onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
     </div>
   );
   if (view === "out") return (
-    <div style={{ padding: "16px 16px 40px" }}>
-      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} outings={today?.outings || []} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
+    <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
+      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} outings={outings} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
     </div>
   );
-  if (view === "history") return (
-    <HistoryView onBack={() => setView("main")} />
-  );
+  if (view === "history") return <HistoryView onBack={() => setView("main")} />;
 
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      {/* GPS 권한 안내 배너 */}
       {gpsBanner && !isCheckedIn && (
-        <div style={{ background: C.amberSoft, borderRadius: 12, padding: "12px 16px", marginBottom: 14, fontSize: 12, color: C.amber, lineHeight: 1.6 }}>
+        <div style={{ background: W.amberBg, borderRadius: 12, padding: "12px 16px", marginBottom: 14, fontSize: 12, color: W.amber, lineHeight: 1.6 }}>
           <strong>📍 위치 항상 허용 필요</strong><br />
           출근 버튼을 누르면 위치를 요청합니다. <strong>"항상 허용"</strong>을 선택해야 랜덤 위치 확인이 가능합니다.
         </div>
       )}
-
       {msg && <div style={{ ...S.busy, marginBottom: 12 }}>{msg}</div>}
       {err && <div style={{ ...S.err, marginBottom: 12 }}>{err}</div>}
 
       {/* ── 오늘 근무 카드 ── */}
-      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden", marginBottom: 12 }}>
-
-        {/* 카드 헤더: 날짜 + 상태 */}
-        <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <div style={{ ...cardStyle, padding: "18px 18px 16px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <div style={{ fontSize: 11, color: C.inkSoft, fontWeight: 600, marginBottom: 2 }}>오늘 근무</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: C.ink }}>{todayLabel()}</div>
-            <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 2 }}>{schedule.start} – {schedule.end}</div>
+            <div style={{ fontSize: 13, color: W.sub, fontWeight: 600, marginBottom: 8 }}>오늘 근무</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: W.ink, lineHeight: 1.1 }}>{todayLabel()}</div>
+            <div style={{ fontSize: 14, color: W.sub, marginTop: 2 }}>{schedule.start} ~ {schedule.end}</div>
           </div>
           <StatusBadge isCheckedIn={isCheckedIn} isCheckedOut={isCheckedOut} leaveType={today?.leaveType} />
         </div>
 
-        {/* 출퇴근 시간 */}
-        {today?.checkIn?.time ? (
-          <div style={{ padding: "14px 18px" }}>
-            <TimeRow label="출근" time={today.checkIn.time} color={C.green} />
-            {/* 오늘 다녀온 외근 목록 (시간 · 목적지) */}
-            {today.outings?.length > 0 && (
-              <div style={{ margin: "8px 0 4px", paddingLeft: 4, display: "flex", flexDirection: "column", gap: 4 }}>
-                {today.outings.map((o) => (
-                  <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.inkSoft }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, background: C.amberSoft, padding: "1px 7px", borderRadius: 7 }}>외근</span>
-                    <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtTime(o.startTime)}{o.endTime ? `~${fmtTime(o.endTime)}` : "~"}</span>
-                    <span style={{ color: C.ink }}>{o.destination}</span>
-                  </div>
-                ))}
+        {/* 출근 후: 출근시간 + 외근 이력 */}
+        {isCheckedIn && (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: 17, color: W.ink }}>출근</span>
+              <span style={{ fontSize: 17, color: W.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(today.checkIn.time)}</span>
+            </div>
+            {/* 종료된 외근 이력 (일반 텍스트) */}
+            {pastOutings.map((o) => (
+              <div key={o.id} style={{ fontSize: 15, color: W.ink, marginTop: 6, paddingLeft: 18 }}>
+                외근 {fmtTime(o.startTime)}  {o.destination}
+              </div>
+            ))}
+            {isCheckedOut && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 8 }}>
+                <span style={{ fontSize: 17, color: W.ink }}>퇴근</span>
+                <span style={{ fontSize: 17, color: W.ink, fontVariantNumeric: "tabular-nums" }}>{fmtTime(today.checkOut.time)}</span>
               </div>
             )}
-            {today.checkOut?.time && <TimeRow label="퇴근" time={today.checkOut.time} color={C.ink} />}
-            {today.workMinutes != null && (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
-                <span style={{ fontSize: 13, color: C.inkSoft, fontWeight: 600 }}>총 근로시간</span>
-                <span style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{fmtDur(today.workMinutes)}</span>
-              </div>
-            )}
-
-            {/* 외근 중 안내 */}
-            {activeOuting && (
-              <div style={{ marginTop: 10, padding: "8px 12px", background: C.amberSoft, borderRadius: 8, fontSize: 12, color: C.amber, fontWeight: 700 }}>
-                외근 중{activeOuting.destination ? ` · ${activeOuting.destination}` : ""}
-              </div>
-            )}
-            {today.leaveType && (
-              <div style={{ marginTop: 10, padding: "8px 12px", background: C.greenSoft, borderRadius: 8, fontSize: 12, color: C.green, fontWeight: 700 }}>
-                {today.leaveType === "연차" ? "연차 처리된 날입니다." : today.leaveType === "출근" ? "출근 인정 처리되었습니다." : "퇴근 인정 처리되었습니다."}
-              </div>
+            {today.workMinutes != null && isCheckedOut && (
+              <div style={{ marginTop: 8, fontSize: 15, color: W.ink }}>총 근로시간 <b style={{ color: W.green }}>{fmtDur(today.workMinutes)}</b></div>
             )}
           </div>
-        ) : (
-          <div style={{ padding: "22px 18px", textAlign: "center", color: C.inkSoft, fontSize: 13 }}>
-            {today?.leaveType === "연차" ? "오늘은 연차 처리된 날입니다." : "아직 출근 전입니다."}
+        )}
+
+        {/* 외근 중 안내 박스 (항목15) */}
+        {activeOuting && (
+          <div style={{ marginTop: 14, padding: "12px 16px", background: W.amberBg, borderRadius: 10, fontSize: 16, fontWeight: 600, color: W.amber }}>
+            외근 중  {fmtTime(activeOuting.startTime)}  {activeOuting.destination}
+          </div>
+        )}
+
+        {/* 연차 안내 */}
+        {today?.leaveType === "연차" && !isCheckedIn && (
+          <div style={{ marginTop: 14, padding: "10px 12px", background: W.greenBg, borderRadius: 8, fontSize: 13, color: W.green, fontWeight: 700, textAlign: "center" }}>
+            오늘은 연차 처리된 날입니다.
           </div>
         )}
 
         {/* 액션 버튼 */}
         {isCheckedOut ? (
-          <div style={{ padding: "4px 18px 16px", textAlign: "center", fontSize: 12, color: C.inkSoft }}>
-            오늘 퇴근 완료. 수고하셨습니다! 🎉
+          <div style={{ marginTop: 16, textAlign: "center", fontSize: 13, color: W.sub }}>오늘 퇴근 완료. 수고하셨습니다! 🎉</div>
+        ) : !isCheckedIn && today?.leaveType !== "연차" ? (
+          <div style={{ marginTop: 20 }}>
+            <button style={{ ...S.primary, width: "100%", fontSize: 18, padding: "16px", background: W.ink, opacity: busy ? 0.6 : 1 }} onClick={checkIn} disabled={busy}>
+              {busy ? "처리 중…" : "출근하기"}
+            </button>
           </div>
-        ) : (
-          <>
-            {(!isCheckedIn && today?.leaveType !== "연차") && (
-              <div style={{ padding: "0 18px 16px" }}>
-                <button style={{ ...S.primary, width: "100%", fontSize: 16, padding: "14px", opacity: busy ? 0.6 : 1 }} onClick={checkIn} disabled={busy}>
-                  {busy ? "처리 중…" : "출근하기"}
-                </button>
-              </div>
-            )}
-            {isCheckedIn && !isCheckedOut && (
-              <div style={{ padding: "0 18px 16px", display: "flex", gap: 8 }}>
-                <button style={{ ...S.primary, flex: 1, background: C.amberSoft, color: C.amber, boxShadow: "none", border: `1px solid ${C.amber}` }} onClick={() => setView("outing")}>
-                  외근
-                </button>
-                <button style={{ ...S.primary, flex: 2 }} onClick={() => setView("out")}>퇴근</button>
-              </div>
-            )}
-          </>
-        )}
+        ) : isCheckedIn ? (
+          <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+            <button style={{ flex: 1, background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "16px", fontSize: 18, fontWeight: 700, color: W.ink, cursor: "pointer" }} onClick={() => setView("outing")}>외근</button>
+            <button style={{ flex: 2, border: "none", borderRadius: 12, padding: "16px", fontSize: 18, fontWeight: 800, background: W.ink, color: "#fff", cursor: "pointer" }} onClick={() => setView("out")}>퇴근하기</button>
+          </div>
+        ) : null}
       </div>
 
-      {/* ── 오늘 근무노트 (출근 후 언제든 작성·수정) ── */}
+      {/* ── 근무노트 작성 (출근 후) ── */}
       {isCheckedIn && today?.leaveType !== "연차" && (
-        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden", marginBottom: 12, padding: "16px 18px" }}>
-          {!noteEditing && (
-            <button
-              style={{ ...S.subGhost, width: "100%", fontSize: 14, fontWeight: 700, padding: "11px" }}
-              onClick={() => { setNoteDraft(today?.noteToday || outingDests); setNoteEditing(true); }}
-            >
-              근무노트 작성
-            </button>
-          )}
+        <div style={{ ...cardStyle, padding: "16px 18px" }}>
           {noteEditing ? (
             <>
               <textarea
-                style={{ ...S.input, minHeight: 90, resize: "vertical" }}
+                style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.noteBorder}`, borderRadius: 10, padding: 12, fontSize: 14, color: W.ink, minHeight: 120, resize: "vertical", background: "#fff" }}
                 placeholder="오늘 진행한 업무를 입력해주세요"
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
               />
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button style={{ ...S.subGhost, flex: 1 }} onClick={() => setNoteEditing(false)} disabled={noteBusy}>취소</button>
-                <button style={{ ...S.subPrimary, flex: 1, background: C.ink, opacity: noteBusy ? 0.6 : 1 }} onClick={saveNote} disabled={noteBusy}>
-                  {noteBusy ? "저장 중…" : "저장"}
-                </button>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button style={{ flex: 1, background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "12px", fontSize: 15, fontWeight: 700, color: W.ink, cursor: "pointer" }} onClick={() => setNoteEditing(false)} disabled={noteBusy}>취소</button>
+                <button style={{ flex: 1.6, border: "none", borderRadius: 12, padding: "12px", fontSize: 15, fontWeight: 800, background: W.ink, color: "#fff", cursor: "pointer", opacity: noteBusy ? 0.6 : 1 }} onClick={saveNote} disabled={noteBusy}>{noteBusy ? "저장 중…" : "저장"}</button>
               </div>
             </>
-          ) : today?.noteToday ? (
-            <div style={{ fontSize: 13, color: C.ink, lineHeight: 1.6, whiteSpace: "pre-wrap", marginTop: 10 }}>
-              {today.noteToday}
-            </div>
-          ) : null}
+          ) : (
+            <>
+              <button style={ghostBtn} onClick={() => { setNoteDraft(today?.noteToday || outingDests); setNoteEditing(true); }}>근무노트 작성</button>
+              {today?.noteToday && (
+                <div style={{ fontSize: 15, color: W.ink, lineHeight: 1.6, whiteSpace: "pre-wrap", marginTop: 12, paddingLeft: 4 }}>{today.noteToday}</div>
+              )}
+            </>
+          )}
         </div>
       )}
 
-      {/* ── 이번 주 요약 ── */}
-      <div style={{ marginBottom: 8 }}>
-        <button style={{ ...S.subGhost, width: "100%" }} onClick={() => setShowWeekly(!showWeekly)}>
-          {showWeekly ? "이번 주 요약 닫기 ▲" : "이번 주 요약 보기 ▼"}
-        </button>
-        {showWeekly && weekly && <WeeklyCard weekly={weekly} />}
-      </div>
-
-      {/* ── 이번 달 요약 ── */}
-      <div style={{ marginBottom: 8 }}>
-        <button style={{ ...S.subGhost, width: "100%" }} onClick={loadMonthly}>
-          {showMonthly ? "이번 달 요약 닫기 ▲" : "이번 달 요약 보기 ▼"}
-        </button>
-        {showMonthly && monthly && (
-          <SummaryCard title="이번 달 요약">
-            <SummaryGrid
-              main={[
-                { label: "출근일", value: monthly.workedDays ?? 0, color: C.green },
-                { label: "지각", value: monthly.lateDays ?? 0, color: C.amber },
-                { label: "누락", value: (monthly.missingIn ?? 0) + (monthly.missingOut ?? 0), color: C.seal },
-                { label: "노트누락", value: monthly.missingNote ?? 0, color: C.blue },
-              ]}
-              sub={{ label: "총 근무", value: monthly.totalWorkMinutes ? fmtDur(monthly.totalWorkMinutes) : "—", color: C.ink }}
-            />
-          </SummaryCard>
+      {/* ── 이번 주 근무 ── */}
+      <div style={{ marginBottom: 12 }}>
+        {showWeekly && weekly ? (
+          <div style={{ ...cardStyle, border: `1px solid ${W.border}`, padding: "16px 16px 14px", marginBottom: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: W.ink }}>이번 주 근무</span>
+              <button style={{ background: "none", border: "none", cursor: "pointer", color: W.sub, fontSize: 14 }} onClick={() => setShowWeekly(false)}>▲</button>
+            </div>
+            <WeeklyGrid days={weekly.days || []} />
+            <div style={{ textAlign: "center", fontSize: 20, fontWeight: 800, color: W.ink, marginTop: 14 }}>
+              총 {fmtDur(weekly.totalWorkMinutes || 0)} 근무
+            </div>
+          </div>
+        ) : (
+          <button style={{ ...ghostBtn, fontSize: 18 }} onClick={() => setShowWeekly(true)}>이번 주 근무 보기 ▼</button>
         )}
       </div>
 
-      {/* ── 근태 기록 보기 ── */}
-      <button style={{ ...S.subGhost, width: "100%", fontWeight: 700 }} onClick={loadHistory}>
-        내 근태 기록 보기 →
-      </button>
-    </div>
-  );
-}
-
-function TimeRow({ label, time, color }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-      <span style={{ fontSize: 13, color: C.inkSoft }}>{label}</span>
-      <span style={{ fontSize: 22, fontWeight: 800, color, fontVariantNumeric: "tabular-nums" }}>{fmtTime(time)}</span>
-    </div>
-  );
-}
-
-function SummaryCard({ title, children }) {
-  return (
-    <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", padding: "14px 16px", marginTop: 8 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 12 }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function WeeklyCard({ weekly }) {
-  const days = weekly.days || [];
-  return (
-    <SummaryCard title="이번 주 요약">
-      {days.length > 0 && (
-        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
-          {days.map((d, i) => {
-            const idx = new Date(d.date + "T12:00:00Z").getUTCDay();
-            const dow = ["일", "월", "화", "수", "목", "금", "토"][idx];
-            const isToday = d.date === new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
-            const isLeave = d.leaveType === "연차";
-            const hasWork = d.minutesWorked > 0;
-            const isMissing = !d.leaveType && !d.minutesWorked && !d.status;
-            return (
-              <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: C.inkSoft, marginBottom: 4 }}>{dow}</div>
-                <div style={{
-                  width: 32, height: 32, borderRadius: "50%", margin: "0 auto",
-                  background: isToday ? C.ink : isLeave ? C.greenSoft : hasWork ? C.greenSoft : isMissing ? C.sealSoft : "#f0f0f0",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: isToday ? "#fff" : isLeave || hasWork ? C.green : isMissing ? C.seal : C.inkSoft }}>
-                    {isLeave ? "연" : hasWork ? "✓" : isMissing ? "!" : "—"}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <SummaryGrid
-        main={[
-          { label: "출근일", value: weekly.workedDays ?? 0, color: C.green },
-          { label: "지각", value: weekly.lateDays ?? 0, color: C.amber },
-          { label: "누락", value: (weekly.missingIn ?? 0) + (weekly.missingOut ?? 0), color: C.seal },
-          { label: "노트누락", value: weekly.missingNote ?? 0, color: C.blue },
-        ]}
-        sub={{ label: "총 근무", value: weekly.totalWorkMinutes ? fmtDur(weekly.totalWorkMinutes) : "—", color: C.ink }}
-      />
-    </SummaryCard>
-  );
-}
-
-function SummaryGrid({ main, sub }) {
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 6 }}>
-        {(main || []).map((item, i) => (
-          <div key={i} style={{ flex: 1, textAlign: "center", padding: "10px 4px", background: C.paper, borderRadius: 10 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: item.color, lineHeight: 1 }}>{item.value}</div>
-            <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 4 }}>{item.label}</div>
+      {/* ── 이번 달 요약 ── */}
+      <div style={{ marginBottom: 12 }}>
+        {showMonthly && monthly ? (
+          <div style={{ ...cardStyle, border: `1px solid ${W.border}`, padding: "16px 16px 14px", marginBottom: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: W.ink }}>이번 달 요약</span>
+              <button style={{ background: "none", border: "none", cursor: "pointer", color: W.sub, fontSize: 14 }} onClick={() => setShowMonthly(false)}>▲</button>
+            </div>
+            <MonthlyGrid monthly={monthly} />
+            <div style={{ textAlign: "center", fontSize: 20, fontWeight: 800, color: W.ink, marginTop: 14 }}>
+              총 {fmtDur(monthly.totalWorkMinutes || 0)} 근무
+            </div>
           </div>
-        ))}
+        ) : (
+          <button style={{ ...ghostBtn, fontSize: 18 }} onClick={loadMonthly}>이번 달 요약 보기 ▼</button>
+        )}
       </div>
-      {sub && (
-        <div style={{ marginTop: 6, textAlign: "center", padding: "10px 6px", background: C.paper, borderRadius: 10 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: sub.color, lineHeight: 1 }}>{sub.value}</div>
-          <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 4 }}>{sub.label}</div>
-        </div>
-      )}
+
+      {/* ── 근태 리포트 보기 ── */}
+      <button style={{ ...ghostBtn, fontSize: 18 }} onClick={() => setView("history")}>근태 리포트 보기</button>
     </div>
   );
 }
 
-// ── 근태 기록 페이지 ──────────────────────────────────────────
+// 이번 주 근무 7일 그리드 (항목10)
+function WeeklyGrid({ days }) {
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {days.map((d, i) => {
+        const isAlert = d.late || d.missing;
+        const bg = d.isToday ? W.cellBlue : isAlert ? W.redBg : W.cellBg;
+        let content;
+        if (d.leave) content = <span style={{ fontSize: 12, fontWeight: 700, color: W.green }}>연차</span>;
+        else if (d.isFuture) content = <span style={{ color: W.sub }}>-</span>;
+        else if (d.off) content = <span style={{ color: W.sub }}>X</span>;
+        else if (d.missing) content = <WarnIcon />;
+        else if (d.present) content = (
+          <div style={{ fontVariantNumeric: "tabular-nums", color: d.late ? W.red : W.ink, fontWeight: d.late ? 700 : 400, fontSize: 12, lineHeight: 1.5 }}>
+            <div>{d.checkInTime ? fmtTime(d.checkInTime) : ""}</div>
+            <div style={{ color: W.ink, fontWeight: 400 }}>{d.checkOutTime ? fmtTime(d.checkOutTime) : ""}</div>
+          </div>
+        );
+        else content = <span style={{ color: W.sub }}>-</span>;
+        const dowColor = d.dow === 0 ? W.red : d.dow === 6 ? W.blue : W.ink;
+        return (
+          <div key={i} style={{ flex: 1, background: bg, borderRadius: 8, padding: "6px 2px 10px", position: "relative", minHeight: 74, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: dowColor }}>{DOW[d.dow]}</div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>{content}</div>
+            {d.noteMiss && <span style={{ position: "absolute", left: 6, right: 6, bottom: 5, height: 2, background: W.red, borderRadius: 1 }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
+// 이번 달 요약 (항목11)
+function MonthlyGrid({ monthly }) {
+  const items = [
+    { label: "지각", v: monthly.lateDays ?? 0 },
+    { label: "출근누락", v: monthly.missingIn ?? 0 },
+    { label: "퇴근누락", v: monthly.missingOut ?? 0 },
+    { label: "근무노트", v: monthly.missingNote ?? 0 },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      {items.map((it, i) => {
+        const on = it.v > 0;
+        return (
+          <div key={i} style={{ flex: 1, textAlign: "center", padding: "12px 4px", borderRadius: 10, background: on ? W.redBg : W.cellBg }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: on ? W.red : W.ink }}>{it.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: on ? W.red : W.ink, marginTop: 6 }}>{it.v}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 근태 기록(리포트) 페이지 ─────────────────────────────────
 function HistoryView({ onBack }) {
   const [expanded, setExpanded] = useState(null);
   const [records, setRecords] = useState(null);
@@ -411,10 +379,7 @@ function HistoryView({ onBack }) {
     if (from > today) return;
     setLoading(true);
     setRecords(null);
-    api.getAttendanceHistory({ from, to })
-      .then((h) => setRecords(h.records))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    api.getAttendanceHistory({ from, to }).then((h) => setRecords(h.records)).catch(() => {}).finally(() => setLoading(false));
   }, [month]);
 
   const changeMonth = (delta) => {
@@ -429,41 +394,36 @@ function HistoryView({ onBack }) {
   const canGoNext = month < currentMonth();
   const [my, mm] = month.split('-');
 
-  // Returns array of badges to show
   const getBadges = (r) => {
     const badges = [];
     const { status, leaveType, checkOut } = r;
     const ltCI = leaveType === "출근" || leaveType === "출퇴근" || leaveType === "출근+노트" || leaveType === "출퇴근+노트";
     const ltCO = leaveType === "퇴근" || leaveType === "출퇴근" || leaveType === "퇴근+노트" || leaveType === "출퇴근+노트";
-    const ltN  = leaveType === "노트" || (!!leaveType && leaveType.includes("+노트"));
-    const ltBase = leaveType?.replace("+노트", "") || null; // primary part
-
-    if (leaveType === "연차") { badges.push({ text: "연차", color: C.green, bg: C.greenSoft }); return badges; }
-    if (ltBase === "출퇴근") badges.push({ text: "출퇴근인정", color: C.green, bg: C.greenSoft });
-    else if (ltBase === "출근") badges.push({ text: "출근인정", color: C.green, bg: C.greenSoft });
-    else if (ltBase === "퇴근") badges.push({ text: "퇴근인정", color: C.green, bg: C.greenSoft });
-    else if (status === "지각") badges.push({ text: "지각", color: C.amber, bg: C.amberSoft });
-    else if (status === "조퇴") badges.push({ text: "조퇴", color: C.seal, bg: C.sealSoft });
-    else if (status === "지각조퇴") badges.push({ text: "지각·조퇴", color: C.seal, bg: C.sealSoft });
-    if (ltN) badges.push({ text: "노트인정", color: C.blue, bg: C.blueSoft });
-    // Show 퇴근누락 if present and not excused
+    const ltN = leaveType === "노트" || (!!leaveType && leaveType.includes("+노트"));
+    const ltBase = leaveType?.replace("+노트", "") || null;
+    if (leaveType === "연차") { badges.push({ text: "연차", color: W.green, bg: W.greenBg }); return badges; }
+    if (ltBase === "출퇴근") badges.push({ text: "출퇴근인정", color: W.green, bg: W.greenBg });
+    else if (ltBase === "출근") badges.push({ text: "출근인정", color: W.green, bg: W.greenBg });
+    else if (ltBase === "퇴근") badges.push({ text: "퇴근인정", color: W.green, bg: W.greenBg });
+    else if (status === "지각") badges.push({ text: "지각", color: W.amber, bg: W.amberBg });
+    else if (status === "조퇴") badges.push({ text: "조퇴", color: W.red, bg: W.redBg });
+    else if (status === "지각조퇴") badges.push({ text: "지각·조퇴", color: W.red, bg: W.redBg });
+    if (ltN) badges.push({ text: "노트인정", color: W.blue, bg: "#dce9f0" });
     const noOut = !checkOut && !ltCO && (r.checkIn || ltCI);
-    if (noOut) badges.push({ text: "퇴근누락", color: C.seal, bg: C.sealSoft });
+    if (noOut) badges.push({ text: "퇴근누락", color: W.red, bg: W.redBg });
     return badges;
   };
 
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      {/* 헤더 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <button style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.ink, padding: "0 4px 0 0", lineHeight: 1 }} onClick={onBack}>←</button>
-        <h2 style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: 0, flex: 1 }}>내 근태 기록</h2>
+        <button style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: W.ink, padding: "0 4px 0 0", lineHeight: 1 }} onClick={onBack}>←</button>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: W.ink, margin: 0, flex: 1 }}>근태 리포트</h2>
       </div>
-      {/* 월 선택 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16, background: "#fff", borderRadius: 12, padding: "10px 0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-        <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: C.ink, padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(-1)}>‹</button>
-        <span style={{ fontWeight: 800, fontSize: 15, color: C.ink }}>{my}년 {parseInt(mm, 10)}월</span>
-        <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: canGoNext ? C.ink : C.line, padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(1)} disabled={!canGoNext}>›</button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16, background: W.card, borderRadius: 12, padding: "10px 0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+        <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: W.ink, padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(-1)}>‹</button>
+        <span style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>{my}년 {parseInt(mm, 10)}월</span>
+        <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: canGoNext ? W.ink : "#ccc", padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(1)} disabled={!canGoNext}>›</button>
       </div>
 
       {loading && <div style={S.empty}>불러오는 중…</div>}
@@ -473,69 +433,44 @@ function HistoryView({ onBack }) {
         {(records || []).map((r, i) => {
           const isOpen = expanded === r.date;
           const dayIdx = new Date(r.date + "T12:00:00Z").getUTCDay();
-          const dow = ["일", "월", "화", "수", "목", "금", "토"][dayIdx];
+          const dow = DOW[dayIdx];
           const isWeekend = dayIdx === 0 || dayIdx === 6;
           const badges = getBadges(r);
           const hasNotes = r.noteIn || r.noteOut || r.noteField || r.noteToday;
-
           return (
-            <div key={i} style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
-              <div
-                style={{ padding: "13px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}
-                onClick={() => setExpanded(isOpen ? null : r.date)}
-              >
-                {/* 날짜 */}
-                <div style={{ width: 38, flexShrink: 0, textAlign: "center" }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: isWeekend ? C.seal : C.ink, lineHeight: 1 }}>
-                    {r.date.slice(5).replace("-", "/")}
-                  </div>
-                  <div style={{ fontSize: 10, color: isWeekend ? C.seal : C.inkSoft, marginTop: 2 }}>{dow}</div>
+            <div key={i} style={{ background: W.card, borderRadius: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+              <div style={{ padding: "13px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }} onClick={() => setExpanded(isOpen ? null : r.date)}>
+                <div style={{ width: 40, flexShrink: 0, textAlign: "center" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: isWeekend ? W.red : W.ink, lineHeight: 1 }}>{r.date.slice(5).replace("-", "/")}</div>
+                  <div style={{ fontSize: 10, color: isWeekend ? W.red : W.sub, marginTop: 2 }}>{dow}</div>
                 </div>
-
-                {/* 시간 */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {r.leaveType === "연차" ? (
-                    <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>연차</span>
-                  ) : (r.leaveType === "출퇴근" || r.leaveType === "출퇴근+노트") && !r.checkIn ? (
-                    <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>출퇴근인정</span>
-                  ) : (r.leaveType === "출근" || r.leaveType === "출근+노트") && !r.checkIn ? (
-                    <span style={{ fontSize: 14, color: C.green, fontWeight: 700 }}>출근인정</span>
+                    <span style={{ fontSize: 14, color: W.green, fontWeight: 700 }}>연차</span>
                   ) : r.checkIn ? (
                     <div>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmtTime(r.checkIn.time)}</span>
-                      {r.checkOut && (
-                        <span style={{ fontSize: 14, color: C.ink, fontVariantNumeric: "tabular-nums" }}> → {fmtTime(r.checkOut.time)}</span>
-                      )}
-                      {r.workMinutes != null && (
-                        <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>{fmtDur(r.workMinutes)}</div>
-                      )}
+                      <span style={{ fontSize: 14, fontWeight: 700, color: W.green, fontVariantNumeric: "tabular-nums" }}>{fmtTime(r.checkIn.time)}</span>
+                      {r.checkOut && <span style={{ fontSize: 14, color: W.ink, fontVariantNumeric: "tabular-nums" }}> → {fmtTime(r.checkOut.time)}</span>}
+                      {r.workMinutes != null && <div style={{ fontSize: 11, color: W.sub, marginTop: 2 }}>{fmtDur(r.workMinutes)}</div>}
                     </div>
                   ) : (
-                    <span style={{ fontSize: 14, color: C.seal }}>출근 누락</span>
+                    <span style={{ fontSize: 14, color: W.red }}>출근 누락</span>
                   )}
                 </div>
-
-                {/* 배지 + 화살표 */}
                 <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 120 }}>
                   {badges.map((b, bi) => (
-                    <span key={bi} style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: b.bg, color: b.color }}>
-                      {b.text}
-                    </span>
+                    <span key={bi} style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: b.bg, color: b.color }}>{b.text}</span>
                   ))}
-                  {(hasNotes || r.checkIn) && (
-                    <span style={{ fontSize: 11, color: C.inkSoft }}>{isOpen ? "▲" : "▼"}</span>
-                  )}
+                  {(hasNotes || r.checkIn) && <span style={{ fontSize: 11, color: W.sub }}>{isOpen ? "▲" : "▼"}</span>}
                 </div>
               </div>
-
-              {/* 펼침: 근무 노트 */}
               {isOpen && (
-                <div style={{ padding: "12px 16px 14px", background: C.paper, borderTop: `1px solid ${C.line}`, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ padding: "12px 16px 14px", background: W.bg, borderTop: `1px solid #e6ebef`, display: "flex", flexDirection: "column", gap: 10 }}>
                   {r.checkIn && <NoteRow label="출근 장소" text={r.noteIn} />}
                   {r.checkOut && <NoteRow label="퇴근 장소" text={r.noteOut} />}
                   {r.noteField && <NoteRow label="외근 장소" text={r.noteField} />}
                   {r.noteToday && <NoteRow label="오늘 업무" text={r.noteToday} />}
-                  {!hasNotes && <span style={{ fontSize: 12, color: C.inkSoft }}>작성된 근무 노트가 없습니다.</span>}
+                  {!hasNotes && <span style={{ fontSize: 12, color: W.sub }}>작성된 근무 노트가 없습니다.</span>}
                 </div>
               )}
             </div>
@@ -549,8 +484,8 @@ function HistoryView({ onBack }) {
 function NoteRow({ label, text }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: C.inkSoft, fontWeight: 700, marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 13, color: text ? C.ink : C.inkSoft, lineHeight: 1.5 }}>{text || "—"}</div>
+      <div style={{ fontSize: 11, color: W.sub, fontWeight: 700, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 13, color: text ? W.ink : W.sub, lineHeight: 1.5 }}>{text || "—"}</div>
     </div>
   );
 }
