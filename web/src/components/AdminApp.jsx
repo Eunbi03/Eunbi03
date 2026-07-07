@@ -23,6 +23,26 @@ const TABS = [
   { key: "settings",   label: "설정" },
 ];
 
+const FILTER_FOCUS = "#0e6ca5"; // 공통 필터 포커스 색
+
+// 포커스 시 테두리 굵어지고 #0e6ca5 로 바뀌는 공통 필터 셀렉트
+function FilterSelect({ disabled, value, onChange, isMobile, children }) {
+  const [focus, setFocus] = useState(false);
+  const style = {
+    ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14,
+    borderColor: disabled ? "#3a3a3a" : focus ? FILTER_FOCUS : C.lineAdmin,
+    background: disabled ? "#eeeeee" : "#fff", color: disabled ? "#787878" : C.ink,
+    outline: "none",
+    boxShadow: focus && !disabled ? `inset 0 0 0 1px ${FILTER_FOCUS}` : "none",
+  };
+  return (
+    <select style={style} disabled={disabled} value={value} onChange={onChange}
+      onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}>
+      {children}
+    </select>
+  );
+}
+
 export default function AdminApp({ user }) {
   const isMobile = useIsMobile();
   // HR 전용 작업(비밀번호/기기 초기화, 근무지·연차·공휴일 관리 등)은 hr 역할만 노출 — 백엔드 requireHR과 일치
@@ -62,7 +82,7 @@ export default function AdminApp({ user }) {
   const showFilter = tab !== "settings";
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 0 60px" }}>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 0 }}>
       {/* 탭 */}
       <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "12px 0 6px", borderBottom: `1px solid ${C.lineAdmin}`, marginBottom: 12 }}>
         {TABS.filter((t) => t.key !== "settings" || isHR).map((t) => (
@@ -79,26 +99,24 @@ export default function AdminApp({ user }) {
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {(() => {
             const disabled = tab === "overall" && directActive;
-            const sel = { ...S.select, flex: "1 1 100px", padding: isMobile ? "7px 10px" : "9px 12px", fontSize: isMobile ? 12 : 14,
-              borderColor: disabled ? "#3a3a3a" : C.lineAdmin, background: disabled ? "#eeeeee" : "#fff", color: disabled ? "#787878" : C.ink };
             return (
               <>
-                <select style={sel} disabled={disabled} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
+                <FilterSelect isMobile={isMobile} disabled={disabled} value={filters.corp} onChange={(e) => setF("corp", e.target.value)}>
                   <option value="">전체 법인</option>
                   {corps.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <select style={sel} disabled={disabled} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
+                </FilterSelect>
+                <FilterSelect isMobile={isMobile} disabled={disabled} value={filters.division} onChange={(e) => setF("division", e.target.value)}>
                   <option value="">전체 본부</option>
                   {divisions.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
-                </select>
-                <select style={sel} disabled={disabled} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
+                </FilterSelect>
+                <FilterSelect isMobile={isMobile} disabled={disabled} value={filters.team} onChange={(e) => setF("team", e.target.value)}>
                   <option value="">전체 팀</option>
                   {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <select style={sel} disabled={disabled} value={filters.position} onChange={(e) => setF("position", e.target.value)}>
+                </FilterSelect>
+                <FilterSelect isMobile={isMobile} disabled={disabled} value={filters.position} onChange={(e) => setF("position", e.target.value)}>
                   <option value="">전체 직위</option>
                   {positions.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
+                </FilterSelect>
               </>
             );
           })()}

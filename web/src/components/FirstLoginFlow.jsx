@@ -17,7 +17,7 @@ export default function FirstLoginFlow({ onDone }) {
   const pwMatch = confirmTouched && confirm.length > 0 && newPw === confirm;
 
   const savePassword = async () => {
-    if (newPw.length < 8) { setErr("비밀번호는 8자 이상이어야 합니다."); return; }
+    if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(newPw)) { setErr("비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다."); return; }
     if (newPw !== confirm) { setErr("비밀번호가 일치하지 않습니다."); return; }
     setBusy(true);
     setErr("");
@@ -80,7 +80,7 @@ export default function FirstLoginFlow({ onDone }) {
             <>
               <p style={S.h1}>비밀번호 변경</p>
               <p style={{ fontSize: 14, color: C.inkSoft, marginBottom: 16 }}>
-                보안을 위해 초기 비밀번호를 변경해주세요. (8자 이상)
+                보안을 위해 초기 비밀번호를 변경해주세요. (영문·숫자 포함 8자 이상)
               </p>
 
               <label style={S.fieldLabel}>새 비밀번호</label>

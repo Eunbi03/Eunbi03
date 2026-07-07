@@ -228,7 +228,7 @@ router.post('/register',
 
 // POST /api/auth/change-password
 router.post('/change-password', requireAuth,
-  [body('newPassword').isLength({ min: 8 })],
+  [body('newPassword').matches(/^(?=.*[A-Za-z])(?=.*\d).{8,}$/).withMessage('비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다.')],
   async (req: Request, res: Response): Promise<void> => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }

@@ -258,7 +258,7 @@ router.delete('/workers/:id', async (req: Request, res: Response): Promise<void>
 
 router.put('/workers/:id/reset-password', requireHR, async (req: Request, res: Response): Promise<void> => {
   const { newPassword } = req.body;
-  if (!newPassword || newPassword.length < 4) { res.status(400).json({ error: '새 비밀번호를 입력해주세요. (4자 이상)' }); return; }
+  if (!newPassword || !/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(newPassword)) { res.status(400).json({ error: '비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다.' }); return; }
   const passwordHash = await bcrypt.hash(newPassword, 12);
   const { rows } = await pool.query(
     'UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2 AND is_active=TRUE RETURNING id, name',

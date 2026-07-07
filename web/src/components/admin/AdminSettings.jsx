@@ -503,7 +503,7 @@ function HolidaySection() {
                     <td key={mi} style={{ border: `1px solid ${C.lineAdmin}`, verticalAlign: "top", padding: "6px 4px", minWidth: 74 }}>
                       {list.map((h) => (
                         <div key={h.id} style={{ display: "flex", alignItems: "flex-start", gap: 3, marginBottom: 6, fontSize: 12, color: C.ink }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
                             <div style={{ fontWeight: 700 }}>{h.date.slice(5)}</div>
                             <div style={{ color: COL.gray }}>{h.name}</div>
                           </div>
@@ -540,10 +540,14 @@ const CATEGORIES = [
 
 export default function AdminSettings() {
   const [cat, setCat] = useState("workplace");
+  const [catFocus, setCatFocus] = useState(false);
   return (
     <div>
+      {/* 상단 공통 필터와 동일한 높이·테두리·포커스(#0e6ca5) */}
       <select value={cat} onChange={(e) => setCat(e.target.value)}
-        style={{ ...S.select, maxWidth: 320, marginBottom: 20, padding: "11px 14px", fontSize: 15, borderColor: COL.black, fontWeight: 700, color: C.ink }}>
+        onFocus={() => setCatFocus(true)} onBlur={() => setCatFocus(false)}
+        style={{ ...S.select, maxWidth: 320, marginBottom: 20, padding: "9px 12px", fontSize: 14, fontWeight: 700, color: C.ink,
+          borderColor: catFocus ? "#0e6ca5" : C.lineAdmin, outline: "none", boxShadow: catFocus ? "inset 0 0 0 1px #0e6ca5" : "none" }}>
         {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
       </select>
       {cat === "workplace" && <WorkplaceSection />}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 import { readWorkerSheet } from "../../utils/excelUpload.js";
+import { fmtPhone } from "../../utils/format.js";
 
 function useIsMobile(breakpoint = 640) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
@@ -385,7 +386,7 @@ function ResetPasswordModal({ worker, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const submit = async () => {
-    if (!pw.trim()) { setErr("새 비밀번호를 입력해주세요."); return; }
+    if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(pw)) { setErr("비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다."); return; }
     setBusy(true); setErr("");
     try { await api.resetWorkerPassword(worker.id, pw); onDone(pw); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -396,7 +397,7 @@ function ResetPasswordModal({ worker, onClose, onDone }) {
         <p style={S.h1}>비밀번호 초기화</p>
         <p style={{ fontSize: 13, color: C.inkSoft }}><b style={{ color: C.ink }}>{worker.name}</b> ({worker.email})</p>
         <label style={S.fieldLabel}>새 임시 비밀번호</label>
-        <input style={S.input} value={pw} placeholder="전화번호 전체 권장" onChange={(e) => setPw(e.target.value)} />
+        <input style={S.input} value={pw} placeholder="영문·숫자 포함 8자 이상" onChange={(e) => setPw(e.target.value)} />
         {err && <div style={S.err}>{err}</div>}
         <div style={{ display: "flex", gap: 8 }}>
           <button style={S.subGhost} onClick={onClose} disabled={busy}>취소</button>
@@ -772,12 +773,12 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                 {isMobile ? (
                   <>
                     {w.email && <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>{w.email}</div>}
-                    {!isAdminRole && <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>{w.phone}</div>}
+                    {!isAdminRole && <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>{fmtPhone(w.phone)}</div>}
                   </>
                 ) : (
                   (w.email || (!isAdminRole && w.phone)) && (
                     <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>
-                      {[w.email, !isAdminRole ? w.phone : null].filter(Boolean).join(" / ")}
+                      {[w.email, !isAdminRole ? fmtPhone(w.phone) : null].filter(Boolean).join(" / ")}
                     </div>
                   )
                 )}

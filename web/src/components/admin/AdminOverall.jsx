@@ -40,27 +40,32 @@ function cellTd(over, height, isMobile) {
     verticalAlign: "middle", minWidth: isMobile ? 34 : 42, height,
   };
 }
-function cellInner(over, noteMiss, fs) {
+function cellInner(over, fs) {
   return {
     // 모든 행을 동일하게 위아래 OVER_GAP 인셋 → 노트누락 빨간줄 높이가 행마다 일정해짐.
     // 배경만 관리대상=빨강 / 그 외=투명. 검은 가로선(td 하단)과 사이에 간격이 생김.
+    position: "relative",
     height: `calc(100% - ${OVER_GAP * 2}px)`,
     boxSizing: "border-box", display: "flex", flexDirection: "column",
     justifyContent: "center", textAlign: "center", lineHeight: 1.25, fontSize: fs,
     padding: "1px 2px",
     margin: `${OVER_GAP}px 0`,
     background: over ? COL.lred : "transparent",
-    borderBottom: noteMiss ? `2px solid ${COL.red}` : "none",
   };
+}
+// 노트누락 하단 빨간 바 (좌우 여백 포함)
+function NoteBar() {
+  return <span style={{ position: "absolute", left: 4, right: 4, bottom: 0, height: 2, background: COL.red, borderRadius: 1 }} />;
 }
 function Cell({ cell, isMobile, over, height }) {
   const fs = isMobile ? 10 : 12;
   const td = cellTd(over, height, isMobile);
-  const inner = cellInner(over, !!cell?.noteMiss, fs);
+  const inner = cellInner(over, fs);
+  const noteMiss = !!cell?.noteMiss;
   if (!cell || cell.off) return <td style={td}><div style={{ ...inner, color: COL.gray }}>-</div></td>;
   // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반
   if (cell.leave) return (
-    <td style={td}><div style={{ ...inner, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>{cell.leave}</div></td>
+    <td style={td}><div style={{ ...inner, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>{cell.leave}{noteMiss && <NoteBar />}</div></td>
   );
   return (
     <td style={td}>
@@ -71,6 +76,7 @@ function Cell({ cell, isMobile, over, height }) {
         <div style={{ color: COL.black, fontVariantNumeric: "tabular-nums" }}>
           {cell.missingOut ? <WarnIcon /> : (cell.checkOut || "")}
         </div>
+        {noteMiss && <NoteBar />}
       </div>
     </td>
   );
@@ -228,13 +234,13 @@ export default function AdminOverall({ filters, onDirectActive }) {
                       <td style={{ position: "sticky", left: 0, zIndex: 1, background: HEADER_BG, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, whiteSpace: "nowrap" }}>{w.name}</td>
                       {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} over={w.over} height={ROW_H} />)}
                       <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle" }}>
-                        <div style={{ ...cellInner(w.over, false, isMobile ? 11 : 13), flexDirection: "row", fontWeight: 800, padding: "4px 6px" }}>
+                        <div style={{ ...cellInner(w.over, isMobile ? 11 : 13), flexDirection: "row", fontWeight: 800, padding: "4px 6px" }}>
                           <span style={{ color: w.over ? COL.red : COL.black }}>{w.lateMissing}</span>
                           <span style={{ color: COL.black }}>/{w.workedDays}</span>
                         </div>
                       </td>
                       <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle" }}>
-                        <div style={{ ...cellInner(w.over, false, isMobile ? 11 : 13), fontWeight: 700, color: w.over ? COL.red : COL.black, padding: "4px 6px" }}>
+                        <div style={{ ...cellInner(w.over, isMobile ? 11 : 13), fontWeight: 700, color: w.over ? COL.red : COL.black, padding: "4px 6px" }}>
                           {w.noteMissing || "-"}
                         </div>
                       </td>

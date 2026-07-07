@@ -220,12 +220,12 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
               <div style={{ paddingLeft: 52 }}>{tail}</div>
             </div>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 18 }}>
               {DateCell}
               {Divider}
-              <div style={{ flex: "2 1 260px", minWidth: 0 }}>{clock}</div>
+              <div style={{ flex: "0 0 260px" }}>{clock}</div>
               {Divider}
-              <div style={{ flex: "1 1 200px", minWidth: 0 }}><RandomChecks checks={day.randomChecks} /></div>
+              <div style={{ flex: "0 0 200px" }}><RandomChecks checks={day.randomChecks} /></div>
               {Divider}
               <div style={{ flexShrink: 0 }}>{tail}</div>
             </div>

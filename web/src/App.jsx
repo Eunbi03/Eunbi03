@@ -84,7 +84,10 @@ export default function App() {
     );
   }
 
-  if (user.mustChangePassword || !user.locationConsentGiven) {
+  const isAdmin = user.role === "admin" || user.role === "hr";
+
+  // 관리자는 최초 비밀번호 변경·위치 동의 절차 없이 바로 진입 (근로자만 적용)
+  if (!isAdmin && (user.mustChangePassword || !user.locationConsentGiven)) {
     return (
       <FirstLoginFlow
         onDone={() => setUser((u) => ({ ...u, mustChangePassword: false, locationConsentGiven: true }))}
@@ -92,12 +95,10 @@ export default function App() {
     );
   }
 
-  const isAdmin = user.role === "admin" || user.role === "hr";
-
   return (
     <div>
       <Header user={user} onLogout={handleLogout} />
-      <div style={{ padding: "12px clamp(14px, 4vw, 48px) 40px" }}>
+      <div style={{ padding: "12px clamp(14px, 4vw, 48px)" }}>
         {isAdmin ? <AdminApp user={user} /> : <Employee user={user} />}
       </div>
     </div>
