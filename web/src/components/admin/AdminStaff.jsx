@@ -763,6 +763,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
             <div key={w.id} style={{
               ...S.hrRow,
               alignItems: "flex-start",
+              padding: "12px 14px 8px", // 하단 줄 line-height 여분 상쇄 → 위 여백과 균형
               background: isAdminRole ? "#eef4f9" : "#fff",
               borderColor: isAdminRole ? C.blue : C.lineAdmin,
             }}>
