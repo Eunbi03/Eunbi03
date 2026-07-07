@@ -17,11 +17,9 @@ const W = {
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
 function todayLabel() {
-  const now = new Date();
-  const opt = { timeZone: "Asia/Seoul" };
-  const m = now.toLocaleString("ko-KR", { ...opt, month: "numeric" });
-  const d = now.toLocaleString("ko-KR", { ...opt, day: "numeric" });
-  const dow = now.toLocaleString("ko-KR", { ...opt, weekday: "short" });
+  const ymd = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // 2026-07-07
+  const [, m, d] = ymd.split("-").map(Number);
+  const dow = DOW[new Date(ymd + "T12:00:00Z").getUTCDay()];
   return `${m}/${d} (${dow})`;
 }
 
@@ -188,7 +186,7 @@ export default function Employee({ user }) {
             </div>
             {/* 종료된 외근 이력 (일반 텍스트) */}
             {pastOutings.map((o) => (
-              <div key={o.id} style={{ fontSize: 15, color: W.ink, marginTop: 6, paddingLeft: 18 }}>
+              <div key={o.id} style={{ fontSize: 17, color: W.ink, marginTop: 6, paddingLeft: 18 }}>
                 외근 {fmtTime(o.startTime)}  {o.destination}
               </div>
             ))}
@@ -206,7 +204,7 @@ export default function Employee({ user }) {
 
         {/* 외근 중 안내 박스 (항목15) */}
         {activeOuting && (
-          <div style={{ marginTop: 14, padding: "12px 16px", background: W.amberBg, borderRadius: 10, fontSize: 16, fontWeight: 600, color: W.amber }}>
+          <div style={{ marginTop: 12, padding: "7px 14px", background: W.amberBg, borderRadius: 10, fontSize: 16, fontWeight: 600, color: W.amber }}>
             외근 중  {fmtTime(activeOuting.startTime)}  {activeOuting.destination}
           </div>
         )}
@@ -223,14 +221,14 @@ export default function Employee({ user }) {
           <div style={{ marginTop: 16, textAlign: "center", fontSize: 13, color: W.sub }}>오늘 퇴근 완료. 수고하셨습니다! 🎉</div>
         ) : !isCheckedIn && today?.leaveType !== "연차" ? (
           <div style={{ marginTop: 20 }}>
-            <button style={{ ...S.primary, width: "100%", fontSize: 18, padding: "16px", background: W.ink, opacity: busy ? 0.6 : 1 }} onClick={checkIn} disabled={busy}>
+            <button style={{ width: "100%", border: "none", borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, background: W.ink, color: "#fff", cursor: "pointer", opacity: busy ? 0.6 : 1 }} onClick={checkIn} disabled={busy}>
               {busy ? "처리 중…" : "출근하기"}
             </button>
           </div>
         ) : isCheckedIn ? (
           <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-            <button style={{ flex: 1, background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "16px", fontSize: 18, fontWeight: 700, color: W.ink, cursor: "pointer" }} onClick={() => setView("outing")}>외근</button>
-            <button style={{ flex: 2, border: "none", borderRadius: 12, padding: "16px", fontSize: 18, fontWeight: 800, background: W.ink, color: "#fff", cursor: "pointer" }} onClick={() => setView("out")}>퇴근하기</button>
+            <button style={{ flex: 1, background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, color: W.ink, cursor: "pointer" }} onClick={() => setView("outing")}>외근</button>
+            <button style={{ flex: 2, border: "none", borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, background: W.ink, color: "#fff", cursor: "pointer" }} onClick={() => setView("out")}>퇴근하기</button>
           </div>
         ) : null}
       </div>
@@ -276,7 +274,7 @@ export default function Employee({ user }) {
             </div>
           </div>
         ) : (
-          <button style={{ ...ghostBtn, fontSize: 18 }} onClick={() => setShowWeekly(true)}>이번 주 근무 보기 ▼</button>
+          <button style={{ ...ghostBtn, background: "#f4f6f7" }} onClick={() => setShowWeekly(true)}>이번 주 근무 보기 ▼</button>
         )}
       </div>
 
@@ -294,12 +292,12 @@ export default function Employee({ user }) {
             </div>
           </div>
         ) : (
-          <button style={{ ...ghostBtn, fontSize: 18 }} onClick={loadMonthly}>이번 달 요약 보기 ▼</button>
+          <button style={{ ...ghostBtn, background: "#f4f6f7" }} onClick={loadMonthly}>이번 달 요약 보기 ▼</button>
         )}
       </div>
 
       {/* ── 근태 리포트 보기 ── */}
-      <button style={{ ...ghostBtn, fontSize: 18 }} onClick={() => setView("history")}>근태 리포트 보기</button>
+      <button style={{ ...ghostBtn, background: "#f4f6f7" }} onClick={() => setView("history")}>근태 리포트 보기</button>
     </div>
   );
 }

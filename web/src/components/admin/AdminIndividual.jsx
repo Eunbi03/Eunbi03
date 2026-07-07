@@ -350,6 +350,7 @@ export default function AdminIndividual({ filters, isHR }) {
   const [nameInput, setNameInput] = useState("");
   const [selected, setSelected] = useState([]); // [{id, name}]
   const [sending, setSending] = useState(false);
+  const [directFocus, setDirectFocus] = useState(false); // 인원 직접 입력칸 활성 여부
 
   useEffect(() => {
     setListLoading(true);
@@ -467,8 +468,9 @@ export default function AdminIndividual({ filters, isHR }) {
           </div>
         </div>
 
-        {/* 인원 직접 입력 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", border: `1px solid ${selected.length ? COL.blue : COL.black}`, borderRadius: 8, padding: "0 10px", minHeight: 40, boxSizing: "border-box", background: "#fff", flex: "1 1 220px" }}>
+        {/* 인원 직접 입력 (비활성 시 #eeeeee) */}
+        {(() => { const active = selected.length > 0 || directFocus; return (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", border: `1px solid ${active ? COL.blue : COL.black}`, borderRadius: 8, padding: "0 10px", minHeight: 40, boxSizing: "border-box", background: active ? "#fff" : "#eeeeee", flex: "1 1 220px" }}>
           {selected.map((s) => (
             <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: COL.blue, color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 12 }}>
               {s.name}<button onClick={() => removeSelected(s.id)} style={{ border: "none", background: "transparent", color: "#fff", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
@@ -476,12 +478,14 @@ export default function AdminIndividual({ filters, isHR }) {
           ))}
           <input value={nameInput} placeholder={selected.length ? "" : "인원 직접 입력"}
             onChange={(e) => setNameInput(e.target.value)}
+            onFocus={() => setDirectFocus(true)} onBlur={() => setDirectFocus(false)}
             onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
-            style={{ flex: 1, minWidth: 80, border: "none", outline: "none", background: "transparent", color: COL.black, fontSize: 14 }} />
+            style={{ flex: 1, minWidth: 80, border: "none", outline: "none", background: "transparent", color: active ? COL.black : COL.gray, fontSize: 14 }} />
           {selected.length > 0 && (
             <button onClick={() => { setSelected([]); setNameInput(""); }} style={{ border: "none", background: "transparent", color: COL.gray, cursor: "pointer", fontSize: 13 }}>초기화</button>
           )}
         </div>
+        ); })()}
 
         {/* 리포트 발송 (현재 보이는 인원 대상) */}
         <button onClick={sendReports} disabled={sending}
