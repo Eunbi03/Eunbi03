@@ -137,7 +137,7 @@ export default function Employee({ user }) {
   );
   if (view === "out") return (
     <div style={{ padding: "16px 16px 40px" }}>
-      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} outings={today?.outings || []} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
     </div>
   );
   if (view === "history") return (

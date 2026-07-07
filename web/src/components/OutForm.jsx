@@ -3,13 +3,19 @@ import { C, S } from "../styles.js";
 import { getLocation } from "../utils/device.js";
 import * as api from "../api/client.js";
 
-export default function OutForm({ onClose, onDone, workplaceName, initialNote = "" }) {
+export default function OutForm({ onClose, onDone, workplaceName, initialNote = "", outings = [] }) {
+  const dests = outings.map((o) => o.destination).filter(Boolean);
+  const lastDest = dests.length ? dests[dests.length - 1] : "";
+
   const [workNoteIn, setWorkNoteIn] = useState(workplaceName || "");
   const [workNoteOut, setWorkNoteOut] = useState(workplaceName || "");
-  const [workNoteField, setWorkNoteField] = useState("");
+  // 외근 장소: 오늘 다녀온 외근지들을 순서대로 자동 기입 (수정 가능)
+  const [workNoteField, setWorkNoteField] = useState(dests.join(", "));
   const [workNoteToday, setWorkNoteToday] = useState(initialNote);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // 외근이 있으면 "외근지에서 바로 퇴근?" 팝업을 먼저 띄운다.
+  const [askOuting, setAskOuting] = useState(dests.length > 0);
 
   const submit = async () => {
     setBusy(true);
@@ -72,6 +78,27 @@ export default function OutForm({ onClose, onDone, workplaceName, initialNote = 
           {busy ? "처리 중…" : "퇴근"}
         </button>
       </div>
+
+      {/* 외근지에서 바로 퇴근하는지 확인 */}
+      {askOuting && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: "22px 24px", maxWidth: 320, width: "100%", textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, lineHeight: 1.5, margin: "0 0 18px" }}>
+              외근지에서 바로 퇴근하시겠습니까?
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                style={{ ...S.subGhost, flex: 1 }}
+                onClick={() => { setWorkNoteOut(workplaceName || ""); setAskOuting(false); }}
+              >아니요</button>
+              <button
+                style={{ ...S.subPrimary, flex: 1, background: C.amber }}
+                onClick={() => { setWorkNoteOut(lastDest); setAskOuting(false); }}
+              >예</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
