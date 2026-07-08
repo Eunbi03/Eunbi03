@@ -132,7 +132,7 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
             <input style={S.input} type="tel" placeholder="예: 01012345678" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
           </Field>
           <Field label="이메일 (선택)" half>
-            <input style={S.input} type="email" placeholder="예: kpride@gmail.com" value={form.email} onChange={(e) => set("email", e.target.value)} />
+            <input style={S.input} type="text" inputMode="email" placeholder="예: kpride@gmail.com" value={form.email} onChange={(e) => set("email", e.target.value)} />
           </Field>
           <Field label="근무지 *" half>
             <select style={selStyle} value={form.workplaceId} onChange={(e) => set("workplaceId", e.target.value)}>
