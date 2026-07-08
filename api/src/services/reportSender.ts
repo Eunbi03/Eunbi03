@@ -1,4 +1,34 @@
 import nodemailer from 'nodemailer';
+import crypto from 'crypto';
+
+// 솔라피(SOLAPI) 단문/장문 발송. 성공 시 true.
+async function sendSolapiSms(to: string, text: string): Promise<boolean> {
+  const apiKey = process.env.SOLAPI_API_KEY;
+  const apiSecret = process.env.SOLAPI_API_SECRET;
+  const from = (process.env.SMS_SENDER || '').replace(/\D/g, '');
+  if (!apiKey || !apiSecret || !from) return false;
+
+  const date = new Date().toISOString();
+  const salt = crypto.randomBytes(32).toString('hex');
+  const signature = crypto.createHmac('sha256', apiSecret).update(date + salt).digest('hex');
+  const authorization = `HMAC-SHA256 apiKey=${apiKey}, date=${date}, salt=${salt}, signature=${signature}`;
+
+  // 90바이트 초과면 장문(LMS)
+  const type = Buffer.byteLength(text, 'utf8') > 90 ? 'LMS' : 'SMS';
+  const message: any = { to: to.replace(/\D/g, ''), from, text, type };
+  if (type === 'LMS') message.subject = '근태관리 리포트';
+
+  const res = await fetch('https://api.solapi.com/messages/v4/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: authorization },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`SOLAPI ${res.status}: ${body.slice(0, 300)}`);
+  }
+  return true;
+}
 
 interface ReportData {
   to: string; name: string; yearMonth: string;
@@ -54,9 +84,9 @@ export async function sendReportLink(opts: {
     return 'email';
   }
 
-  // 이메일이 없으면 문자(SMS) — 제공자 연동 시 여기에 구현
-  if (phone && process.env.SMS_API_KEY) {
-    console.warn(`[리포트 SMS 미구현] ${name}(${phone}) → ${link}`);
+  // 이메일이 없으면 문자(SOLAPI LMS)
+  if (phone && process.env.SOLAPI_API_KEY && process.env.SOLAPI_API_SECRET && process.env.SMS_SENDER) {
+    await sendSolapiSms(phone, bodyText);
     return 'sms';
   }
 
