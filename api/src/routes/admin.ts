@@ -439,8 +439,8 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     if (k.isLeave) return { date: day, leaveType: '연차' };
 
     if (!k.present) {
-      if (isWorkday) missingIn++;
-      return { date: day, missing: true };
+      if (isWorkday) { missingIn++; if (k.missingNote) missingNote++; }
+      return { date: day, missing: true, noNote: isWorkday && k.missingNote };
     }
 
     const hasIn = Boolean(r.check_in_time);
@@ -523,7 +523,10 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
       const r = recByUD[`${uid}|${day}`];
       const k = classifyDay(r);
       if (k.isLeave) continue;
-      if (!k.present) { if (isWorkday) missingIn++; continue; }
+      if (!k.present) {
+        if (isWorkday) { missingIn++; if (k.missingNote) missingNote++; }
+        continue;
+      }
       if (isWorkday || Boolean(r?.check_in_time)) {
         if (k.isLate) lateCount++;
         if (k.missingOut) missingOut++;
@@ -542,15 +545,24 @@ router.post('/send-report', requireHR, async (req: Request, res: Response): Prom
   if (!Array.isArray(userIds) || !userIds.length || !from || !to) { res.status(400).json({ error: '발송 대상과 기간이 필요합니다.' }); return; }
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
   const m = Number(String(from).split('-')[1]);
-  const monthLabel = `${m}월`;
+  const monthLabel = `${m}`;
+  // 발송일(KST) 및 시말서 마감일(+7일)
+  const sentStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+  const dl = new Date(sentStr + 'T00:00:00Z'); dl.setUTCDate(dl.getUTCDate() + 7);
+  const deadlineText = `${dl.getUTCMonth() + 1}월 ${dl.getUTCDate()}일`;
   const results: any[] = [];
   for (const uid of userIds) {
     const rep = await buildIndividualReport(uid, from, to);
     if (!rep) { results.push({ userId: uid, ok: false, reason: '대상 없음' }); continue; }
-    const token = jwt.sign({ uid, from, to }, process.env.JWT_SECRET as string, { expiresIn: '60d' });
+    const token = jwt.sign({ uid, from, to, sent: sentStr }, process.env.JWT_SECRET as string, { expiresIn: '60d' });
     const link = `${base}/api/report?t=${token}`;
     try {
-      const via = await sendReportLink({ name: rep.user.name, email: rep.user.email, phone: rep.user.phone, monthLabel, link });
+      const via = await sendReportLink({
+        name: rep.user.name, email: rep.user.email, phone: rep.user.phone, monthLabel, link,
+        corpName: rep.user.corp, over: rep.over, deadlineText,
+        // TODO(#11): 법인별 담당자명·전화번호 연동 예정
+        managerName: '', managerPhone: '',
+      });
       results.push({ userId: uid, name: rep.user.name, ok: via !== 'none', via });
     } catch (e: any) {
       results.push({ userId: uid, name: rep.user.name, ok: false, reason: e.message });
@@ -1070,6 +1082,7 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const mm = String(month).padStart(2, '0');
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
   const fromDate = `${year}-${mm}-01`;
   const toDate   = `${year}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
 
@@ -1126,6 +1139,7 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
     const days: any[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${mm}-${String(d).padStart(2, '0')}`;
+      if (dateStr > todayStr) { days.push({ off: true, future: true }); continue; } // 미래 → '-', 하이라이트/집계 제외
       const r = recByUserDate[`${w.id}|${dateStr}`];
       const lt = r?.leave_type ?? null;
       const isHol = !!holidays[dateStr];
@@ -1149,7 +1163,8 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
       const hasOut = hasOutRec || leaveCountsAsCheckOut(lt);
       const missingIn = !present;
       const missingOut = present && !hasOut;
-      const noteMiss = present && hasOut && !w.note_exempt && !r?.work_note_today && !r?.daily_report && !leaveCountsAsNote(lt);
+      // 근무노트 누락: 상황 불문, 노트 없으면 무조건 누락 (노트제외 직원·노트인정 leave 예외)
+      const noteMiss = !w.note_exempt && !leaveCountsAsNote(lt) && !r?.work_note_today && !r?.daily_report;
 
       if (present) workedDays++;
       // 하루당 최대 1건: 출근누락 > 퇴근누락 > 지각 우선순위 (지각+퇴근누락은 퇴근누락으로 1건)

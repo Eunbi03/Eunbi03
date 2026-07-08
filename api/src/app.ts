@@ -44,7 +44,7 @@ app.get('/api/report', async (req, res) => {
     if (!rep) { res.status(404).send('리포트를 찾을 수 없습니다.'); return; }
     res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:");
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(renderReportHtml(rep));
+    res.send(renderReportHtml(rep, payload.sent));
   } catch {
     res.status(401).send('만료되었거나 유효하지 않은 링크입니다.');
   }

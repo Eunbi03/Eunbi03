@@ -73,8 +73,10 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     if (k.isLeave) { day.leaveType = '연차'; days.push(day); continue; }
 
     if (!k.present) {
-      if (isWorkday) { missingIn++; day.missing = true; }
-      // 근무일 아닌데 기록 없음 → 빈 칸
+      if (isWorkday) {
+        missingIn++; day.missing = true;
+        if (k.missingNote) { missingNote++; noteMissDates.push(date); }
+      }
       days.push(day);
       continue;
     }

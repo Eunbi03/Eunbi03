@@ -60,12 +60,15 @@ function NoteBar() {
 function Cell({ cell, isMobile, over, height }) {
   const fs = isMobile ? 10 : 12;
   const td = cellTd(over, height, isMobile);
-  const inner = cellInner(over, fs);
+  const inner = cellInner(over && !cell?.future, fs); // 미래 날짜는 관리대상 하이라이트 제외
   const noteMiss = !!cell?.noteMiss;
   if (!cell || cell.off) return <td style={td}><div style={{ ...inner, color: COL.gray }}>-</div></td>;
   // 연차만 파란색, 그 외 인정(출근/퇴근/노트 등)은 #3a3a3a 일반
   if (cell.leave) return (
-    <td style={td}><div style={{ ...inner, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>{cell.leave}{noteMiss && <NoteBar />}</div></td>
+    <td style={td}><div style={{ ...inner, color: cell.leave === "연차" ? COL.blue : COL.black, fontWeight: cell.leave === "연차" ? 700 : 400 }}>
+      {cell.leave.split("+").map((part, i) => <div key={i}>{i > 0 ? "+" + part : part}</div>)}
+      {noteMiss && <NoteBar />}
+    </div></td>
   );
   return (
     <td style={td}>
@@ -248,11 +251,11 @@ export default function AdminOverall({ filters, onDirectActive }) {
                   ))}
                   {/* 세로 합계: 해당일 출근 인원 */}
                   <tr style={{ height: ROW_H, background: COL.lgray, borderTop: `1px solid ${BORDER}` }}>
-                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: COL.lgray, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderRight: `1px solid ${BORDER}` }}>합계</td>
+                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: COL.lgray, padding: "4px 8px", textAlign: "center", verticalAlign: "middle", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderRight: `1px solid ${BORDER}` }}>합계</td>
                     {data.dayTotals.map((n, i) => (
-                      <td key={i} style={{ padding: "4px 2px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, fontVariantNumeric: "tabular-nums" }}>{n || "-"}</td>
+                      <td key={i} style={{ padding: "4px 2px", textAlign: "center", verticalAlign: "middle", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, fontVariantNumeric: "tabular-nums" }}>{n || "-"}</td>
                     ))}
-                    <td colSpan={2} style={{ padding: "4px 6px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderLeft: `1px solid ${BORDER}`, fontVariantNumeric: "tabular-nums" }}>
+                    <td colSpan={2} style={{ padding: "4px 6px", textAlign: "center", verticalAlign: "middle", fontSize: isMobile ? 11 : 13, fontWeight: 800, color: COL.black, borderLeft: `1px solid ${BORDER}`, fontVariantNumeric: "tabular-nums" }}>
                       {data.dayTotals.reduce((a, b) => a + b, 0)}
                     </td>
                   </tr>

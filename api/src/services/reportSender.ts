@@ -7,10 +7,37 @@ interface ReportData {
 }
 
 // 월간 리포트 링크를 이메일(우선) 또는 문자로 발송한다. 반환: 사용된 채널.
-export async function sendReportLink(opts: { name: string; email?: string | null; phone?: string | null; monthLabel: string; link: string }): Promise<'email' | 'sms' | 'none'> {
-  const { name, email, phone, monthLabel, link } = opts;
-  const subject = `[근태] ${monthLabel} 근태관리 리포트 — ${name}`;
-  const body = `${name}님, ${monthLabel} 근태관리 리포트입니다.\n아래 링크에서 확인해 주세요.\n${link}`;
+export async function sendReportLink(opts: {
+  name: string; email?: string | null; phone?: string | null; monthLabel: string; link: string;
+  corpName?: string; over?: boolean; deadlineText?: string; managerName?: string; managerPhone?: string;
+}): Promise<'email' | 'sms' | 'none'> {
+  const { name, email, phone, monthLabel, link, corpName = '', over = false, deadlineText = '', managerName = '', managerPhone = '' } = opts;
+  const RED = '#cb6156';
+  const subject = `[${monthLabel}월 근태관리 리포트 안내]`;
+  const esc = (s: string) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
+
+  const signature =
+    `<p style="margin:18px 0 0;">감사합니다.</p>` +
+    `<p style="margin:14px 0 0;">${esc(managerName)} 담당자<br>☎ ${esc(managerPhone)}</p>`;
+  const linkLine = `<p style="margin:14px 0 0;"><a href="${link}">📄 ${monthLabel}월 근태관리 리포트 열기</a></p>`;
+
+  const reprimandLine = over
+    ? `<p style="margin:12px 0 0;color:${RED};">이번 근태 내역과 관련하여 <b>${esc(deadlineText)}</b>까지 시말서를 제출하여 주시기바랍니다.</p>`
+    : '';
+
+  const bodyHtml =
+    `<div style="font-family:'맑은 고딕',sans-serif;color:#333;font-size:14px;line-height:1.7;">` +
+    `<p style="margin:0;">안녕하세요, ${esc(name)}님.<br>${esc(corpName)} 인사팀입니다.</p>` +
+    `<p style="margin:14px 0 0;">${monthLabel}월 근태관리 리포트를 보내드립니다.</p>` +
+    reprimandLine +
+    `<p style="margin:12px 0 0;">근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있${over ? '으며, 향후 원활한 근태관리를 위해 관련 규정을 준수하여 주시기 바랍니다.' : '습니다.'}</p>` +
+    `<p style="margin:12px 0 0;">문의사항이 있으시면 본 메일에 회신하시거나 아래 연락처로 문의해 주시기 바랍니다.</p>` +
+    linkLine + signature + `</div>`;
+
+  const bodyText =
+    `안녕하세요, ${name}님.\n${corpName} 인사팀입니다.\n\n${monthLabel}월 근태관리 리포트를 보내드립니다.\n` +
+    (over ? `이번 근태 내역과 관련하여 ${deadlineText}까지 시말서를 제출하여 주시기바랍니다.\n` : '') +
+    `근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있습니다.\n리포트: ${link}\n\n감사합니다.\n${managerName} 담당자\n☎ ${managerPhone}`;
 
   if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
     const port = parseInt(process.env.SMTP_PORT || '587', 10);
@@ -20,11 +47,7 @@ export async function sendReportLink(opts: { name: string; email?: string | null
       secure: port === 465, // 465=암시적 SSL, 587=STARTTLS
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
     });
-    await transporter.sendMail({
-      from: process.env.SMTP_USER, to: email, subject,
-      html: `<p>${name}님, ${monthLabel} 근태관리 리포트입니다.</p><p><a href="${link}">리포트 열기</a></p>`,
-      text: body,
-    });
+    await transporter.sendMail({ from: process.env.SMTP_USER, to: email, subject, html: bodyHtml, text: bodyText });
     return 'email';
   }
 

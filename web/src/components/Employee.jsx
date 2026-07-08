@@ -369,8 +369,8 @@ function MonthlyGrid({ monthly }) {
         const on = it.v > 0;
         return (
           <div key={i} style={{ flex: 1, textAlign: "center", padding: "12px 4px", borderRadius: 10, background: on ? W.redBg : W.cellBg }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: on ? W.red : W.ink }}>{it.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: on ? W.red : W.ink, marginTop: 6 }}>{it.v}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: on ? W.red : W.ink }}>{it.label}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: on ? W.red : W.ink, marginTop: 6 }}>{it.v}</div>
           </div>
         );
       })}
@@ -465,11 +465,12 @@ function HistoryView({ onBack }) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {r.leaveType === "연차" ? (
-                    <span style={{ fontSize: 14, color: W.green, fontWeight: 700 }}>연차</span>
+                    <span style={{ fontSize: 14, color: "#176ca5", fontWeight: 700 }}>연차</span>
                   ) : r.checkIn ? (
                     <div>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: W.green, fontVariantNumeric: "tabular-nums" }}>{fmtTime(r.checkIn.time)}</span>
-                      {r.checkOut && <span style={{ fontSize: 14, color: W.ink, fontVariantNumeric: "tabular-nums" }}> → {fmtTime(r.checkOut.time)}</span>}
+                      <span style={{ fontSize: 14, fontWeight: 700, color: W.ink, fontVariantNumeric: "tabular-nums", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {fmtTime(r.checkIn.time)} - {r.checkOut ? fmtTime(r.checkOut.time) : <WarnIcon size={14} />}
+                      </span>
                       {r.workMinutes != null && <div style={{ fontSize: 11, color: W.sub, marginTop: 2 }}>{fmtDur(r.workMinutes)}</div>}
                     </div>
                   ) : (

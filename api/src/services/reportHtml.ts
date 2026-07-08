@@ -36,11 +36,13 @@ function dayBody(d: ReportDay): string {
   return lines.join('');
 }
 
-export function renderReportHtml(r: BuiltReport): string {
-  const [y, m] = r.from.split('-').map(Number);
+export function renderReportHtml(r: BuiltReport, sentDate?: string): string {
+  const [, m] = r.from.split('-').map(Number);
   const monthLabel = `${m}월`;
-  // 시말서 제출 기한: 리포트 월 다음 달 10일
-  const deadline = new Date(Date.UTC(y, m, 10, 12)); // m == 다음 달(0-index로 m월)
+  // 시말서 제출 기한: 발송일로부터 +7일
+  const baseStr = sentDate || new Date().toISOString().slice(0, 10);
+  const deadline = new Date(baseStr + 'T00:00:00Z');
+  deadline.setUTCDate(deadline.getUTCDate() + 7);
   const deadlineText = `${deadline.getUTCMonth() + 1}월 ${deadline.getUTCDate()}일`;
 
   // 달력 셀 배열: 첫 주 앞 빈칸 패딩
@@ -55,7 +57,7 @@ export function renderReportHtml(r: BuiltReport): string {
     rows.push('<tr>' + week.map((d) => {
       if (!d) return `<td style="border:1px solid ${LINE};height:96px;vertical-align:top;"></td>`;
       const bg = (d.late || d.missing || d.noOut) ? REDBG : '#fff';
-      return `<td style="border:1px solid ${LINE};height:96px;vertical-align:top;padding:5px 6px;background:${bg};font-size:12px;line-height:1.5;">
+      return `<td style="border:1px solid ${LINE};height:96px;vertical-align:top;padding:5px 6px;background:${bg};font-size:14px;line-height:1.5;">
         <div style="font-weight:700;color:${dayNumColor(d)};margin-bottom:2px;">${Number(d.date.slice(8))}</div>
         ${dayBody(d)}
       </td>`;
@@ -66,7 +68,7 @@ export function renderReportHtml(r: BuiltReport): string {
     `<span style="margin-left:14px;${v > 0 ? `color:${RED};font-weight:600;` : `color:${INK};`}">${label} ${v}</span>`;
 
   const headRow = DOW_LABEL.map((d, i) =>
-    `<th style="border:1px solid ${LINE};background:${HEAD_BG};padding:8px 0;font-weight:600;color:${i === 0 || i === 6 ? BLUE : INK};font-size:13px;">${d}</th>`
+    `<th style="border:1px solid ${LINE};background:${HEAD_BG};padding:8px 0;font-weight:600;color:${i === 0 ? RED : i === 6 ? BLUE : INK};font-size:13px;">${d}</th>`
   ).join('');
 
   const noteMiss = r.noteMissDates.length
@@ -86,7 +88,7 @@ export function renderReportHtml(r: BuiltReport): string {
 <div style="max-width:1000px;margin:0 auto;background:#fff;padding:28px 32px 40px;">
   <h1 style="text-align:center;font-size:28px;font-weight:800;margin:0 0 18px;color:${INK};">${monthLabel} 근태관리 리포트</h1>
   <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;margin-bottom:12px;">
-    <div style="font-size:15px;color:${INK};"><span style="font-weight:600;">${esc(r.user.name)}</span> ${esc(org)}</div>
+    <div style="font-size:15px;color:${INK};"><span style="font-weight:700;">${esc(r.user.name)}</span> <span style="font-size:14px;">${esc(org)}</span></div>
     <div style="font-size:14px;">${kpi('지각', r.kpi.lateCount)}${kpi('출근누락', r.kpi.missingIn)}${kpi('퇴근누락', r.kpi.missingOut)}${kpi('노트누락', r.kpi.missingNote)}</div>
   </div>
   <table style="width:100%;border-collapse:collapse;table-layout:fixed;">

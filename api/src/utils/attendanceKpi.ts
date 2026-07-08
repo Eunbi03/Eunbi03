@@ -33,13 +33,14 @@ export function classifyDay(r: any): DayKpi {
   }
   const hasIn = Boolean(r?.check_in_time);
   const present = hasIn || leaveCountsAsCheckIn(lt);
+  // 근무노트 누락: 상황(출근누락/퇴근누락/지각) 불문, 노트가 없으면 무조건 누락 (노트 인정 leave_type만 예외)
+  const missingNote = !leaveCountsAsNote(lt) && !r?.work_note_today && !r?.daily_report;
   if (!present) {
-    return { isLeave: false, present: false, isLate: false, isEarlyLeave: false, missingOut: false, missingNote: false };
+    return { isLeave: false, present: false, isLate: false, isEarlyLeave: false, missingOut: false, missingNote };
   }
   const isLate = (r?.status === '지각' || r?.status === '지각조퇴') && !leaveCountsAsCheckIn(lt);
   const isEarlyLeave = r?.status === '조퇴' || r?.status === '지각조퇴';
   const hasOut = Boolean(r?.check_out_time) || leaveCountsAsCheckOut(lt);
   const missingOut = !hasOut;
-  const missingNote = hasOut && !r?.work_note_today && !r?.daily_report && !leaveCountsAsNote(lt);
   return { isLeave: false, present: true, isLate, isEarlyLeave, missingOut, missingNote };
 }
