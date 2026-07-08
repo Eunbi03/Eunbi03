@@ -67,10 +67,12 @@ export async function sendReportLink(opts: {
     `<p style="margin:12px 0 0;">문의사항이 있으시면 본 메일에 회신하시거나 아래 연락처로 문의해 주시기 바랍니다.</p>` +
     linkLine + signature + `</div>`;
 
+  // 문자 본문은 이메일과 동일한 문구(메일 전용 표현만 제외)
   const bodyText =
     `안녕하세요, ${name}님.\n${corpName} 인사팀입니다.\n\n${monthLabel}월 근태관리 리포트를 보내드립니다.\n` +
     (over ? `이번 근태 내역과 관련하여 ${deadlineText}까지 시말서를 제출하여 주시기바랍니다.\n` : '') +
-    `근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있습니다.\n리포트: ${link}\n\n감사합니다.\n` +
+    `근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있${over ? '으며, 향후 원활한 근태관리를 위해 관련 규정을 준수하여 주시기 바랍니다.' : '습니다.'}\n` +
+    `문의사항이 있으시면 아래 연락처로 문의해 주시기 바랍니다.\n리포트: ${link}\n\n감사합니다.\n` +
     managers.map((m) => `${m.name} 담당자 (☎ ${m.phone})`).join('\n');
 
   if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
