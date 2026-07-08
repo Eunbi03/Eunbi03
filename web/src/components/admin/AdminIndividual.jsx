@@ -361,11 +361,11 @@ export default function AdminIndividual({ filters, isHR }) {
     const name = nameInput.trim(); if (!name) return;
     try {
       const d = await api.searchWorkers(name);
-      const found = (d.workers || []).filter((w) => w.role === "worker");
-      if (!found.length) { setMsg("해당 이름의 직원을 찾을 수 없습니다."); return; }
+      const found = d.workers || []; // 서버가 이미 worker만 반환
+      if (!found.length) { alert("해당 이름의 직원을 찾을 수 없습니다."); return; }
       setSelected((s) => { const add = found.filter((f) => !s.some((x) => x.id === f.id)); return [...s, ...add]; });
       setNameInput("");
-    } catch (e) { setMsg(e.message); }
+    } catch (e) { alert(e.message); }
   };
   const removeSelected = (id) => setSelected((s) => s.filter((x) => x.id !== id));
 
