@@ -13,9 +13,11 @@ export async function sendReportLink(opts: { name: string; email?: string | null
   const body = `${name}님, ${monthLabel} 근태관리 리포트입니다.\n아래 링크에서 확인해 주세요.\n${link}`;
 
   if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      port,
+      secure: port === 465, // 465=암시적 SSL, 587=STARTTLS
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
     });
     await transporter.sendMail({
@@ -44,9 +46,11 @@ export async function sendReportEmail(data: ReportData): Promise<void> {
     return;
   }
 
+  const _port = parseInt(process.env.SMTP_PORT || '587', 10);
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    port: _port,
+    secure: _port === 465,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
   });
 
