@@ -398,7 +398,12 @@ export default function AdminIndividual({ filters, isHR }) {
     setSending(true); setMsg("");
     try {
       const r = await api.sendMonthlyReport({ userIds: ids, from, to });
-      setMsg(`리포트 발송 완료: ${r.sent}/${r.total}명` + (r.sent < r.total ? " (이메일/문자 미설정 인원은 발송 실패)" : ""));
+      const fails = (r.results || []).filter((x) => !x.ok);
+      let msg = `리포트 발송 완료: ${r.sent}/${r.total}명`;
+      if (fails.length) {
+        msg += "\n실패: " + fails.map((f) => `${f.name || f.userId}(${f.reason || "이메일/문자 미설정"})`).join(", ");
+      }
+      setMsg(msg);
     } catch (e) { setMsg(e.message); }
     finally { setSending(false); }
   };
@@ -449,7 +454,7 @@ export default function AdminIndividual({ filters, isHR }) {
 
   return (
     <div>
-      {msg && <div style={{ ...S.busy, marginBottom: 10 }}>{msg}</div>}
+      {msg && <div style={{ ...S.busy, marginBottom: 10, whiteSpace: "pre-wrap" }}>{msg}</div>}
 
       {/* 기간 설정 — 전체현황과 동일한 월 선택기 */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
