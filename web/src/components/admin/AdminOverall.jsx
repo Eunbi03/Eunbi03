@@ -36,20 +36,19 @@ const pad = (n) => String(n).padStart(2, "0");
 const OVER_GAP = 4;
 function cellTd(over, height, isMobile) {
   return {
+    position: "relative", // 안쪽 블록의 절대 위치 기준
     padding: 0, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`,
     verticalAlign: "middle", minWidth: isMobile ? 34 : 36, height,
   };
 }
 function cellInner(over, fs) {
   return {
-    // 모든 행을 동일하게 위아래 OVER_GAP 인셋 → 노트누락 빨간줄 높이가 행마다 일정해짐.
-    // 배경만 관리대상=빨강 / 그 외=투명. 검은 가로선(td 하단)과 사이에 간격이 생김.
-    position: "relative",
-    height: `calc(100% - ${OVER_GAP * 2}px)`,
+    // 절대 위치로 셀 실제 높이에서 위아래 OVER_GAP 만큼 인셋 → 행 높이와 무관하게 항상 세로 가운데.
+    // 배경만 관리대상=빨강 / 그 외=투명. 검은 가로선과 사이에 간격이 생김.
+    position: "absolute", top: OVER_GAP, bottom: OVER_GAP, left: 0, right: 0,
     boxSizing: "border-box", display: "flex", flexDirection: "column",
-    justifyContent: "center", textAlign: "center", lineHeight: 1.25, fontSize: fs,
-    padding: "1px 2px",
-    margin: `${OVER_GAP}px 0`,
+    alignItems: "center", justifyContent: "center", textAlign: "center",
+    lineHeight: 1.25, fontSize: fs, padding: "1px 2px",
     background: over ? COL.lred : "transparent",
   };
 }
@@ -236,13 +235,13 @@ export default function AdminOverall({ filters, onDirectActive }) {
                     <tr key={w.id} style={{ height: ROW_H, background: "#fff" }}>
                       <td style={{ position: "sticky", left: 0, zIndex: 1, background: HEADER_BG, padding: "4px 8px", textAlign: "center", fontSize: isMobile ? 11 : 13, fontWeight: 700, color: COL.black, borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, whiteSpace: "nowrap" }}>{w.name}</td>
                       {w.days.map((cell, i) => <Cell key={i} cell={cell} isMobile={isMobile} over={w.over} height={ROW_H} />)}
-                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", height: ROW_H }}>
+                      <td style={{ position: "relative", padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", height: ROW_H }}>
                         <div style={{ ...cellInner(w.over, isMobile ? 11 : 13), flexDirection: "row", fontWeight: 800, padding: "4px 6px" }}>
                           <span style={{ color: w.over ? COL.red : COL.black }}>{w.lateMissing}</span>
                           <span style={{ color: COL.black }}>/{w.workedDays}</span>
                         </div>
                       </td>
-                      <td style={{ padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", height: ROW_H }}>
+                      <td style={{ position: "relative", padding: 0, borderLeft: `1px solid ${BORDER}`, borderBottom: `1px solid ${HBORDER}`, verticalAlign: "middle", height: ROW_H }}>
                         <div style={{ ...cellInner(w.over, isMobile ? 11 : 13), fontWeight: 700, color: w.over ? COL.red : COL.black, padding: "4px 6px" }}>
                           {w.noteMissing || "-"}
                         </div>
