@@ -550,6 +550,12 @@ router.post('/send-report', requireHR, async (req: Request, res: Response): Prom
   const sentStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
   const dl = new Date(sentStr + 'T00:00:00Z'); dl.setUTCDate(dl.getUTCDate() + 7);
   const deadlineText = `${dl.getUTCMonth() + 1}월 ${dl.getUTCDate()}일`;
+  // 법인별 담당자 매핑 (등록 기기에 담당 법인·전화·담당자명이 설정된 경우)
+  const { rows: mgrRows } = await pool.query(
+    `SELECT corp, device_name, phone FROM admin_devices WHERE corp IS NOT NULL AND corp<>''`
+  );
+  const managerByCorp: Record<string, { name: string; phone: string }> = {};
+  for (const mr of mgrRows) if (!managerByCorp[mr.corp]) managerByCorp[mr.corp] = { name: mr.device_name || '', phone: mr.phone || '' };
   const results: any[] = [];
   for (const uid of userIds) {
     const rep = await buildIndividualReport(uid, from, to);
@@ -560,8 +566,8 @@ router.post('/send-report', requireHR, async (req: Request, res: Response): Prom
       const via = await sendReportLink({
         name: rep.user.name, email: rep.user.email, phone: rep.user.phone, monthLabel, link,
         corpName: rep.user.corp, over: rep.over, deadlineText,
-        // TODO(#11): 법인별 담당자명·전화번호 연동 예정
-        managerName: '', managerPhone: '',
+        managerName: managerByCorp[rep.user.corp]?.name || '',
+        managerPhone: managerByCorp[rep.user.corp]?.phone || '',
       });
       results.push({ userId: uid, name: rep.user.name, ok: via !== 'none', via });
     } catch (e: any) {
@@ -744,7 +750,7 @@ router.get('/dashboard', async (req: Request, res: Response): Promise<void> => {
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
   const isHolder = !!req.user.isAuthority;
   const { rows: myDevices } = await pool.query(
-    'SELECT id, device_id, device_name, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
   );
   let pendingDevices: any[] = [];
@@ -762,7 +768,7 @@ router.get('/my-devices', async (req: Request, res: Response): Promise<void> => 
 // 특정 관리자의 기기 목록 (모든 관리자 조회 가능 — 편집 권한은 별도)
 router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    'SELECT id, device_id, device_name, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.params.userId]
   );
   res.json({ devices: rows });
@@ -787,6 +793,18 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
   if (rows[0].is_authority) { res.status(400).json({ error: '권한자 기기는 삭제할 수 없습니다. 먼저 권한을 이전하세요.' }); return; }
   await pool.query('DELETE FROM admin_devices WHERE id=$1', [req.params.id]);
   res.json({ success: true });
+});
+
+// 기기 정보(담당자명=device_name, 담당 법인, 전화번호) 수정
+router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
+  const { deviceName, corp, phone } = req.body;
+  const { rows } = await pool.query(
+    `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3 WHERE id=$4
+     RETURNING id, device_name, corp, phone`,
+    [deviceName || null, corp || null, phone || null, req.params.id]
+  );
+  if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
+  res.json({ success: true, device: rows[0] });
 });
 
 // 권한자 이전 (현재 권한자 기기 → 대상 기기). 이전 후에는 재로그인 시 반영.

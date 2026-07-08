@@ -202,8 +202,66 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
   );
 }
 
+// 등록 기기 행 — 담당자명(기기 이름)·법인·전화번호 편집
+function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(d.device_name || "");
+  const [corp, setCorp] = useState(d.corp || "");
+  const [phone, setPhone] = useState(d.phone || "");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try { await onSaveInfo(d.id, { deviceName: name.trim(), corp: corp.trim(), phone: phone.trim() }); setEditing(false); }
+    finally { setSaving(false); }
+  };
+  const inp = { ...S.input, padding: "7px 10px", fontSize: 13 };
+  return (
+    <div style={{ background: d.is_approved ? "#fff" : "#fef5f5", border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            {d.device_name || "기기"}
+            {d.is_authority
+              ? <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>
+              : <span style={{ fontSize: 10, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "1px 7px", borderRadius: 20 }}>관리자</span>}
+            {(d.corp || d.phone) && (
+              <span style={{ fontWeight: 400, fontSize: 11, color: C.inkSoft }}>
+                {[d.corp, fmtPhone(d.phone)].filter(Boolean).join(" · ")}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.device_id}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, alignItems: "flex-end" }}>
+          <button style={{ border: `1px solid ${C.blueSoft}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.blue, fontWeight: 700, cursor: "pointer" }} onClick={() => setEditing((v) => !v)}>
+            {editing ? "닫기" : "정보 수정"}
+          </button>
+          {isHolder && !d.is_authority && (
+            <div style={{ display: "flex", gap: 4 }}>
+              {!d.is_approved && <button style={{ border: `1px solid ${C.green}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.green, fontWeight: 700, cursor: "pointer" }} onClick={() => onApprove(d.id)}>승인</button>}
+              {d.is_approved && <button style={{ border: `1px solid #b9820f`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: "#b9820f", fontWeight: 700, cursor: "pointer" }} onClick={() => onTransfer(d)}>권한자 변경</button>}
+              <button style={{ border: "none", background: "#fef5f5", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.seal, fontWeight: 700, cursor: "pointer" }} onClick={() => onRemove(d.id)}>삭제</button>
+            </div>
+          )}
+        </div>
+      </div>
+      {editing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <input style={{ ...inp, flex: "1 1 120px" }} placeholder="담당자명" value={name} onChange={(e) => setName(e.target.value)} />
+            <input style={{ ...inp, flex: "1 1 120px" }} placeholder="담당 법인" value={corp} onChange={(e) => setCorp(e.target.value)} />
+          </div>
+          <input style={inp} placeholder="전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 관리자/인사팀 계정 수정 모달
-function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, onApproveDevice, onRemoveDevice, onTransfer, onResetPw, onNameSave, onClose }) {
+function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, onApproveDevice, onRemoveDevice, onTransfer, onResetPw, onNameSave, onSaveDeviceInfo, onClose }) {
   const isHolder = currentUser?.isAuthorityHolder;
   const isSelf = currentUser?.id === worker?.id;
 
@@ -332,41 +390,8 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {adminDevices.map((d) => (
-                <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, background: d.is_approved ? "#fff" : "#fef5f5", border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 12px" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 6 }}>
-                      {d.device_name || "기기"}
-                      {d.is_authority
-                        ? <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>
-                        : <span style={{ fontSize: 10, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "1px 7px", borderRadius: 20 }}>관리자</span>}
-                    </div>
-                    <div style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.device_id}</div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
-                  </div>
-                  {isHolder && !d.is_authority && (
-                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                      {!d.is_approved && (
-                        <button
-                          style={{ border: `1px solid ${C.green}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.green, fontWeight: 700, cursor: "pointer" }}
-                          onClick={() => onApproveDevice(d.id)}
-                          disabled={busy}
-                        >승인</button>
-                      )}
-                      {d.is_approved && (
-                        <button
-                          style={{ border: `1px solid #b9820f`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: "#b9820f", fontWeight: 700, cursor: "pointer" }}
-                          onClick={() => handleTransfer(d)}
-                          disabled={busy}
-                        >권한자 변경</button>
-                      )}
-                      <button
-                        style={{ border: "none", background: "#fef5f5", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.seal, fontWeight: 700, cursor: "pointer" }}
-                        onClick={() => onRemoveDevice(d.id)}
-                        disabled={busy}
-                      >삭제</button>
-                    </div>
-                  )}
-                </div>
+                <DeviceRow key={d.id} d={d} isHolder={isHolder}
+                  onApprove={onApproveDevice} onRemove={onRemoveDevice} onTransfer={handleTransfer} onSaveInfo={onSaveDeviceInfo} />
               ))}
             </div>
           )}
@@ -530,6 +555,12 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
       setMsg("기기가 삭제되었습니다.");
       if (adminTarget) await refreshAdminDevices(adminTarget.id);
     } catch (e) { setMsg(e.message); }
+  };
+
+  const handleSaveDeviceInfo = async (deviceRowId, data) => {
+    await api.updateDeviceInfo(deviceRowId, data);
+    setMsg("기기 정보가 저장되었습니다.");
+    if (adminTarget) await refreshAdminDevices(adminTarget.id);
   };
 
   const handleTransferAuthority = async (targetDeviceId) => {
@@ -841,6 +872,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
           onTransfer={handleTransferAuthority}
           onResetPw={handleAdminResetPw}
           onNameSave={handleAdminNameSave}
+          onSaveDeviceInfo={handleSaveDeviceInfo}
           onClose={() => setAdminTarget(null)}
         />
       )}
