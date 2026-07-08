@@ -250,7 +250,7 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <input style={{ ...inp, flex: "1 1 120px" }} placeholder="담당자명" value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={{ ...inp, flex: "1 1 120px" }} placeholder="담당 법인" value={corp} onChange={(e) => setCorp(e.target.value)} />
+            <input style={{ ...inp, flex: "1 1 120px" }} placeholder="담당 법인 (여러 개는 쉼표로)" value={corp} onChange={(e) => setCorp(e.target.value)} />
           </div>
           <input style={inp} placeholder="전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>

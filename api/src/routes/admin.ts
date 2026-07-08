@@ -555,7 +555,12 @@ router.post('/send-report', requireHR, async (req: Request, res: Response): Prom
     `SELECT corp, device_name, phone FROM admin_devices WHERE corp IS NOT NULL AND corp<>''`
   );
   const managerByCorp: Record<string, { name: string; phone: string }> = {};
-  for (const mr of mgrRows) if (!managerByCorp[mr.corp]) managerByCorp[mr.corp] = { name: mr.device_name || '', phone: mr.phone || '' };
+  for (const mr of mgrRows) {
+    // 한 담당자가 여러 법인을 맡을 수 있음 — 쉼표/가운뎃점 구분
+    for (const c of String(mr.corp).split(/[,·]/).map((s: string) => s.trim()).filter(Boolean)) {
+      if (!managerByCorp[c]) managerByCorp[c] = { name: mr.device_name || '', phone: mr.phone || '' };
+    }
+  }
   const results: any[] = [];
   for (const uid of userIds) {
     const rep = await buildIndividualReport(uid, from, to);
