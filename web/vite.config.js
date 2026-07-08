@@ -11,7 +11,7 @@ export default defineConfig({
       // 매니페스트/등록 스크립트는 각 HTML에서 직접 지정(근로자/관리자 2종)
       injectRegister: false,
       manifest: false,
-      includeAssets: ["favicon.png", "splash.png"],
+      includeAssets: ["favicon.png", "intro1.png", "intro2.png", "checkout.png"],
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],

@@ -4,6 +4,7 @@ import { fmtTime, fmtDur } from "../utils/format.js";
 import { getLocation, startLocationWatch, stopLocationWatch, checkLocationPermission } from "../utils/device.js";
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
+import Splash from "./Splash.jsx";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
 import * as api from "../api/client.js";
 
@@ -60,6 +61,7 @@ export default function Employee({ user }) {
   const [noteDraft, setNoteDraft] = useState("");
   const [noteEditing, setNoteEditing] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
+  const [showCheckoutSplash, setShowCheckoutSplash] = useState(false);
 
   const isCheckedIn = !!today?.checkIn?.time;
   const isCheckedOut = !!today?.checkOut?.time;
@@ -125,6 +127,15 @@ export default function Employee({ user }) {
 
   if (loading) return <div style={{ ...S.empty, background: W.bg }}>불러오는 중…</div>;
 
+  // 퇴근 완료 후 3초 안내 화면 (터치 시 즉시 종료)
+  if (showCheckoutSplash)
+    return (
+      <Splash
+        slides={[{ src: "/checkout.png", ms: 3000, title: "오늘 하루도 수고하셨습니다!" }]}
+        onDone={() => setShowCheckoutSplash(false)}
+      />
+    );
+
   if (view === "outing") return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
       <MoveForm onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
@@ -132,7 +143,7 @@ export default function Employee({ user }) {
   );
   if (view === "out") return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} outings={outings} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} outings={outings} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
     </div>
   );
   if (view === "history") return <HistoryView onBack={() => setView("main")} />;

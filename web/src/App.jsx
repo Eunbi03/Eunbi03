@@ -74,8 +74,17 @@ export default function App() {
   // 약관 페이지 — 로그인 불필요
   if (mode === "terms") return <Terms />;
 
-  // 앱 실행 시 1초 인트로 (회원·첫 등록자 공통, 자동로그인과 병행)
-  if (showSplash) return <Splash onDone={() => setShowSplash(false)} />;
+  // 앱 실행 시 인트로 2장 (1번 2초 → 2번 2초, 터치 시 즉시 다음)
+  if (showSplash)
+    return (
+      <Splash
+        slides={[
+          { src: "/intro1.png", ms: 2000, title: "TimeCard", sub: "근태관리 어플리케이션" },
+          { src: "/intro2.png", ms: 2000, title: "지구와 인간의 건강한 가치실현", sub: "신뢰와 자부심으로 가득한 조직" },
+        ]}
+        onDone={() => setShowSplash(false)}
+      />
+    );
 
   if (loading) return <div style={S.empty}>불러오는 중…</div>;
 
