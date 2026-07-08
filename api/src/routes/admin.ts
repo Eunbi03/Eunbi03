@@ -304,7 +304,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
 
   // 직원 전체
   const { rows: workers } = await pool.query(
-    `SELECT id, name, corp, division, team, job_title, scheduled_start
+    `SELECT id, name, corp, division, team, job_title, scheduled_start, note_exempt
      FROM users WHERE role='worker' AND is_active=TRUE ORDER BY corp, division, team, name`
   );
   if (workers.length === 0) { res.json({ teams: [], period: { from: fromDate, to: toDate, workdays: workdayCount } }); return; }
@@ -332,7 +332,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
 
     // 평일 처리
     for (const day of workdays) {
-      const k = classifyDay(recByDate[day]);
+      const k = classifyDay(recByDate[day], !!w.note_exempt);
       if (k.isLeave) continue;
       if (!k.present) { missingIn++; continue; }
       if (k.isLate) lateCount++;
@@ -342,7 +342,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     // 주말 출근 기록도 KPI에 반영 (미출근 주말은 제외)
     for (const r of recs) {
       if (workdays.includes(r.date)) continue;
-      const k = classifyDay(r);
+      const k = classifyDay(r, !!w.note_exempt);
       if (k.isLeave || !k.present) continue;
       if (k.isLate) lateCount++;
       if (k.missingOut) missingOut++;
@@ -374,13 +374,14 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   // 직원 정보
   const { rows: userRows } = await pool.query(
-    `SELECT u.id, u.name, u.corp, u.division, u.team, u.job_title, u.scheduled_start, u.scheduled_end,
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.job_title, u.scheduled_start, u.scheduled_end, u.note_exempt,
             w.id AS wp_id, w.name AS wp_name, w.lat AS wp_lat, w.lng AS wp_lng, w.radius_m
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`,
     [userId]
   );
   if (!userRows[0]) { res.status(404).json({ error: '직원을 찾을 수 없습니다.' }); return; }
   const user = userRows[0];
+  const noteExempt = !!user.note_exempt;
 
   // 출퇴근 기록
   const { rows: records } = await pool.query(
@@ -434,7 +435,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   const buildDayEntry = (day: string, isWorkday: boolean) => {
     const r = recByDate[day];
     const lt = r?.leave_type;
-    const k = classifyDay(r);
+    const k = classifyDay(r, noteExempt);
 
     if (k.isLeave) return { date: day, leaveType: '연차' };
 
@@ -489,9 +490,11 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
   const workdaySet = new Set(workdays);
 
   const { rows: users } = await pool.query(
-    `SELECT id FROM users WHERE role='worker' AND is_active=TRUE`
+    `SELECT id, note_exempt FROM users WHERE role='worker' AND is_active=TRUE`
   );
   const ids = users.map((u: any) => u.id);
+  const noteExemptById: Record<string, boolean> = {};
+  for (const u of users) noteExemptById[u.id] = !!u.note_exempt;
   if (!ids.length) { res.json({ scores: {} }); return; }
 
   const { rows: records } = await pool.query(
@@ -521,7 +524,7 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
     for (const day of days) {
       const isWorkday = workdaySet.has(day);
       const r = recByUD[`${uid}|${day}`];
-      const k = classifyDay(r);
+      const k = classifyDay(r, noteExemptById[uid]);
       if (k.isLeave) continue;
       if (!k.present) {
         if (isWorkday) { missingIn++; if (k.missingNote) missingNote++; }

@@ -26,15 +26,16 @@ export interface DayKpi {
 
 // 하루치 출퇴근 기록(없으면 undefined)을 받아 KPI 판정 결과를 반환한다.
 // missingIn(출근누락)은 "근무일인데 미출근"이라는 날짜 맥락이 필요하므로 호출부에서 (!present && 근무일)로 판단한다.
-export function classifyDay(r: any): DayKpi {
+export function classifyDay(r: any, noteExempt = false): DayKpi {
   const lt: string | null = r?.leave_type ?? null;
   if (lt === '연차') {
     return { isLeave: true, present: false, isLate: false, isEarlyLeave: false, missingOut: false, missingNote: false };
   }
   const hasIn = Boolean(r?.check_in_time);
   const present = hasIn || leaveCountsAsCheckIn(lt);
-  // 근무노트 누락: 상황(출근누락/퇴근누락/지각) 불문, 노트가 없으면 무조건 누락 (노트 인정 leave_type만 예외)
-  const missingNote = !leaveCountsAsNote(lt) && !r?.work_note_today && !r?.daily_report;
+  // 근무노트 누락: 상황(출근누락/퇴근누락/지각) 불문, 노트가 없으면 무조건 누락.
+  // 단, 근무노트제외 직원·노트 인정 leave_type은 예외.
+  const missingNote = !noteExempt && !leaveCountsAsNote(lt) && !r?.work_note_today && !r?.daily_report;
   if (!present) {
     return { isLeave: false, present: false, isLate: false, isEarlyLeave: false, missingOut: false, missingNote };
   }

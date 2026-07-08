@@ -253,6 +253,8 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
 // GET /api/attendance/weekly-summary
 router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const today = todayKST();
+  const { rows: uRows } = await pool.query('SELECT note_exempt FROM users WHERE id=$1', [req.user.userId]);
+  const noteExempt = !!uRows[0]?.note_exempt;
   const { rows } = await pool.query(
     `SELECT date::text AS date, check_in_time, check_out_time, work_minutes, status, leave_type, work_note_today, daily_report
      FROM attendance_records WHERE user_id=$1 AND date>=date_trunc('week',CURRENT_DATE AT TIME ZONE 'Asia/Seoul') AND date<=CURRENT_DATE ORDER BY date`,
@@ -281,7 +283,7 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
     const isToday = date === today;
     const isWorkday = !isWeekend && !isHoliday(date);
     const r = recByDate[date];
-    const k = classifyDay(r);
+    const k = classifyDay(r, noteExempt);
 
     const base: any = { date, dow, isToday, isFuture, isWorkday, off: !isWorkday, leaveType: r?.leave_type ?? null };
 
@@ -313,6 +315,8 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
 // GET /api/attendance/monthly-summary
 router.get('/monthly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const today = todayKST();
+  const { rows: muRows } = await pool.query('SELECT note_exempt FROM users WHERE id=$1', [req.user.userId]);
+  const noteExempt = !!muRows[0]?.note_exempt;
   const monthStart = today.slice(0, 7) + '-01';
   const { rows } = await pool.query(
     `SELECT date::text AS date, work_minutes, status, leave_type, check_in_time, work_note_today, daily_report FROM attendance_records
@@ -328,7 +332,7 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
 
   for (const day of workdays) {
     const r = recByDate[day];
-    const k = classifyDay(r);
+    const k = classifyDay(r, noteExempt);
     if (k.isLeave) { leaveDays++; continue; }
     if (!k.present) { missingIn++; if (k.missingNote) missingNote++; continue; }
     workedDays++;

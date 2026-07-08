@@ -25,12 +25,13 @@ export interface BuiltReport {
 // 개별 리포트 데이터를 [from, to] 전 기간(달력용) 기준으로 산출한다.
 export async function buildIndividualReport(userId: string, from: string, to: string): Promise<BuiltReport | null> {
   const { rows: userRows } = await pool.query(
-    `SELECT u.id, u.name, u.corp, u.division, u.team, u.email, u.phone, w.name AS wp_name
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.email, u.phone, u.note_exempt, w.name AS wp_name
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [userId]
   );
   if (!userRows[0]) return null;
   const u = userRows[0];
   const workplaceName: string | null = u.wp_name || null;
+  const noteExempt = !!u.note_exempt;
 
   const { rows: records } = await pool.query(
     `SELECT id, date::text AS date, check_in_time, check_out_time, check_out_is_field, status, leave_type,
@@ -65,7 +66,7 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     const isHol = isHoliday(date);
     const r = recByDate[date];
     const isWorkday = workdaySet.has(date);
-    const k = classifyDay(r);
+    const k = classifyDay(r, noteExempt);
     const lt = r?.leave_type ?? null;
 
     const day: ReportDay = { date, dow, isWeekend, isHol, outings: [] };
