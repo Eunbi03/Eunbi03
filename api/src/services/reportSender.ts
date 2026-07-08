@@ -2,10 +2,11 @@ import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 
 // 솔라피(SOLAPI) 단문/장문 발송. 성공 시 true.
-async function sendSolapiSms(to: string, text: string): Promise<boolean> {
+async function sendSolapiSms(to: string, text: string, fromOverride?: string): Promise<boolean> {
   const apiKey = process.env.SOLAPI_API_KEY;
   const apiSecret = process.env.SOLAPI_API_SECRET;
-  const from = (process.env.SMS_SENDER || '').replace(/\D/g, '');
+  // 법인별 발신번호(담당자 전화) 우선, 없으면 공통 SMS_SENDER
+  const from = ((fromOverride || process.env.SMS_SENDER || '')).replace(/\D/g, '');
   if (!apiKey || !apiSecret || !from) return false;
 
   const date = new Date().toISOString();
@@ -39,9 +40,9 @@ interface ReportData {
 // 월간 리포트 링크를 이메일(우선) 또는 문자로 발송한다. 반환: 사용된 채널.
 export async function sendReportLink(opts: {
   name: string; email?: string | null; phone?: string | null; monthLabel: string; link: string;
-  corpName?: string; over?: boolean; deadlineText?: string; managers?: { name: string; phone: string }[];
+  corpName?: string; over?: boolean; deadlineText?: string; managers?: { name: string; phone: string }[]; senderPhone?: string;
 }): Promise<'email' | 'sms' | 'none'> {
-  const { name, email, phone, monthLabel, link, corpName = '', over = false, deadlineText = '', managers = [] } = opts;
+  const { name, email, phone, monthLabel, link, corpName = '', over = false, deadlineText = '', managers = [], senderPhone = '' } = opts;
   const RED = '#cb6156';
   const subject = `[${monthLabel}월 근태관리 리포트 안내]`;
   const esc = (s: string) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
@@ -84,9 +85,10 @@ export async function sendReportLink(opts: {
     return 'email';
   }
 
-  // 이메일이 없으면 문자(SOLAPI LMS)
-  if (phone && process.env.SOLAPI_API_KEY && process.env.SOLAPI_API_SECRET && process.env.SMS_SENDER) {
-    await sendSolapiSms(phone, bodyText);
+  // 이메일이 없으면 문자(SOLAPI LMS) — 법인 담당자 번호를 발신번호로
+  const smsFrom = senderPhone || process.env.SMS_SENDER || '';
+  if (phone && process.env.SOLAPI_API_KEY && process.env.SOLAPI_API_SECRET && smsFrom) {
+    await sendSolapiSms(phone, bodyText, smsFrom);
     return 'sms';
   }
 

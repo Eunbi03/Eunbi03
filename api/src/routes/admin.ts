@@ -575,6 +575,7 @@ router.post('/send-report', requireHR, async (req: Request, res: Response): Prom
         name: rep.user.name, email: rep.user.email, phone: rep.user.phone, monthLabel, link,
         corpName: rep.user.corp, over: rep.over, deadlineText,
         managers: managersByCorp[rep.user.corp] || [],
+        senderPhone: managersByCorp[rep.user.corp]?.[0]?.phone || '',
       });
       results.push({ userId: uid, name: rep.user.name, ok: via !== 'none', via });
     } catch (e: any) {
