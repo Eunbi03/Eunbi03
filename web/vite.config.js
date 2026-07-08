@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { resolve } from "path";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -7,29 +8,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      // 매니페스트/등록 스크립트는 각 HTML에서 직접 지정(근로자/관리자 2종)
+      injectRegister: false,
+      manifest: false,
       includeAssets: ["favicon.png", "splash.png"],
-      manifest: {
-        name: "TimeCard 근태관리",
-        short_name: "TimeCard",
-        description: "근태관리 어플리케이션",
-        lang: "ko",
-        start_url: "/",
-        scope: "/",
-        display: "standalone",
-        orientation: "portrait",
-        background_color: "#333333",
-        theme_color: "#2f6d8f",
-        icons: [
-          { src: "pwa-192.png", sizes: "192x192", type: "image/png" },
-          { src: "pwa-512.png", sizes: "512x512", type: "image/png" },
-          { src: "pwa-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-        ],
-      },
       workbox: {
-        // 네비게이션 폴백에서 API 경로는 제외 (SPA 라우팅과 분리)
         navigateFallbackDenylist: [/^\/api\//],
-        globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
-        // API 요청은 절대 캐시하지 않고 항상 네트워크로 (인증/실시간 데이터)
+        globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
         runtimeCaching: [
           {
             urlPattern: /\/api\//,
@@ -39,6 +24,14 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        admin: resolve(__dirname, "admin.html"),
+      },
+    },
+  },
   server: {
     proxy: {
       "/api": {
