@@ -3,6 +3,15 @@ import { C, S } from "../styles.js";
 import * as api from "../api/client.js";
 import Terms from "./Terms.jsx";
 
+// 근로자 로그인 화면과 동일한 디자인 팔레트
+const WBG = "#f4f6f7";
+const CARD = { background: "#fff", borderRadius: 18, boxShadow: "0 8px 28px rgba(30,36,48,0.12)", padding: "28px 24px" };
+const INPUT = { border: "1px solid #c9e6f4", borderRadius: 10, padding: "12px 14px", fontSize: 15, width: "100%", boxSizing: "border-box", color: "#333", background: "#fff" };
+const LABEL = { fontSize: 12, fontWeight: 700, color: "#6b7280", display: "block", margin: "10px 0 6px" };
+const PRIMARY = { width: "100%", border: "none", borderRadius: 10, padding: 13, fontSize: 16, fontWeight: 700, color: "#fff", background: "#333333", cursor: "pointer", marginTop: 8 };
+const H1 = { fontSize: 22, fontWeight: 800, color: "#333", margin: "0 0 6px", letterSpacing: "-0.02em" };
+const ERRSTYLE = { fontSize: 13, color: "#cb6156", fontWeight: 600, marginTop: 8 };
+
 export default function FirstLoginFlow({ onDone }) {
   const [step, setStep] = useState("password"); // password | consent
   const [newPw, setNewPw] = useState("");
@@ -52,8 +61,8 @@ export default function FirstLoginFlow({ onDone }) {
         />
       )}
 
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg || C.paper, padding: 20 }}>
-        <div style={{ ...S.loginCard, width: "100%", maxWidth: 420 }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: WBG, padding: 20 }}>
+        <div style={{ ...CARD, width: "100%", maxWidth: 420 }}>
 
           {/* 단계 표시 */}
           <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
@@ -78,24 +87,24 @@ export default function FirstLoginFlow({ onDone }) {
 
           {step === "password" && (
             <>
-              <p style={S.h1}>비밀번호 변경</p>
+              <p style={H1}>비밀번호 변경</p>
               <p style={{ fontSize: 14, color: C.inkSoft, marginBottom: 16 }}>
                 보안을 위해 초기 비밀번호를 변경해주세요. (영문·숫자 포함 8자 이상)
               </p>
 
-              <label style={S.fieldLabel}>새 비밀번호</label>
+              <label style={LABEL}>새 비밀번호</label>
               <input
-                style={S.input}
+                style={INPUT}
                 type="password"
                 value={newPw}
                 onChange={(e) => setNewPw(e.target.value)}
                 autoComplete="new-password"
               />
 
-              <label style={S.fieldLabel}>비밀번호 확인</label>
+              <label style={LABEL}>비밀번호 확인</label>
               <input
                 style={{
-                  ...S.input,
+                  ...INPUT,
                   ...(pwMismatch ? { borderColor: C.seal, boxShadow: `0 0 0 2px ${C.sealSoft}` } : {}),
                   ...(pwMatch ? { borderColor: C.green, boxShadow: `0 0 0 2px ${C.greenSoft}` } : {}),
                 }}
@@ -116,8 +125,8 @@ export default function FirstLoginFlow({ onDone }) {
                 </div>
               )}
 
-              {err && <div style={S.err}>{err}</div>}
-              <button style={{ ...S.primary, opacity: busy ? 0.6 : 1 }} onClick={savePassword} disabled={busy}>
+              {err && <div style={ERRSTYLE}>{err}</div>}
+              <button style={{ ...PRIMARY, opacity: busy ? 0.6 : 1 }} onClick={savePassword} disabled={busy}>
                 {busy ? "저장 중…" : "저장하고 계속"}
               </button>
             </>
@@ -125,7 +134,7 @@ export default function FirstLoginFlow({ onDone }) {
 
           {step === "consent" && (
             <>
-              <p style={S.h1}>위치정보 수집·이용 동의</p>
+              <p style={H1}>위치정보 수집·이용 동의</p>
 
               {/* 동의 내용 테이블 — 글씨 키움 */}
               <div style={{ background: C.paper, borderRadius: 12, padding: "16px 18px", marginBottom: 14, fontSize: 14, color: C.ink, lineHeight: 1.9 }}>
@@ -176,10 +185,10 @@ export default function FirstLoginFlow({ onDone }) {
                 </p>
               )}
 
-              {err && <div style={S.err}>{err}</div>}
+              {err && <div style={ERRSTYLE}>{err}</div>}
               <button
                 style={{
-                  ...S.primary,
+                  ...PRIMARY,
                   opacity: (busy || !termsRead) ? 0.5 : 1,
                   cursor: termsRead && !busy ? "pointer" : "not-allowed",
                 }}

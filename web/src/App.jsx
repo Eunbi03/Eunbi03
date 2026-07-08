@@ -7,6 +7,7 @@ import Header from "./components/Header.jsx";
 import Employee from "./components/Employee.jsx";
 import AdminApp from "./components/AdminApp.jsx";
 import Terms from "./components/Terms.jsx";
+import Splash from "./components/Splash.jsx";
 import { S, C } from "./styles.js";
 
 // 현재 URL 경로에서 모드를 결정합니다
@@ -25,6 +26,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authErr, setAuthErr] = useState("");
+  const [showSplash, setShowSplash] = useState(mode !== "terms");
 
   useEffect(() => {
     if (mode === "terms") { setLoading(false); return; }
@@ -71,6 +73,9 @@ export default function App() {
 
   // 약관 페이지 — 로그인 불필요
   if (mode === "terms") return <Terms />;
+
+  // 앱 실행 시 1초 인트로 (회원·첫 등록자 공통, 자동로그인과 병행)
+  if (showSplash) return <Splash onDone={() => setShowSplash(false)} />;
 
   if (loading) return <div style={S.empty}>불러오는 중…</div>;
 

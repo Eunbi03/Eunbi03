@@ -87,7 +87,11 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
       onLogin(user);
     } catch (e) {
       setErr(e.message);
-      setFailCount((c) => c + 1);
+      // 서버의 실제 누적 실패 횟수와 연동 (remainingAttempts = 5 - 누적실패)
+      const rem = e.payload?.remainingAttempts;
+      if (typeof rem === "number") setFailCount(Math.max(1, 5 - rem));
+      else if (e.status === 403 && /(잠겼|잠금)/.test(e.message || "")) setFailCount(5);
+      else setFailCount((c) => c + 1);
     } finally {
       setBusy(false);
     }
@@ -196,7 +200,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
             ? "로그인에 실패했습니다.\n인사팀에 문의해주세요."
             : failCount >= 1
             ? "로그인에 실패했습니다."
-            : "인사팀 담당자에게 전달 받은 계정으로 로그인을 해주세요."}
+            : "로그인을 해주세요."}
         </p>
       )}
     </div>

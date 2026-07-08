@@ -41,27 +41,10 @@ function StatusBadge({ isCheckedIn, isCheckedOut, leaveType }) {
   return <span style={{ ...base, background: W.amberBg, color: W.amber }}>미출근</span>;
 }
 
-// 오프닝(스플래시) — 1초 후 자동 전환 + 터치 시 즉시 전환
-function Splash({ onDone }) {
-  useEffect(() => { const t = setTimeout(onDone, 1000); return () => clearTimeout(t); }, [onDone]);
-  return (
-    <div onClick={onDone} style={{ position: "fixed", inset: 0, zIndex: 2000, cursor: "pointer",
-      background: "linear-gradient(180deg,#cfe6f4 0%,#d8ecdf 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <img src="/splash.png" alt="TimeCard" style={{ maxWidth: "80%", maxHeight: "72%", objectFit: "contain" }}
-        onError={(e) => { e.currentTarget.style.display = "none"; const n = e.currentTarget.nextSibling; if (n) n.style.display = "block"; }} />
-      <div style={{ display: "none", textAlign: "center" }}>
-        <div style={{ fontSize: 42, fontWeight: 800, color: "#333" }}>TimeCard</div>
-        <div style={{ fontSize: 16, color: "#555", marginTop: 8 }}>근태관리 어플리케이션</div>
-      </div>
-    </div>
-  );
-}
-
 const cardStyle = { background: W.card, borderRadius: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 12 };
 const ghostBtn = { width: "100%", background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, color: W.ink, cursor: "pointer" };
 
 export default function Employee({ user }) {
-  const [showSplash, setShowSplash] = useState(true);
   const [today, setToday] = useState(null);
   const [schedule, setSchedule] = useState({ start: "09:00", end: "18:00" });
   const [weekly, setWeekly] = useState(null);
@@ -140,7 +123,6 @@ export default function Employee({ user }) {
     catch (e) { setErr(e.message); }
   };
 
-  if (showSplash) return <Splash onDone={() => setShowSplash(false)} />;
   if (loading) return <div style={{ ...S.empty, background: W.bg }}>불러오는 중…</div>;
 
   if (view === "outing") return (
