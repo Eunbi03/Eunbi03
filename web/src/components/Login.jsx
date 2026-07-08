@@ -6,11 +6,11 @@ import * as api from "../api/client.js";
 // 직원용 / 관리자용 테마를 완전히 다르게 구성합니다
 const THEMES = {
   worker: {
-    pageBg: C.paper,
+    pageBg: "#f4f6f7",
     cardBg: C.card,
-    cardBorder: C.line,
-    cardShadow: "0 6px 24px rgba(30,36,48,0.08)",
-    title: "근태 관리",
+    cardBorder: "transparent",     // 테두리 없이 그림자만
+    cardShadow: "0 8px 28px rgba(30,36,48,0.12)",
+    title: "TimeCard",
     subtitle: null,
     titleColor: C.ink,
     subColor: C.inkSoft,
@@ -24,10 +24,10 @@ const THEMES = {
     idAutoComplete: "username",
     idPlaceholder: "하이픈 없이 숫자만 (예: 01012345678)",
     inputBg: "#fff",
-    inputBorder: C.line,
+    inputBorder: "#c9e6f4",
     inputColor: C.ink,
     labelColor: C.inkSoft,
-    btnBg: C.seal,
+    btnBg: "#333333",
     btnColor: "#fff",
     linkColor: C.ink,
     crossText: "관리자이신가요?",
@@ -70,6 +70,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [failCount, setFailCount] = useState(0);
 
   const t = THEMES[mode] || THEMES.worker;
 
@@ -86,6 +87,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
       onLogin(user);
     } catch (e) {
       setErr(e.message);
+      setFailCount((c) => c + 1);
     } finally {
       setBusy(false);
     }
@@ -99,7 +101,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const labelStyle = { fontSize: t.labelSize, fontWeight: 700, color: t.labelColor };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: t.pageBg, padding: 20, transition: "background 0.2s" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: t.pageBg, padding: 20, transition: "background 0.2s" }}>
       <form
         style={{
           width: "100%", maxWidth: 360, background: t.cardBg,
@@ -153,8 +155,8 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
           disabled={busy}
         />
 
-        {(err || extraError) && (
-          <div style={{ fontSize: 13, color: mode === "admin" ? "#ff8e84" : C.seal, fontWeight: 600 }}>
+        {mode === "admin" && (err || extraError) && (
+          <div style={{ fontSize: 13, color: "#ff8e84", fontWeight: 600 }}>
             {err || extraError}
           </div>
         )}
@@ -174,6 +176,29 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
           </div>
         )}
       </form>
+
+      {mode !== "admin" && (
+        <p
+          style={{
+            maxWidth: 360,
+            textAlign: "center",
+            margin: "18px 0 0",
+            fontSize: 13,
+            lineHeight: 1.6,
+            fontWeight: 600,
+            whiteSpace: "pre-line",
+            color: failCount >= 1 || extraError ? "#cb6156" : "#333333",
+          }}
+        >
+          {extraError
+            ? extraError
+            : failCount >= 5
+            ? "로그인에 실패했습니다.\n인사팀에 문의해주세요."
+            : failCount >= 1
+            ? "로그인에 실패했습니다."
+            : "인사팀 담당자에게 전달 받은 계정으로 로그인을 해주세요."}
+        </p>
+      )}
     </div>
   );
 }
