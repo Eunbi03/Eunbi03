@@ -554,11 +554,11 @@ router.post('/send-report', requireHR, async (req: Request, res: Response): Prom
   const { rows: mgrRows } = await pool.query(
     `SELECT corp, device_name, phone FROM admin_devices WHERE corp IS NOT NULL AND corp<>''`
   );
-  const managerByCorp: Record<string, { name: string; phone: string }> = {};
+  // 법인별 담당자 목록 (한 담당자가 여러 법인, 한 법인에 여러 담당자 모두 지원)
+  const managersByCorp: Record<string, { name: string; phone: string }[]> = {};
   for (const mr of mgrRows) {
-    // 한 담당자가 여러 법인을 맡을 수 있음 — 쉼표/가운뎃점 구분
     for (const c of String(mr.corp).split(/[,·]/).map((s: string) => s.trim()).filter(Boolean)) {
-      if (!managerByCorp[c]) managerByCorp[c] = { name: mr.device_name || '', phone: mr.phone || '' };
+      (managersByCorp[c] ||= []).push({ name: mr.device_name || '', phone: mr.phone || '' });
     }
   }
   const results: any[] = [];
@@ -571,8 +571,7 @@ router.post('/send-report', requireHR, async (req: Request, res: Response): Prom
       const via = await sendReportLink({
         name: rep.user.name, email: rep.user.email, phone: rep.user.phone, monthLabel, link,
         corpName: rep.user.corp, over: rep.over, deadlineText,
-        managerName: managerByCorp[rep.user.corp]?.name || '',
-        managerPhone: managerByCorp[rep.user.corp]?.phone || '',
+        managers: managersByCorp[rep.user.corp] || [],
       });
       results.push({ userId: uid, name: rep.user.name, ok: via !== 'none', via });
     } catch (e: any) {

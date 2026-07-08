@@ -9,16 +9,18 @@ interface ReportData {
 // 월간 리포트 링크를 이메일(우선) 또는 문자로 발송한다. 반환: 사용된 채널.
 export async function sendReportLink(opts: {
   name: string; email?: string | null; phone?: string | null; monthLabel: string; link: string;
-  corpName?: string; over?: boolean; deadlineText?: string; managerName?: string; managerPhone?: string;
+  corpName?: string; over?: boolean; deadlineText?: string; managers?: { name: string; phone: string }[];
 }): Promise<'email' | 'sms' | 'none'> {
-  const { name, email, phone, monthLabel, link, corpName = '', over = false, deadlineText = '', managerName = '', managerPhone = '' } = opts;
+  const { name, email, phone, monthLabel, link, corpName = '', over = false, deadlineText = '', managers = [] } = opts;
   const RED = '#cb6156';
   const subject = `[${monthLabel}월 근태관리 리포트 안내]`;
   const esc = (s: string) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
 
+  // 한 법인에 담당자가 여러 명이면 모두 표기
+  const mgrHtml = managers.map((m) => `${esc(m.name)} 담당자 (☎ ${esc(m.phone)})`).join('<br>');
   const signature =
     `<p style="margin:18px 0 0;">감사합니다.</p>` +
-    `<p style="margin:14px 0 0;">${esc(managerName)} 담당자<br>☎ ${esc(managerPhone)}</p>`;
+    (mgrHtml ? `<p style="margin:14px 0 0;">${mgrHtml}</p>` : '');
   const linkLine = `<p style="margin:14px 0 0;"><a href="${link}">📄 ${monthLabel}월 근태관리 리포트 열기</a></p>`;
 
   const reprimandLine = over
@@ -37,7 +39,8 @@ export async function sendReportLink(opts: {
   const bodyText =
     `안녕하세요, ${name}님.\n${corpName} 인사팀입니다.\n\n${monthLabel}월 근태관리 리포트를 보내드립니다.\n` +
     (over ? `이번 근태 내역과 관련하여 ${deadlineText}까지 시말서를 제출하여 주시기바랍니다.\n` : '') +
-    `근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있습니다.\n리포트: ${link}\n\n감사합니다.\n${managerName} 담당자\n☎ ${managerPhone}`;
+    `근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있습니다.\n리포트: ${link}\n\n감사합니다.\n` +
+    managers.map((m) => `${m.name} 담당자 (☎ ${m.phone})`).join('\n');
 
   if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
     const port = parseInt(process.env.SMTP_PORT || '587', 10);
