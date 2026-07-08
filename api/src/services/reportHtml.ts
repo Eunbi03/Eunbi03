@@ -82,7 +82,7 @@ export function renderReportHtml(r: BuiltReport, sentDate?: string): string {
   const org = [r.user.corp, r.user.division, r.user.team].filter(Boolean).join(' · ');
 
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=1000">
 <title>${monthLabel} 근태관리 리포트 — ${esc(r.user.name)}</title></head>
 <body style="margin:0;background:#f4f4f4;font-family:'맑은 고딕','Malgun Gothic',AppleGothic,sans-serif;color:${INK};">
 <div style="max-width:1000px;margin:0 auto;background:#fff;padding:28px 32px 40px;">
