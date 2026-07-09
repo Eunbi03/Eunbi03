@@ -76,7 +76,7 @@ export default function FirstLoginFlow({ onDone }) {
                     width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 12, fontWeight: 800,
-                    background: done ? C.green : active ? C.ink : C.line,
+                    background: done ? C.green : active ? C.ink : "#c9e6f4",
                     color: done || active ? "#fff" : C.inkSoft,
                   }}>{done ? "✓" : i + 1}</div>
                   <span style={{ fontSize: 12, color: active ? C.ink : C.inkSoft, fontWeight: active ? 700 : 400 }}>{label}</span>
