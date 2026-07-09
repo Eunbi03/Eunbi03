@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "677712311552",
+    "project_id": "timecard-76c09",
+    "storage_bucket": "timecard-76c09.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:677712311552:android:0825cf93089bc9a05aefe5",
+        "android_client_info": {
+          "package_name": "com.kpride.timecard"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLjj2CpNdx2rl5eB_il11xTlWrz9-Hm0Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
