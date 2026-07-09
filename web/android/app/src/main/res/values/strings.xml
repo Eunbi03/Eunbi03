@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TimeCard</string>
+    <string name="title_activity_main">TimeCard</string>
+    <string name="package_name">com.kpride.timecard</string>
+    <string name="custom_url_scheme">com.kpride.timecard</string>
+</resources>
