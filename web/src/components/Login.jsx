@@ -7,7 +7,7 @@ import * as api from "../api/client.js";
 const THEMES = {
   worker: {
     pageBg: "#f4f6f7",
-    cardBg: C.card,
+    cardBg: "#ffffff",
     cardBorder: "transparent",     // 테두리 없이 그림자만
     cardShadow: "0 8px 28px rgba(30,36,48,0.12)",
     title: "TimeCard",

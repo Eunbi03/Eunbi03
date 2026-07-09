@@ -44,7 +44,7 @@ export default function App() {
           }
           if (mode === "worker" && (u.role === "admin" || u.role === "hr")) {
             api.logout();
-            setAuthErr("직원 전용 페이지입니다. 관리자는 /admin 으로 접속하세요.");
+            setAuthErr("로그인 정보를 확인해주세요.");
             setLoading(false);
             return;
           }
@@ -63,7 +63,7 @@ export default function App() {
     }
     if (mode === "worker" && (u.role === "admin" || u.role === "hr")) {
       api.logout();
-      setAuthErr("관리자는 /admin 페이지에서 로그인하세요.");
+      setAuthErr("로그인 정보를 확인해주세요.");
       return;
     }
     setAuthErr("");
