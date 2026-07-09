@@ -1,11 +1,63 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
+import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
 import { isWithinRadius, validateGpsReport } from '../utils/geo';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '200');
+
+// 특정 체크 슬롯에 위치를 기록하는 공통 로직
+async function recordCheckLocation(
+  checkId: string, userId: string,
+  lat: number, lng: number, accuracyM: number, isMocked: boolean
+): Promise<{ status: number; body: any }> {
+  const { rows: checkRows } = await pool.query(
+    'SELECT * FROM random_location_checks WHERE id=$1 AND user_id=$2', [checkId, userId]
+  );
+  if (checkRows.length === 0) return { status: 404, body: { error: '체크 요청을 찾을 수 없습니다.' } };
+  if (checkRows[0].submitted_time) return { status: 409, body: { error: '이미 제출되었습니다.' } };
+  if (checkRows[0].skipped) return { status: 409, body: { error: '제외된 확인입니다.' } };
+  if (Date.now() - new Date(checkRows[0].scheduled_time).getTime() > 5 * 60 * 1000) {
+    return { status: 409, body: { error: '응답 시간이 지났습니다.' } };
+  }
+  const { rows: userRows } = await pool.query(
+    'SELECT w.lat AS w_lat, w.lng AS w_lng, w.radius_m FROM users u JOIN workplaces w ON u.workplace_id = w.id WHERE u.id=$1',
+    [userId]
+  );
+  const wp = userRows[0];
+  const gpsCheck = validateGpsReport({ lat, lng, accuracyM, isMocked, maxAccuracyM: GPS_MAX_ACCURACY_M });
+  const { withinRadius } = wp
+    ? isWithinRadius({ lat, lng, workplaceLat: wp.w_lat, workplaceLng: wp.w_lng, radiusM: wp.radius_m })
+    : { withinRadius: null };
+  await pool.query(
+    `UPDATE random_location_checks
+     SET submitted_time=now(), lat=$1, lng=$2, accuracy_m=$3, is_within_radius=$4, mock_location_detected=$5
+     WHERE id=$6`,
+    [lat, lng, accuracyM, withinRadius, !gpsCheck.isValid, checkId]
+  );
+  return { status: 200, body: { success: true, withinRadius, gpsValid: gpsCheck.isValid } };
+}
+
+// POST /api/random-check/native-submit — 백그라운드(네이티브)에서 푸시 토큰으로 위치 제출
+router.post('/native-submit',
+  [body('t').isString().notEmpty(), body('lat').isFloat(), body('lng').isFloat()],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
+    let payload: any;
+    try { payload = jwt.verify(req.body.t, process.env.JWT_SECRET as string); }
+    catch { res.status(401).json({ error: '유효하지 않은 토큰입니다.' }); return; }
+    if (payload.purpose !== 'rc' || !payload.checkId || !payload.uid) {
+      res.status(401).json({ error: '잘못된 토큰입니다.' }); return;
+    }
+    const accuracyM = typeof req.body.accuracyM === 'number' ? req.body.accuracyM : 0;
+    const isMocked = req.body.isMocked === true;
+    const r = await recordCheckLocation(payload.checkId, payload.uid, req.body.lat, req.body.lng, accuracyM, isMocked);
+    res.status(r.status).json(r.body);
+  }
+);
 
 // GET /api/random-check/pending
 router.get('/pending', requireAuth, async (req: Request, res: Response): Promise<void> => {

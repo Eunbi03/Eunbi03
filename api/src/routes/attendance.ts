@@ -28,6 +28,17 @@ async function calcDistance(userId: string, lat: number, lng: number): Promise<{
   return { distanceM: Math.round(distanceM * 10) / 10, wpName: rows[0].name };
 }
 
+// POST /api/attendance/fcm-token — 근로자 기기의 푸시 토큰 등록/갱신
+router.post('/fcm-token', requireAuth,
+  [body('token').isString().notEmpty()],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
+    await pool.query('UPDATE users SET fcm_token=$1 WHERE id=$2', [req.body.token, req.user.userId]);
+    res.json({ success: true });
+  }
+);
+
 // POST /api/attendance/check-in
 router.post('/check-in', requireAuth,
   [body('lat').isFloat(), body('lng').isFloat(), body('accuracyM').isFloat({ min: 0 }), body('isMocked').isBoolean()],

@@ -1,6 +1,8 @@
 import cron from 'node-cron';
+import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
 import { generateRandomMinuteOffsets, offsetsToDateTimes } from '../utils/randomTimeSlots';
+import { sendDataPush } from '../services/fcm';
 
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
@@ -52,11 +54,25 @@ export async function generateRandomCheckSlotsForUser(
 // 푸시 알림은 사용하지 않으며, 근로자 앱이 폴링으로 활성 슬롯을 감지해 자동으로 위치를 수집한다.
 // (5분 창 제한을 두지 않으므로 API가 잠시 멈춰도 누락되지 않는다.)
 // 출근이 늦어져 슬롯 시각과 가까워도 제외하지 않고 그대로 위치를 수집한다.
+// 각 슬롯이 도래하면 근로자 기기로 무음 푸시를 보내 백그라운드에서 위치를 수집하게 한다.
 async function activateDueRandomChecks() {
-  await pool.query(
-    `UPDATE random_location_checks SET notification_sent=TRUE
-     WHERE notification_sent=FALSE AND scheduled_time <= now()`
+  const { rows } = await pool.query(
+    `SELECT rc.id, rc.user_id, u.fcm_token
+     FROM random_location_checks rc JOIN users u ON u.id = rc.user_id
+     WHERE rc.notification_sent=FALSE AND rc.scheduled_time <= now()`
   );
+  for (const r of rows) {
+    await pool.query('UPDATE random_location_checks SET notification_sent=TRUE WHERE id=$1', [r.id]);
+    if (r.fcm_token) {
+      // 이 슬롯의 위치 제출만 허용하는 단기 토큰을 푸시에 담아 보낸다.
+      const t = jwt.sign(
+        { checkId: r.id, uid: r.user_id, purpose: 'rc' },
+        process.env.JWT_SECRET as string,
+        { expiresIn: '15m' }
+      );
+      await sendDataPush(r.fcm_token, { type: 'random_check', checkId: String(r.id), t });
+    }
+  }
 }
 
 async function finalizeAbsentees() {
