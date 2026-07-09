@@ -50,7 +50,7 @@ export async function generateRandomCheckSlotsForUser(
 
 // 시각이 도래한 랜덤 확인 슬롯을 "활성화"한다(notification_sent=TRUE).
 // 푸시 알림은 사용하지 않으며, 근로자 앱이 폴링으로 활성 슬롯을 감지해 자동으로 위치를 수집한다.
-// 출근 후 2시간 이내 슬롯은 skipped=TRUE로 표시해 "미응답"이 아닌 "제외"로 처리한다.
+// 실제 출근 후 1시간 이내 슬롯은 skipped=TRUE로 표시해 "미응답"이 아닌 "제외"로 처리한다.
 // (5분 창 제한을 두지 않으므로 API가 잠시 멈춰도 누락되지 않는다.)
 async function activateDueRandomChecks() {
   const { rows } = await pool.query(
@@ -63,7 +63,7 @@ async function activateDueRandomChecks() {
     let skipped = false;
     if (check.check_in_time) {
       const diff = new Date(check.scheduled_time).getTime() - new Date(check.check_in_time).getTime();
-      if (diff < 2 * 60 * 60 * 1000) skipped = true; // 출근 직후 2시간 이내 → 제외
+      if (diff < 60 * 60 * 1000) skipped = true; // 실제 출근 후 1시간 이내 → 제외
     }
     await pool.query(
       'UPDATE random_location_checks SET notification_sent=TRUE, skipped=$2 WHERE id=$1',
