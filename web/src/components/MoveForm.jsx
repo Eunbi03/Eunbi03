@@ -73,7 +73,7 @@ export default function MoveForm({ onClose, onDone }) {
         )}
       </div>
       <div style={{ fontSize: 11, color: workplaceId ? C.green : C.inkSoft, marginTop: 4 }}>
-        {workplaceId ? "등록 근무지 선택됨 — 거리 계산됩니다" : "목록에서 선택하면 거리 계산, 직접 입력 시 거리 계산은 되지 않습니다"}
+        {workplaceId ? "등록 근무지 선택됨 — 거리 계산됩니다" : "목록에서 선택하거나 직접 입력하세요."}
       </div>
 
       <label style={{ ...S.fieldLabel, marginTop: 10, display: "block" }}>사유</label>
