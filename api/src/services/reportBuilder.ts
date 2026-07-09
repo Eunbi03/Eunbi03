@@ -6,7 +6,7 @@ const hhmm = (t: any) => (t ? new Date(t).toLocaleTimeString('en-GB', { timeZone
 const dowOf = (d: string) => { const [y, m, dd] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, dd, 12)).getUTCDay(); };
 
 export interface ReportDay {
-  date: string; dow: number; isWeekend: boolean; isHol: boolean;
+  date: string; dow: number; isWeekend: boolean; isHol: boolean; holidayName?: string | null;
   leaveType?: string | null; missing?: boolean; late?: boolean; noOut?: boolean; noNote?: boolean;
   checkIn?: { time: string | null; place: string } | null;
   checkOut?: { time: string | null; place: string } | null;
@@ -51,6 +51,13 @@ export async function buildIndividualReport(userId: string, from: string, to: st
 
   const workdaySet = new Set(workdaysBetween(from, to));
 
+  // 공휴일명 조회 (달력에 날짜 옆 표기용)
+  const { rows: holRows } = await pool.query(
+    `SELECT date::text AS date, name FROM public_holidays WHERE date>=$1 AND date<=$2`, [from, to]
+  );
+  const holNameByDate: Record<string, string> = {};
+  for (const h of holRows) holNameByDate[h.date] = h.name;
+
   let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
   const days: ReportDay[] = [];
   const noteMissDates: string[] = [];
@@ -69,7 +76,7 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     const k = classifyDay(r, noteExempt);
     const lt = r?.leave_type ?? null;
 
-    const day: ReportDay = { date, dow, isWeekend, isHol, outings: [] };
+    const day: ReportDay = { date, dow, isWeekend, isHol, holidayName: holNameByDate[date] || null, outings: [] };
 
     if (k.isLeave) { day.leaveType = '연차'; days.push(day); continue; }
 

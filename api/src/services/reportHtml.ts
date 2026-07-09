@@ -57,8 +57,11 @@ export function renderReportHtml(r: BuiltReport, sentDate?: string): string {
     rows.push('<tr>' + week.map((d) => {
       if (!d) return `<td style="border:1px solid ${LINE};height:96px;vertical-align:top;"></td>`;
       const bg = (d.late || d.missing || d.noOut) ? REDBG : '#fff';
+      const holLabel = d.holidayName
+        ? `<span style="color:${RED};font-weight:600;font-size:11px;margin-left:4px;">${esc(d.holidayName)}</span>`
+        : '';
       return `<td style="border:1px solid ${LINE};height:96px;vertical-align:top;padding:5px 6px;background:${bg};font-size:14px;line-height:1.5;">
-        <div style="font-weight:700;color:${dayNumColor(d)};margin-bottom:2px;">${Number(d.date.slice(8))}</div>
+        <div style="margin-bottom:2px;"><span style="font-weight:700;color:${dayNumColor(d)};">${Number(d.date.slice(8))}</span>${holLabel}</div>
         ${dayBody(d)}
       </td>`;
     }).join('') + '</tr>');
