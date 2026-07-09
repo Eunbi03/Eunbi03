@@ -5,6 +5,7 @@ import { getLocation, startLocationWatch, stopLocationWatch, checkLocationPermis
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
 import Splash from "./Splash.jsx";
+import { scheduleDailyReminders } from "../utils/notify.js";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
 import * as api from "../api/client.js";
 
@@ -93,6 +94,19 @@ export default function Employee({ user }) {
     else stopLocationWatch();
     return () => { if (isCheckedOut) stopLocationWatch(); };
   }, [isCheckedIn, isCheckedOut]);
+
+  // 출퇴근/노트 알림을 현재 상태에 맞게 (재)예약 — 버튼 이미 눌렀으면 해당 알림은 예약 안 됨
+  useEffect(() => {
+    if (!schedule) return;
+    scheduleDailyReminders({
+      startTime: schedule.start,
+      endTime: schedule.end,
+      checkedIn: isCheckedIn,
+      checkedOut: isCheckedOut,
+      noteWritten: !!(today?.noteToday && today.noteToday.trim()),
+      isLeave: today?.leaveType === "연차",
+    });
+  }, [schedule, isCheckedIn, isCheckedOut, today?.noteToday, today?.leaveType]);
 
   const checkIn = async () => {
     setBusy(true); setErr(""); setMsg("");
