@@ -105,7 +105,7 @@ function RandomChecks({ checks }) {
       {checks.map((rc, i) => {
         const done = !!rc.submitted_time;
         const ok = done && rc.is_within_radius;
-        const missed = !done && !rc.skipped && (Date.now() - new Date(rc.scheduled_time).getTime() > 5 * 60 * 1000);
+        const missed = !done && (Date.now() - new Date(rc.scheduled_time).getTime() > 5 * 60 * 1000);
         const fail = (done && !ok) || missed;
         const t = rc.submitted_time || rc.scheduled_time;
         return (
