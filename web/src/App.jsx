@@ -26,7 +26,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authErr, setAuthErr] = useState("");
-  const [showSplash, setShowSplash] = useState(mode !== "terms");
+  // 인트로/마지막 화면은 근로자 앱에서만 노출 (관리자·약관 제외)
+  const [showSplash, setShowSplash] = useState(mode === "worker");
 
   useEffect(() => {
     if (mode === "terms") { setLoading(false); return; }
