@@ -38,39 +38,58 @@ export function deviceLabel() {
   return `${os} · ${br}`;
 }
 
-// 출근 중 GPS 상시 감지 (랜덤 위치 확인용)
+// 위치 수집은 Capacitor Geolocation 플러그인 사용
+// (네이티브 앱에서는 실제 GPS + 런타임 권한 요청, 웹에서는 navigator.geolocation로 자동 대체)
+import { Geolocation } from "@capacitor/geolocation";
+
 let _watchId = null;
 let _lastPos = null;
 
-export function startLocationWatch() {
-  if (!navigator.geolocation || _watchId !== null) return;
-  _watchId = navigator.geolocation.watchPosition(
-    (p) => { _lastPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }; },
-    () => {},
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-  );
+// 위치 권한이 없으면 요청한다.
+async function ensurePermission() {
+  try {
+    const s = await Geolocation.checkPermissions();
+    if (s.location !== "granted" && s.coarseLocation !== "granted") {
+      await Geolocation.requestPermissions();
+    }
+  } catch { /* 웹 등에서 무시 */ }
 }
 
-export function stopLocationWatch() {
-  if (_watchId !== null) { navigator.geolocation.clearWatch(_watchId); _watchId = null; _lastPos = null; }
+// 출근 중 GPS 상시 감지 (랜덤 위치 확인용)
+export async function startLocationWatch() {
+  if (_watchId !== null) return;
+  await ensurePermission();
+  try {
+    _watchId = await Geolocation.watchPosition(
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      (p) => { if (p) _lastPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }; }
+    );
+  } catch { /* 무시 */ }
+}
+
+export async function stopLocationWatch() {
+  if (_watchId !== null) {
+    try { await Geolocation.clearWatch({ id: _watchId }); } catch { /* 무시 */ }
+    _watchId = null; _lastPos = null;
+  }
 }
 
 export async function checkLocationPermission() {
-  if (!navigator.permissions) return 'unknown';
-  try { const r = await navigator.permissions.query({ name: 'geolocation' }); return r.state; }
-  catch { return 'unknown'; }
+  try {
+    const s = await Geolocation.checkPermissions();
+    if (s.location === "granted" || s.coarseLocation === "granted") return "granted";
+    if (s.location === "denied") return "denied";
+    return "prompt";
+  } catch { return "unknown"; }
 }
 
-export function getLocation() {
-  return new Promise((resolve) => {
-    if (_lastPos) { resolve({ ..._lastPos }); return; }
-    if (!navigator.geolocation) return resolve(null);
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  });
+export async function getLocation() {
+  if (_lastPos) return { ..._lastPos };
+  await ensurePermission();
+  try {
+    const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    return { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
+  } catch { return null; }
 }
 
 export const locText = (loc) => (loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : "위치 없음");
