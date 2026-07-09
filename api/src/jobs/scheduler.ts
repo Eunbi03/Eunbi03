@@ -31,11 +31,12 @@ export async function generateRandomCheckSlotsForUser(
   date: string,
   onlyFuture = false,
 ): Promise<number> {
+  // 값이 없을 수 있으므로 기본값으로 방어 (미설정 근로자도 생성 실패하지 않게)
   const offsets = generateRandomMinuteOffsets({
-    workStart: user.scheduled_start.slice(0, 5),
-    workEnd: user.scheduled_end.slice(0, 5),
-    lunchStart: user.lunch_start.slice(0, 5),
-    lunchEnd: user.lunch_end.slice(0, 5),
+    workStart: (user.scheduled_start || '09:00').slice(0, 5),
+    workEnd: (user.scheduled_end || '18:00').slice(0, 5),
+    lunchStart: (user.lunch_start || '12:00').slice(0, 5),
+    lunchEnd: (user.lunch_end || '13:00').slice(0, 5),
     slotCount: 3,
   });
   let count = 0;
