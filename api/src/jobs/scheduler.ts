@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
 import { generateRandomMinuteOffsets, offsetsToDateTimes } from '../utils/randomTimeSlots';
-import { sendDataPush } from '../services/fcm';
+import { sendDataPush, fcmEnabled } from '../services/fcm';
 
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
@@ -88,6 +88,8 @@ async function finalizeAbsentees() {
 }
 
 export function startScheduler() {
+  // 시작 시 FCM 초기화 상태를 즉시 로그로 남긴다.
+  console.log(`[FCM] 푸시 사용 가능: ${fcmEnabled() ? '예' : '아니오(키 파일 확인 필요)'}`);
   cron.schedule('0 5 * * *', generateDailyRandomCheckSlots, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', activateDueRandomChecks, { timezone: 'Asia/Seoul' });
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
