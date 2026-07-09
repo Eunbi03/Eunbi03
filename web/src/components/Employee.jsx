@@ -6,6 +6,7 @@ import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
 import Splash from "./Splash.jsx";
 import { scheduleDailyReminders } from "../utils/notify.js";
+import { registerPushToken } from "../utils/push.js";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
 import * as api from "../api/client.js";
 
@@ -87,6 +88,7 @@ export default function Employee({ user }) {
   useEffect(() => {
     load();
     checkLocationPermission().then((state) => { if (state !== "granted") setGpsBanner(true); });
+    registerPushToken(); // 백그라운드 랜덤확인용 FCM 토큰 등록
   }, []);
 
   useEffect(() => {

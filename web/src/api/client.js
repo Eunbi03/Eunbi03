@@ -39,6 +39,7 @@ export async function tryAutoLogin({ deviceId }) {
 export function logout() { setAccessToken(null); setStoredRefreshToken(null); setStoredUserId(null); }
 export const changePassword = (newPassword) => request("/auth/change-password", { method: "POST", body: { newPassword } });
 export const giveLocationConsent = () => request("/auth/location-consent", { method: "POST" });
+export const registerFcmToken = (token) => request("/attendance/fcm-token", { method: "POST", body: { token } });
 
 /* 출퇴근 */
 export const checkIn = (location) => request("/attendance/check-in", {
