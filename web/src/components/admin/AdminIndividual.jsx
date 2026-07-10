@@ -386,6 +386,7 @@ export default function AdminIndividual({ filters, isHR }) {
       if (filters.corp && w.corp !== filters.corp) return false;
       if (filters.division && w.division !== filters.division) return false;
       if (filters.team && w.team !== filters.team) return false;
+      if (filters.position && w.position !== filters.position) return false;
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));

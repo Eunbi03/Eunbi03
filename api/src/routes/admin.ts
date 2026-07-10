@@ -803,8 +803,9 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
   res.json({ success: true });
 });
 
-// 기기 정보(담당자명=device_name, 담당 법인, 전화번호) 수정
+// 기기 정보(담당자명=device_name, 담당 법인, 전화번호) 수정 — 권한자만 (문자 발신번호로 쓰이므로)
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
+  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 수정할 수 있습니다.' }); return; }
   const { deviceName, corp, phone } = req.body;
   const { rows } = await pool.query(
     `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3 WHERE id=$4
@@ -824,8 +825,19 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
     'SELECT id FROM admin_devices WHERE id=$1 AND is_approved=TRUE', [targetDeviceId]
   );
   if (!target[0]) { res.status(400).json({ error: '승인된 대상 기기를 찾을 수 없습니다.' }); return; }
-  await pool.query('UPDATE admin_devices SET is_authority=FALSE WHERE is_authority=TRUE');
-  await pool.query('UPDATE admin_devices SET is_authority=TRUE WHERE id=$1', [targetDeviceId]);
+  // 두 UPDATE를 한 트랜잭션으로 — 중간 실패로 권한자가 0명이 되는 상황 방지
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE admin_devices SET is_authority=FALSE WHERE is_authority=TRUE');
+    await client.query('UPDATE admin_devices SET is_authority=TRUE WHERE id=$1', [targetDeviceId]);
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
   res.json({ success: true });
 });
 

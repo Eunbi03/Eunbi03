@@ -139,7 +139,7 @@ export default function AdminOverall({ filters, onDirectActive }) {
       if (selected.length) params.userIds = selected.map((s) => s.id).join(",");
       else { if (filters.corp) params.corp = filters.corp; if (filters.division) params.division = filters.division; if (filters.team) params.team = filters.team; if (filters.position) params.position = filters.position; }
       const d = await api.getMonthlyOverview(params);
-      if (!d.workers.length) { alert("다운로드할 직원이 없습니다."); return; }
+      if (!d?.workers?.length) { alert("다운로드할 직원이 없습니다."); return; }
       await downloadAttendanceRegister(d);
     } catch (e) { alert("다운로드 실패: " + e.message); }
     finally { setDownloading(false); }

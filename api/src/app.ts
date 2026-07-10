@@ -1,4 +1,5 @@
 import express from 'express';
+import 'express-async-errors'; // async 라우트의 예외를 에러 미들웨어로 전달 (요청 멈춤 방지)
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';

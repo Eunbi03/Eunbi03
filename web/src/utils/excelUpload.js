@@ -52,8 +52,14 @@ export async function readWorkplaceSheet(file) {
 // 직원 관리 시트: 이름 → 직책 → 전화번호 → 이메일 → 근무지 → 비고 → 법인 → 본부 → 팀 → 직무 → 근무노트 제외 대상 → 비정기적 근로자
 export async function readWorkerSheet(file) {
   const ws = await loadSheet(file, "직원 관리");
-  return extract(ws, 3, [
+  const rows = extract(ws, 3, [
     "name", "position", "phone", "email", "workplaceName", "remark",
     "corp", "division", "team", "jobTitle", "noteExempt", "irregularWorker",
   ]);
+  // 전화번호가 엑셀에서 숫자로 저장되어 앞자리 0이 사라진 경우 복원 (예: 1012345678 → 01012345678)
+  for (const r of rows) {
+    const raw = String(r.phone ?? "").trim();
+    if (/^\d{10}$/.test(raw)) r.phone = "0" + raw;
+  }
+  return rows;
 }
