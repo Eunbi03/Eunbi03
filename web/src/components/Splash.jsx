@@ -23,7 +23,7 @@ export default function Splash({ slides, onDone }) {
       onClick={step}
       style={{
         position: "fixed", inset: 0, zIndex: 2000, cursor: "pointer",
-        background: "linear-gradient(180deg,#cfe6f4 0%,#d8ecdf 100%)",
+        background: "#f4f6f7",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 0,
       }}
     >
