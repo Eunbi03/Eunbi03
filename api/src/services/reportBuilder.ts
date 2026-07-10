@@ -90,8 +90,8 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     }
 
     if (isWorkday || Boolean(r.check_in_time)) {
-      if (k.isLate) lateCount++;
       if (k.missingOut) missingOut++;
+      else if (k.isLate) lateCount++;
       if (k.missingNote) { missingNote++; noteMissDates.push(date); }
     } else if (k.missingNote) {
       noteMissDates.push(date);

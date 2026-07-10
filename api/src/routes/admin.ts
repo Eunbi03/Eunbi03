@@ -335,8 +335,8 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       const k = classifyDay(recByDate[day], !!w.note_exempt);
       if (k.isLeave) continue;
       if (!k.present) { missingIn++; continue; }
-      if (k.isLate) lateCount++;
       if (k.missingOut) missingOut++;
+      else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
     }
     // 주말 출근 기록도 KPI에 반영 (미출근 주말은 제외)
@@ -344,8 +344,8 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       if (workdays.includes(r.date)) continue;
       const k = classifyDay(r, !!w.note_exempt);
       if (k.isLeave || !k.present) continue;
-      if (k.isLate) lateCount++;
       if (k.missingOut) missingOut++;
+      else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
     }
     const score = lateCount + missingIn + missingOut + missingNote;
@@ -448,8 +448,8 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
     // 평일 KPI + 주말 출근한 경우도 KPI 반영
     if (isWorkday || hasIn) {
-      if (k.isLate) lateCount++;
       if (k.missingOut)  missingOut++;
+      else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
     }
 
@@ -531,8 +531,8 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
         continue;
       }
       if (isWorkday || Boolean(r?.check_in_time)) {
-        if (k.isLate) lateCount++;
         if (k.missingOut) missingOut++;
+        else if (k.isLate) lateCount++;
         if (k.missingNote) missingNote++;
       }
     }
