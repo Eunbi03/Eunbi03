@@ -85,7 +85,7 @@ async function workplaceDupCheck(name: string, address: string, excludeId?: stri
   return { name: rows.some((r: any) => r.name === name), address: !!address && rows.some((r: any) => r.address === address) };
 }
 
-router.post('/workplaces', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/workplaces', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name, lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
   if (!name || lat == null || lng == null) { res.status(400).json({ error: 'name, lat, lng는 필수입니다.' }); return; }
   const dup = await workplaceDupCheck(name, address);
@@ -97,7 +97,7 @@ router.post('/workplaces', requireHR, async (req: Request, res: Response): Promi
   res.status(201).json({ workplace: rows[0] });
 });
 
-router.put('/workplaces/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.put('/workplaces/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name, lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
   const dup = await workplaceDupCheck(name, address, req.params.id);
   if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
@@ -109,13 +109,13 @@ router.put('/workplaces/:id', requireHR, async (req: Request, res: Response): Pr
   res.json({ workplace: rows[0] });
 });
 
-router.delete('/workplaces/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.delete('/workplaces/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('UPDATE workplaces SET is_active=FALSE WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
 
 // 근무지 일괄 등록 (엑셀): 주소 지오코딩 + 중복검사
-router.post('/workplaces/bulk', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/workplaces/bulk', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   if (!process.env.KAKAO_REST_KEY) { res.status(500).json({ error: '카카오 API 키가 설정되지 않았습니다.' }); return; }
   const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
   let success = 0; const failed: any[] = [];
@@ -259,7 +259,7 @@ router.delete('/workers/:id', async (req: Request, res: Response): Promise<void>
   res.json({ success: true });
 });
 
-router.put('/workers/:id/reset-password', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.put('/workers/:id/reset-password', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { newPassword } = req.body;
   const { rows: users } = await pool.query('SELECT id, name, phone FROM users WHERE id=$1 AND is_active=TRUE', [req.params.id]);
   if (!users[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
@@ -280,7 +280,7 @@ router.put('/workers/:id/reset-password', requireHR, async (req: Request, res: R
   res.json({ success: true, initPassword: plain });
 });
 
-router.post('/workers/:id/reset-device', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/workers/:id/reset-device', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
     `UPDATE users SET device_id=NULL, device_registered_at=NULL,
        is_locked=FALSE, failed_login_attempts=0
@@ -700,7 +700,7 @@ router.get('/device-change-requests', async (req: Request, res: Response): Promi
   res.json({ requests: rows });
 });
 
-router.post('/device-change-requests/:id/approve', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/device-change-requests/:id/approve', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query("SELECT * FROM device_change_requests WHERE id=$1 AND status='pending'", [req.params.id]);
   if (!rows[0]) { res.status(404).json({ error: '요청을 찾을 수 없습니다.' }); return; }
   await pool.query('UPDATE users SET device_id=$1, device_registered_at=now(), is_locked=FALSE, failed_login_attempts=0 WHERE id=$2',
@@ -710,7 +710,7 @@ router.post('/device-change-requests/:id/approve', requireHR, async (req: Reques
   res.json({ success: true });
 });
 
-router.post('/device-change-requests/:id/reject', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/device-change-requests/:id/reject', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query("UPDATE device_change_requests SET status='rejected', processed_at=now(), processed_by=$1 WHERE id=$2 AND status='pending'",
     [req.user.userId, req.params.id]);
   res.json({ success: true });
@@ -718,7 +718,7 @@ router.post('/device-change-requests/:id/reject', requireHR, async (req: Request
 
 // ── 계정 잠금 해제 ────────────────────────────────────────────
 
-router.post('/users/:id/unlock', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/users/:id/unlock', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('UPDATE users SET is_locked=FALSE, locked_reason=NULL, failed_login_attempts=0 WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
@@ -868,7 +868,7 @@ router.get('/holidays', async (_req: Request, res: Response): Promise<void> => {
   res.json({ holidays: rows });
 });
 
-router.post('/holidays', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/holidays', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { date, name } = req.body;
   if (!date) { res.status(400).json({ error: 'date는 필수입니다.' }); return; }
   const { rows } = await pool.query(
@@ -880,7 +880,7 @@ router.post('/holidays', requireHR, async (req: Request, res: Response): Promise
   res.status(201).json({ holiday: rows[0] });
 });
 
-router.delete('/holidays/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.delete('/holidays/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('DELETE FROM public_holidays WHERE id=$1', [req.params.id]);
   const all = await pool.query('SELECT date::text AS date FROM public_holidays');
   refreshHolidayCache(all.rows.map((r: any) => r.date));
@@ -892,7 +892,7 @@ router.get('/corporations', async (_req: Request, res: Response): Promise<void> 
   const { rows } = await pool.query('SELECT id, name, address FROM corporations ORDER BY name');
   res.json({ corporations: rows });
 });
-router.post('/corporations', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/corporations', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name, address } = req.body;
   if (!name) { res.status(400).json({ error: '법인명은 필수입니다.' }); return; }
   try {
@@ -906,7 +906,7 @@ router.post('/corporations', requireHR, async (req: Request, res: Response): Pro
     else res.status(500).json({ error: e.message });
   }
 });
-router.delete('/corporations/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.delete('/corporations/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('DELETE FROM corporations WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
@@ -920,7 +920,7 @@ router.get('/divisions', async (_req: Request, res: Response): Promise<void> => 
   res.json({ divisions: divs.map((d: any) => ({ ...d, teams: byDiv[d.id] || [] })) });
 });
 // 본부 생성 (팀 여러 개 동시 생성 가능)
-router.post('/divisions', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/divisions', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name, teams } = req.body;
   if (!name) { res.status(400).json({ error: '본부명은 필수입니다.' }); return; }
   try {
@@ -936,12 +936,12 @@ router.post('/divisions', requireHR, async (req: Request, res: Response): Promis
     else res.status(500).json({ error: e.message });
   }
 });
-router.delete('/divisions/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.delete('/divisions/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('DELETE FROM divisions WHERE id=$1', [req.params.id]); // 팀은 CASCADE 삭제
   res.json({ success: true });
 });
 // 팀 단건 추가 (기존 본부에)
-router.post('/divisions/:id/teams', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/divisions/:id/teams', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name } = req.body;
   if (!name) { res.status(400).json({ error: '팀명은 필수입니다.' }); return; }
   try {
@@ -955,7 +955,7 @@ router.post('/divisions/:id/teams', requireHR, async (req: Request, res: Respons
     else res.status(500).json({ error: e.message });
   }
 });
-router.delete('/teams/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.delete('/teams/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('DELETE FROM teams WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
@@ -966,7 +966,7 @@ router.get('/positions', async (_req: Request, res: Response): Promise<void> => 
   res.json({ positions: rows });
 });
 // 여러 개 동시 추가 가능
-router.post('/positions', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/positions', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const names: string[] = Array.isArray(req.body.names) ? req.body.names : (req.body.name ? [req.body.name] : []);
   const clean = names.map((n) => (n || '').trim()).filter(Boolean);
   if (clean.length === 0) { res.status(400).json({ error: '직책명은 필수입니다.' }); return; }
@@ -979,7 +979,7 @@ router.post('/positions', requireHR, async (req: Request, res: Response): Promis
   }
   res.status(201).json({ positions: added });
 });
-router.delete('/positions/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.delete('/positions/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('DELETE FROM positions WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
@@ -993,7 +993,7 @@ router.get('/job-schedules', async (_req: Request, res: Response): Promise<void>
   );
   res.json({ jobSchedules: rows });
 });
-router.post('/job-schedules', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/job-schedules', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name, workStart, workEnd, breakStart, breakEnd } = req.body;
   if (!name) { res.status(400).json({ error: '직무명은 필수입니다.' }); return; }
   try {
@@ -1008,7 +1008,7 @@ router.post('/job-schedules', requireHR, async (req: Request, res: Response): Pr
     else res.status(500).json({ error: e.message });
   }
 });
-router.put('/job-schedules/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.put('/job-schedules/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name, workStart, workEnd, breakStart, breakEnd } = req.body;
   const { rows } = await pool.query(
     `UPDATE job_schedules SET name=$1, work_start=$2, work_end=$3, break_start=$4, break_end=$5
@@ -1018,13 +1018,13 @@ router.put('/job-schedules/:id', requireHR, async (req: Request, res: Response):
   if (!rows[0]) { res.status(404).json({ error: '직무를 찾을 수 없습니다.' }); return; }
   res.json({ jobSchedule: rows[0] });
 });
-router.delete('/job-schedules/:id', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.delete('/job-schedules/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   await pool.query('DELETE FROM job_schedules WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
 
 // ── 일괄 등록: 공휴일 ─────────────────────────────────────────────────────────
-router.post('/holidays/bulk', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/holidays/bulk', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
   let success = 0; const failed: any[] = [];
   for (const r of rows) {
@@ -1041,7 +1041,7 @@ router.post('/holidays/bulk', requireHR, async (req: Request, res: Response): Pr
 });
 
 // ── 일괄 등록: 직원 ───────────────────────────────────────────────────────────
-router.post('/workers/bulk', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/workers/bulk', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
   // 근무지·직무 이름 → 매핑 준비
   const { rows: wps } = await pool.query('SELECT id, name FROM workplaces');
