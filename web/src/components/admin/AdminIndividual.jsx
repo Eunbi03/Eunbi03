@@ -493,11 +493,13 @@ export default function AdminIndividual({ filters, isHR }) {
         </div>
         ); })()}
 
-        {/* 리포트 발송 (현재 보이는 인원 대상) */}
-        <button onClick={sendReports} disabled={sending}
-          style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer", opacity: sending ? 0.6 : 1, whiteSpace: "nowrap" }}>
-          {sending ? "발송 중…" : "리포트 발송"}
-        </button>
+        {/* 리포트 발송 (현재 보이는 인원 대상) — 최고관리자(HR)만 */}
+        {isHR && (
+          <button onClick={sendReports} disabled={sending}
+            style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer", opacity: sending ? 0.6 : 1, whiteSpace: "nowrap" }}>
+            {sending ? "발송 중…" : "리포트 발송"}
+          </button>
+        )}
       </div>
 
       {/* 법인 → 본부 → 팀 그룹 */}

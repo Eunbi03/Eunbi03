@@ -261,8 +261,12 @@ router.delete('/workers/:id', async (req: Request, res: Response): Promise<void>
 
 router.put('/workers/:id/reset-password', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { newPassword } = req.body;
-  const { rows: users } = await pool.query('SELECT id, name, phone FROM users WHERE id=$1 AND is_active=TRUE', [req.params.id]);
+  const { rows: users } = await pool.query('SELECT id, name, phone, role FROM users WHERE id=$1 AND is_active=TRUE', [req.params.id]);
   if (!users[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
+  // 관리자(admin/hr) 계정의 비밀번호 변경은 최고관리자(HR)만 가능
+  if ((users[0].role === 'admin' || users[0].role === 'hr') && req.user.role !== 'hr') {
+    res.status(403).json({ error: '관리자 계정의 비밀번호는 최고관리자(인사팀)만 변경할 수 있습니다.' }); return;
+  }
 
   let plain: string;
   if (newPassword) {
@@ -756,7 +760,7 @@ router.get('/dashboard', async (req: Request, res: Response): Promise<void> => {
 
 // 내 기기 목록 + 권한자면 전체 대기 기기 목록
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
-  const isHolder = !!req.user.isAuthority;
+  const isHolder = req.user.role === 'hr'; // 최고관리자만 대기 기기(승인 대상) 목록 조회
   const { rows: myDevices } = await pool.query(
     'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
@@ -784,7 +788,7 @@ router.get('/admin-devices/:userId', async (req: Request, res: Response): Promis
 
 // 기기 승인 (권한자 기기만)
 router.post('/devices/:id/approve', async (req: Request, res: Response): Promise<void> => {
-  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 승인할 수 있습니다.' }); return; }
+  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 승인할 수 있습니다.' }); return; }
   const { rows } = await pool.query(
     'UPDATE admin_devices SET is_approved=TRUE, approved_by=$1, approved_at=now() WHERE id=$2 AND is_approved=FALSE RETURNING id',
     [req.user.userId, req.params.id]
@@ -795,7 +799,7 @@ router.post('/devices/:id/approve', async (req: Request, res: Response): Promise
 
 // 기기 삭제 (권한자 기기만, 권한자 기기 자신은 삭제 불가)
 router.delete('/devices/:id', async (req: Request, res: Response): Promise<void> => {
-  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
+  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 삭제할 수 있습니다.' }); return; }
   const { rows } = await pool.query('SELECT is_authority FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
   if (rows[0].is_authority) { res.status(400).json({ error: '권한자 기기는 삭제할 수 없습니다. 먼저 권한을 이전하세요.' }); return; }
@@ -803,9 +807,9 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
   res.json({ success: true });
 });
 
-// 기기 정보(담당자명=device_name, 담당 법인, 전화번호) 수정 — 권한자만 (문자 발신번호로 쓰이므로)
+// 기기 정보(담당자명=device_name, 담당 법인, 전화번호) 수정 — 최고관리자만 (문자 발신번호로 쓰이므로)
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
-  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 수정할 수 있습니다.' }); return; }
+  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 수정할 수 있습니다.' }); return; }
   const { deviceName, corp, phone } = req.body;
   const { rows } = await pool.query(
     `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3 WHERE id=$4
@@ -818,7 +822,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
 
 // 권한자 이전 (현재 권한자 기기 → 대상 기기). 이전 후에는 재로그인 시 반영.
 router.put('/authority/transfer', async (req: Request, res: Response): Promise<void> => {
-  if (!req.user.isAuthority) { res.status(403).json({ error: '권한자만 이전할 수 있습니다.' }); return; }
+  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 이전할 수 있습니다.' }); return; }
   const { targetDeviceId } = req.body; // admin_devices.id
   if (!targetDeviceId) { res.status(400).json({ error: 'targetDeviceId가 필요합니다.' }); return; }
   const { rows: target } = await pool.query(

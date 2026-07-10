@@ -262,7 +262,8 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
 
 // 관리자/인사팀 계정 수정 모달
 function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, onApproveDevice, onRemoveDevice, onTransfer, onResetPw, onNameSave, onSaveDeviceInfo, onClose }) {
-  const isHolder = currentUser?.isAuthorityHolder;
+  // 기기 관리·비밀번호 변경은 최고관리자(HR)만. 이름은 모든 관리자 가능.
+  const isHolder = currentUser?.role === "hr";
   const isSelf = currentUser?.id === worker?.id;
 
   const [name, setName] = useState(worker?.name || "");
@@ -331,15 +332,12 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               style={{ ...S.input, flex: 1 }}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              disabled={!isHolder && !isSelf}
             />
-            {(isHolder || isSelf) && (
-              <button
-                style={{ border: "none", borderRadius: 10, padding: "0 14px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", flexShrink: 0 }}
-                onClick={handleSaveName}
-                disabled={busy}
-              >저장</button>
-            )}
+            <button
+              style={{ border: "none", borderRadius: 10, padding: "0 14px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", flexShrink: 0 }}
+              onClick={handleSaveName}
+              disabled={busy}
+            >저장</button>
           </div>
         </div>
 
@@ -351,13 +349,13 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
 
         {/* 비밀번호 초기화 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={S.fieldLabel}>비밀번호 초기화{!isHolder ? " (권한자만 가능)" : ""}</label>
+          <label style={S.fieldLabel}>비밀번호 초기화{!isHolder ? " (최고관리자만 가능)" : ""}</label>
           <div style={{ display: "flex", gap: 6 }}>
             <div style={{ position: "relative", flex: 1 }}>
               <input
                 style={{ ...S.input, paddingRight: 44, opacity: isHolder ? 1 : 0.55 }}
                 type={showPw ? "text" : "password"}
-                placeholder={isHolder ? "새 비밀번호 입력 (4자 이상)" : "권한자만 변경 가능"}
+                placeholder={isHolder ? "새 비밀번호 입력 (4자 이상)" : "최고관리자만 변경 가능"}
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
                 disabled={!isHolder}
@@ -381,8 +379,8 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
         {/* 등록된 기기 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={S.fieldLabel}>등록된 기기</label>
-          {!isHolder && !isSelf ? (
-            <div style={{ fontSize: 13, color: C.inkSoft }}>권한자만 기기를 관리할 수 있습니다.</div>
+          {!isHolder ? (
+            <div style={{ fontSize: 13, color: C.inkSoft }}>최고관리자(인사팀)만 기기를 관리할 수 있습니다.</div>
           ) : loadingDevices ? (
             <div style={{ fontSize: 13, color: C.inkSoft }}>불러오는 중…</div>
           ) : adminDevices.length === 0 ? (
@@ -457,7 +455,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [etcPopup, setEtcPopup] = useState(null);
   const fileRef = useRef(null);
 
-  const isHolder = currentUser?.isAuthorityHolder;
+  const isHolder = currentUser?.role === "hr"; // 최고관리자(HR)만 관리자 기기 관리
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]; if (e.target) e.target.value = "";

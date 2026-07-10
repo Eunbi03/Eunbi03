@@ -85,7 +85,7 @@ export default function AdminApp({ user }) {
     <div style={{ maxWidth: 1600, margin: "0 auto", padding: 0 }}>
       {/* 탭 */}
       <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "12px 0 6px", borderBottom: `1px solid ${C.lineAdmin}`, marginBottom: 12 }}>
-        {TABS.filter((t) => t.key !== "settings" || isHR).map((t) => (
+        {TABS.map((t) => (
           <button key={t.key}
             style={{ flexShrink: 0, border: "none", borderRadius: 8, padding: isMobile ? "7px 16px" : "8px 20px", fontSize: isMobile ? 13 : 15, fontWeight: tab === t.key ? 800 : 400,
               background: tab === t.key ? "#2f6d8f" : "transparent", color: tab === t.key ? "#fff" : C.inkSoft, cursor: "pointer" }}
@@ -126,7 +126,7 @@ export default function AdminApp({ user }) {
       {tab === "overall"    && <AdminOverall    filters={filters} onDirectActive={setDirectActive} />}
       {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={user} onRefreshFilters={() => {}} />}
       {tab === "individual" && <AdminIndividual filters={filters} isHR={isHR} />}
-      {tab === "settings"   && isHR && <AdminSettings />}
+      {tab === "settings"   && <AdminSettings />}
     </div>
   );
 }
