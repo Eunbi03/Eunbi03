@@ -119,7 +119,7 @@ function RandomChecks({ checks }) {
   );
 }
 
-function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
+function DayRow({ day, workplaceName, isMobile, onLeaveChange, isHR }) {
   const [open, setOpen] = useState(false);
   const [leavePopup, setLeavePopup] = useState(false);
   const dow = dayOfWeek(day.date);
@@ -130,7 +130,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
   const rowBg = isLeaveFull ? "#fff" : isAlert ? COL.lred : "#fff";
 
   const popup = leavePopup && onLeaveChange && (
-    <LeavePopup day={day} onSelect={(t) => onLeaveChange(day, t)} onClose={() => setLeavePopup(false)} />
+    <LeavePopup day={day} isHR={isHR} onSelect={(t) => onLeaveChange(day, t)} onClose={() => setLeavePopup(false)} />
   );
   const leaveBtn = onLeaveChange && (
     <button style={{ ...S.miniBtn, marginLeft: 0, fontSize: 11, flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); setLeavePopup(true); }}>인정 ▾</button>
@@ -272,18 +272,20 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange }) {
   );
 }
 
-function LeavePopup({ day, onSelect, onClose }) {
+function LeavePopup({ day, onSelect, onClose, isHR }) {
   const init = parseLt(day.leaveType);
   const [primary, setPrimary] = useState(init.primary);
   const [noteOn, setNoteOn] = useState(init.noteOn);
   useEffect(() => { const p = parseLt(day.leaveType); setPrimary(p.primary); setNoteOn(p.noteOn); }, [day.leaveType]);
 
-  const OPTIONS = [
+  // 일반 관리자(Admin)는 '연차'만, 출근/퇴근/노트 인정은 최고관리자(HR)만
+  const ALL_OPTIONS = [
     { key: "연차", label: "연차", sub: "하루 전체 인정" },
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
     { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
     { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
   ];
+  const OPTIONS = isHR ? ALL_OPTIONS : ALL_OPTIONS.filter((o) => o.key === "연차");
   const handlePrimary = (key) => {
     const next = primary === key ? null : key;
     setPrimary(next);
@@ -310,11 +312,15 @@ function LeavePopup({ day, onSelect, onClose }) {
               <span style={{ fontSize: 11, fontWeight: 400, color: primary === key ? COL.green : COL.gray }}>{sub}{primary === key ? " ✓" : ""}</span>
             </button>
           ))}
-          <div style={{ borderTop: `1px solid ${C.lineAdmin}`, margin: "2px 0" }} />
-          <button style={btnStyle(noteOn)} onClick={handleNote}>
-            <span>근무 노트 인정</span>
-            <span style={{ fontSize: 11, fontWeight: 400, color: noteOn ? COL.green : COL.gray }}>노트 누락 해소{noteOn ? " ✓" : ""}</span>
-          </button>
+          {isHR && (
+            <>
+              <div style={{ borderTop: `1px solid ${C.lineAdmin}`, margin: "2px 0" }} />
+              <button style={btnStyle(noteOn)} onClick={handleNote}>
+                <span>근무 노트 인정</span>
+                <span style={{ fontSize: 11, fontWeight: 400, color: noteOn ? COL.green : COL.gray }}>노트 누락 해소{noteOn ? " ✓" : ""}</span>
+              </button>
+            </>
+          )}
         </div>
         <button style={{ marginTop: 12, background: "none", border: "none", fontSize: 13, color: COL.gray, cursor: "pointer" }} onClick={onClose}>닫기</button>
       </div>
@@ -560,7 +566,8 @@ export default function AdminIndividual({ filters, isHR }) {
                               {report && report.days.length === 0 && <div style={S.empty}>이 기간에 근무일이 없습니다.</div>}
                               {report && report.days.map((day, i) => (
                                 <DayRow key={i} day={day} workplaceName={w.workplace_name} isMobile={isMobile}
-                                  onLeaveChange={isHR ? (d, t) => handleLeave(w, d, t) : undefined} />
+                                  isHR={isHR}
+                                  onLeaveChange={(d, t) => handleLeave(w, d, t)} />
                               ))}
                             </div>
                           )}

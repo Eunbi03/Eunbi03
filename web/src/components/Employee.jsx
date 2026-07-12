@@ -64,6 +64,7 @@ export default function Employee({ user }) {
   const [noteEditing, setNoteEditing] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
   const [showCheckoutSplash, setShowCheckoutSplash] = useState(false);
+  const [dayMeta, setDayMeta] = useState({ irregularWorker: false, isWorkday: true });
 
   const isCheckedIn = !!today?.checkIn?.time;
   const isCheckedOut = !!today?.checkOut?.time;
@@ -80,6 +81,7 @@ export default function Employee({ user }) {
       const [t, w] = await Promise.all([api.getAttendanceToday(), api.getWeeklySummary()]);
       setToday(t.record || null);
       if (t.schedule) setSchedule(t.schedule);
+      setDayMeta({ irregularWorker: !!t.irregularWorker, isWorkday: t.isWorkday !== false });
       setWeekly(w);
     } catch (e) { setErr(e.message); }
     finally { if (!silent) setLoading(false); }
@@ -107,8 +109,10 @@ export default function Employee({ user }) {
       checkedOut: isCheckedOut,
       noteWritten: !!(today?.noteToday && today.noteToday.trim()),
       isLeave: today?.leaveType === "연차",
+      isIrregular: dayMeta.irregularWorker,
+      isWorkday: dayMeta.isWorkday,
     });
-  }, [schedule, isCheckedIn, isCheckedOut, today?.noteToday, today?.leaveType]);
+  }, [schedule, isCheckedIn, isCheckedOut, today?.noteToday, today?.leaveType, dayMeta.irregularWorker, dayMeta.isWorkday]);
 
   const checkIn = async () => {
     setBusy(true); setErr(""); setMsg("");

@@ -209,7 +209,7 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
   const date = todayKST();
   const [{ rows: attRows }, { rows: userRows }] = await Promise.all([
     pool.query(`SELECT * FROM attendance_records WHERE user_id=$1 AND date=$2`, [req.user.userId, date]),
-    pool.query(`SELECT u.scheduled_start, u.scheduled_end, w.name AS workplace_name
+    pool.query(`SELECT u.scheduled_start, u.scheduled_end, u.irregular_worker, w.name AS workplace_name
                 FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [req.user.userId]),
   ]);
 
@@ -219,8 +219,14 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
     workplaceName: userRows[0]?.workplace_name || null,
   };
 
+  // 알림용: 비정기 근무자 여부 + 오늘이 근무일(주말·공휴일 제외)인지
+  const irregularWorker = !!userRows[0]?.irregular_worker;
+  const [yy, mm, dd] = date.split('-').map(Number);
+  const dow = new Date(Date.UTC(yy, mm - 1, dd, 12)).getUTCDay();
+  const isWorkday = dow !== 0 && dow !== 6 && !isHoliday(date);
+
   const att = attRows[0];
-  if (!att) { res.json({ record: null, schedule }); return; }
+  if (!att) { res.json({ record: null, schedule, irregularWorker, isWorkday }); return; }
 
   const { rows: outingRows } = await pool.query(
     `SELECT id, start_time, end_time, destination, reason, start_lat, start_lng
@@ -258,7 +264,7 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
     noteField: att.work_note_field,
     noteToday: att.work_note_today,
   };
-  res.json({ record, schedule });
+  res.json({ record, schedule, irregularWorker, isWorkday });
 });
 
 // GET /api/attendance/weekly-summary

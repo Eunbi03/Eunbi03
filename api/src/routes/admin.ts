@@ -644,8 +644,12 @@ router.get('/attendance', async (req: Request, res: Response): Promise<void> => 
 
 // ── 연차/반차 설정 ─────────────────────────────────────────────
 
-router.post('/attendance/:recordId/set-leave', requireHR, async (req: Request, res: Response): Promise<void> => {
-  const { leaveType } = req.body; // '연차'|'반차'|'반반차'|null
+router.post('/attendance/:recordId/set-leave', requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const { leaveType } = req.body; // '연차'|'출근'|'출퇴근'|'노트' 등|null
+  // 연차 인정·해제는 모든 관리자 가능, 출근/퇴근/노트 인정은 최고관리자(HR)만
+  if (leaveType && leaveType !== '연차' && req.user.role !== 'hr') {
+    res.status(403).json({ error: '출근/퇴근/노트 인정은 최고관리자(인사팀)만 가능합니다.' }); return;
+  }
   const { rows } = await pool.query(
     'UPDATE attendance_records SET leave_type=$1 WHERE id=$2 RETURNING id',
     [leaveType || null, req.params.recordId]
@@ -655,9 +659,13 @@ router.post('/attendance/:recordId/set-leave', requireHR, async (req: Request, r
 });
 
 // POST: 날짜별 연차 생성 (기록 없을 때)
-router.post('/attendance/set-leave-day', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { userId, date, leaveType } = req.body;
   if (!userId || !date) { res.status(400).json({ error: 'userId, date가 필요합니다.' }); return; }
+  // 연차 인정·해제는 모든 관리자 가능, 출근/퇴근/노트 인정은 최고관리자(HR)만
+  if (leaveType && leaveType !== '연차' && req.user.role !== 'hr') {
+    res.status(403).json({ error: '출근/퇴근/노트 인정은 최고관리자(인사팀)만 가능합니다.' }); return;
+  }
 
   // 출근/출퇴근 인정 시 예정 근무시간 계산
   let scheduledMinutes: number | null = null;
