@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// ▼▼ 새 버전 배포 때 이 숫자만 1씩 올리세요 (예: 2, 3, …) ▼▼
+//    versionCode / versionName / APK 파일명이 모두 자동으로 맞춰집니다.
+def appVersion = 1
+// ▲▲ (숫자는 낮추면 안 됩니다) ▲▲
+
 android {
     namespace "com.kpride.timecard"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +12,8 @@ android {
         applicationId "com.kpride.timecard"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersion
+        versionName "ver${appVersion}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -20,6 +25,13 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // APK 파일명을 timecard-app-android-ver{숫자}.apk 로 자동 지정
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "timecard-app-android-${variant.versionName}.apk"
         }
     }
 }
