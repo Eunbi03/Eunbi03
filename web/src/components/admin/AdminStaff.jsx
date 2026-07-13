@@ -82,9 +82,31 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
     if (!validate()) return;
     setBusy(true);
     try {
-      const result = isNew ? await api.createWorker(form) : await api.updateWorker(worker.id, form);
-      if (isNew && result.initPassword) setInitPw(result.initPassword);
-      else onSaved();
+      if (!isNew) {
+        await api.updateWorker(worker.id, form);
+        onSaved();
+        return;
+      }
+      // 신규 등록: 삭제 이력이 있으면 서버가 409(needsConfirm)로 응답 → 복구 여부 확인
+      const submit = async (mode) => {
+        const result = await api.createWorker(mode ? { ...form, mode } : form);
+        if (result.initPassword) setInitPw(result.initPassword);
+        else onSaved();
+      };
+      try {
+        await submit();
+      } catch (e) {
+        if (e.status === 409 && e.payload?.needsConfirm) {
+          const ph = e.payload.phone || form.phone;
+          const yes = window.confirm(
+            `${ph}에 대한 등록 이력이 존재합니다. 이전 정보를 복구하시겠습니까?\n\n` +
+            `[확인] 이전 정보 복구 (과거 근태 기록 유지)\n[취소] 새로 등록 (보존된 기록 영구 삭제)`
+          );
+          await submit(yes ? "restore" : "new");
+        } else {
+          throw e;
+        }
+      }
     } catch (e) {
       setErr(e.message || "저장 중 오류가 발생했습니다.");
     } finally {

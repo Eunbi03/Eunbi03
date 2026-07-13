@@ -187,36 +187,52 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, name, phone, position, corp, division, team, jobTitle, remark,
             scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
-            noteExempt, irregularWorker } = req.body;
+            noteExempt, irregularWorker, mode } = req.body; // mode: undefined | 'restore' | 'new'
     const phoneDigits = (phone || '').replace(/\D/g, '');
     if (!name || !phoneDigits) { res.status(400).json({ error: '이름과 전화번호는 필수입니다.' }); return; }
     const passwordHash = await bcrypt.hash(phoneDigits, 12); // 초기 비밀번호 = 하이픈 제외 전화번호
 
-    // 같은 전화번호 또는 이메일의 기존 계정 확인 (소프트 삭제된 직원은 재활성화하여 근태 기록을 보존한다)
-    const emailNorm = (email || '').trim().toLowerCase();
+    // 같은 전화번호의 기존 계정 확인 (이메일로는 중복 검사하지 않음)
     const { rows: existing } = await pool.query(
-      `SELECT id, is_active FROM users
+      `SELECT id, is_active, deactivated_at FROM users
        WHERE regexp_replace(phone, '\\D', '', 'g') = $1
-          OR ($2 <> '' AND LOWER(email) = $2)
-       ORDER BY is_active DESC LIMIT 1`, [phoneDigits, emailNorm]
+       ORDER BY is_active DESC LIMIT 1`, [phoneDigits]
     );
-    if (existing[0]) {
-      if (existing[0].is_active) { res.status(400).json({ error: '이미 등록된 전화번호입니다.' }); return; }
-      // 비활성(삭제) 계정 → 재활성화: 정보 갱신 + 비밀번호/기기/잠금 초기화
-      const { rows } = await pool.query(
-        `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
-           scheduled_start=$9, scheduled_end=$10, lunch_start=$11, lunch_end=$12, workplace_id=$13,
-           note_exempt=$14, irregular_worker=$15,
-           password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker',
-           device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL
-         WHERE id=$17 RETURNING id, name`,
-        [name, email || null, position || null, corp || null, division || null, team || null, jobTitle || null, remark || null,
-         scheduledStart || '09:00', scheduledEnd || '18:00', lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null,
-         !!noteExempt, !!irregularWorker, passwordHash, existing[0].id]
-      );
-      await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
-      res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits, reactivated: true });
-      return;
+    const ex = existing[0];
+    if (ex) {
+      if (ex.is_active) { res.status(400).json({ error: '이미 등록된 전화번호입니다.' }); return; }
+
+      // 소프트 삭제된 계정: 삭제 후 1년 이내면 복구 여부를 물어본다.
+      const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+      const deactMs = ex.deactivated_at ? new Date(ex.deactivated_at).getTime() : 0;
+      const withinYear = deactMs === 0 ? true : deactMs > oneYearAgo; // 시각 불명이면 보존 기간 내로 간주
+
+      if (withinYear && mode === 'restore') {
+        // '예': 보존된 기록을 살려서 재활성화 (정보 갱신 + 비번/기기/잠금 초기화)
+        const { rows } = await pool.query(
+          `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
+             scheduled_start=$9, scheduled_end=$10, lunch_start=$11, lunch_end=$12, workplace_id=$13,
+             note_exempt=$14, irregular_worker=$15,
+             password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker', deactivated_at=NULL,
+             device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL
+           WHERE id=$17 RETURNING id, name`,
+          [name, email || null, position || null, corp || null, division || null, team || null, jobTitle || null, remark || null,
+           scheduledStart || '09:00', scheduledEnd || '18:00', lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null,
+           !!noteExempt, !!irregularWorker, passwordHash, ex.id]
+        );
+        await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
+        res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits, reactivated: true });
+        return;
+      }
+
+      if (withinYear && mode !== 'new') {
+        // 확인 필요: 프론트에서 복구 여부 팝업을 띄운다.
+        res.status(409).json({ needsConfirm: true, phone: phoneDigits, deactivatedAt: ex.deactivated_at });
+        return;
+      }
+
+      // 'new'(아니오) 또는 1년 초과 → 보존 기록을 영구 삭제하고 신규 등록으로 진행
+      await pool.query('DELETE FROM users WHERE id=$1', [ex.id]); // 연관 기록 CASCADE 삭제
     }
 
     const { rows } = await pool.query(
@@ -259,7 +275,8 @@ router.put('/workers/:id', async (req: Request, res: Response): Promise<void> =>
 });
 
 router.delete('/workers/:id', async (req: Request, res: Response): Promise<void> => {
-  await pool.query('UPDATE users SET is_active=FALSE WHERE id=$1', [req.params.id]);
+  // 소프트 삭제 + 삭제 시각 기록 (재등록 시 1년 보존 판단용)
+  await pool.query('UPDATE users SET is_active=FALSE, deactivated_at=now() WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
 
@@ -1083,18 +1100,15 @@ router.post('/workers/bulk', requireAdmin, async (req: Request, res: Response): 
     const irregular = String(r.irregularWorker) === '1' || r.irregularWorker === true;
     try {
       const passwordHash = await bcrypt.hash(phoneDigits, 12);
-      const emailNorm = (r.email || '').trim().toLowerCase();
+      // 전화번호로만 매칭 (이메일 중복검사 안 함). 삭제된 계정이면 자동 복구.
       const { rows: existing } = await pool.query(
-        `SELECT id, is_active FROM users
-         WHERE regexp_replace(phone,'\\D','','g')=$1
-            OR ($2 <> '' AND LOWER(email) = $2)
-         ORDER BY is_active DESC LIMIT 1`, [phoneDigits, emailNorm]);
-      if (existing[0] && existing[0].is_active) { failed.push({ ...info, reason: '이미 등록된 전화번호/이메일' }); continue; }
+        `SELECT id, is_active FROM users WHERE regexp_replace(phone,'\\D','','g')=$1 ORDER BY is_active DESC LIMIT 1`, [phoneDigits]);
+      if (existing[0] && existing[0].is_active) { failed.push({ ...info, reason: '이미 등록된 전화번호' }); continue; }
       if (existing[0]) {
         await pool.query(
           `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
              scheduled_start=$9, scheduled_end=$10, lunch_start=$11, lunch_end=$12, workplace_id=$13,
-             note_exempt=$14, irregular_worker=$15, password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker',
+             note_exempt=$14, irregular_worker=$15, password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker', deactivated_at=NULL,
              device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL WHERE id=$17`,
           [name, r.email || null, r.position || null, r.corp || null, r.division || null, r.team || null, r.jobTitle || null, r.remark || null,
            times.s, times.e, times.bs, times.be, workplaceId, noteExempt, irregular, passwordHash, existing[0].id]
