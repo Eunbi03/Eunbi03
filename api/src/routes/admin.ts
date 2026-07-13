@@ -248,7 +248,7 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
     await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
     res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits });
   } catch (e: any) {
-    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 전화번호 또는 이메일입니다.' });
+    if (e.code === '23505') res.status(400).json({ error: '이미 등록된 정보입니다.' });
     else res.status(500).json({ error: e.message || '직원 추가 중 오류가 발생했습니다.' });
   }
 });
