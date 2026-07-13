@@ -192,9 +192,13 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
     if (!name || !phoneDigits) { res.status(400).json({ error: '이름과 전화번호는 필수입니다.' }); return; }
     const passwordHash = await bcrypt.hash(phoneDigits, 12); // 초기 비밀번호 = 하이픈 제외 전화번호
 
-    // 같은 전화번호의 기존 계정 확인 (소프트 삭제된 직원은 재활성화하여 근태 기록을 보존한다)
+    // 같은 전화번호 또는 이메일의 기존 계정 확인 (소프트 삭제된 직원은 재활성화하여 근태 기록을 보존한다)
+    const emailNorm = (email || '').trim().toLowerCase();
     const { rows: existing } = await pool.query(
-      `SELECT id, is_active FROM users WHERE regexp_replace(phone, '\\D', '', 'g') = $1`, [phoneDigits]
+      `SELECT id, is_active FROM users
+       WHERE regexp_replace(phone, '\\D', '', 'g') = $1
+          OR ($2 <> '' AND LOWER(email) = $2)
+       ORDER BY is_active DESC LIMIT 1`, [phoneDigits, emailNorm]
     );
     if (existing[0]) {
       if (existing[0].is_active) { res.status(400).json({ error: '이미 등록된 전화번호입니다.' }); return; }
@@ -1079,8 +1083,13 @@ router.post('/workers/bulk', requireAdmin, async (req: Request, res: Response): 
     const irregular = String(r.irregularWorker) === '1' || r.irregularWorker === true;
     try {
       const passwordHash = await bcrypt.hash(phoneDigits, 12);
-      const { rows: existing } = await pool.query(`SELECT id, is_active FROM users WHERE regexp_replace(phone,'\\D','','g')=$1`, [phoneDigits]);
-      if (existing[0] && existing[0].is_active) { failed.push({ ...info, reason: '이미 등록된 전화번호' }); continue; }
+      const emailNorm = (r.email || '').trim().toLowerCase();
+      const { rows: existing } = await pool.query(
+        `SELECT id, is_active FROM users
+         WHERE regexp_replace(phone,'\\D','','g')=$1
+            OR ($2 <> '' AND LOWER(email) = $2)
+         ORDER BY is_active DESC LIMIT 1`, [phoneDigits, emailNorm]);
+      if (existing[0] && existing[0].is_active) { failed.push({ ...info, reason: '이미 등록된 전화번호/이메일' }); continue; }
       if (existing[0]) {
         await pool.query(
           `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
