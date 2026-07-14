@@ -676,6 +676,15 @@ router.post('/attendance/:recordId/set-leave', requireAdmin, async (req: Request
     [leaveType || null, req.params.recordId]
   );
   if (!rows[0]) { res.status(404).json({ error: '기록을 찾을 수 없습니다.' }); return; }
+  // 인정 해제 시, 실제 기록(출근/퇴근/노트)이 없는 빈 행이면 삭제 (재출근 가능하도록)
+  if (!leaveType) {
+    await pool.query(
+      `DELETE FROM attendance_records WHERE id=$1 AND leave_type IS NULL
+         AND check_in_time IS NULL AND check_out_time IS NULL
+         AND COALESCE(work_note_today,'')='' AND COALESCE(daily_report,'')=''`,
+      [req.params.recordId]
+    );
+  }
   res.json({ success: true });
 });
 
@@ -704,17 +713,30 @@ router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res:
   );
   if (existing.length > 0) {
     const rec = existing[0];
-    // 체크인 없고 근무시간 없을 때만 예정 근무시간 기입
-    const updateMins = scheduledMinutes !== null && !rec.check_in_time && !rec.work_minutes;
-    if (updateMins) {
-      await pool.query('UPDATE attendance_records SET leave_type=$1, work_minutes=$2 WHERE id=$3', [leaveType || null, scheduledMinutes, rec.id]);
+    if (!leaveType) {
+      // 인정 해제: 실제 기록이 없는 빈 행이면 삭제(재출근 가능), 아니면 leave_type만 해제
+      const del = await pool.query(
+        `DELETE FROM attendance_records WHERE id=$1
+           AND check_in_time IS NULL AND check_out_time IS NULL
+           AND COALESCE(work_note_today,'')='' AND COALESCE(daily_report,'')='' RETURNING id`,
+        [rec.id]
+      );
+      if (!del.rows[0]) {
+        await pool.query('UPDATE attendance_records SET leave_type=NULL WHERE id=$1', [rec.id]);
+      }
     } else {
-      await pool.query('UPDATE attendance_records SET leave_type=$1 WHERE id=$2', [leaveType || null, rec.id]);
+      // 체크인 없고 근무시간 없을 때만 예정 근무시간 기입
+      const updateMins = scheduledMinutes !== null && !rec.check_in_time && !rec.work_minutes;
+      if (updateMins) {
+        await pool.query('UPDATE attendance_records SET leave_type=$1, work_minutes=$2 WHERE id=$3', [leaveType, scheduledMinutes, rec.id]);
+      } else {
+        await pool.query('UPDATE attendance_records SET leave_type=$1 WHERE id=$2', [leaveType, rec.id]);
+      }
     }
-  } else {
+  } else if (leaveType) {
     await pool.query(
       'INSERT INTO attendance_records (user_id, date, leave_type, work_minutes) VALUES ($1,$2,$3,$4)',
-      [userId, date, leaveType || null, scheduledMinutes]
+      [userId, date, leaveType, scheduledMinutes]
     );
   }
   res.json({ success: true });

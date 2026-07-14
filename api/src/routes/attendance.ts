@@ -54,20 +54,36 @@ router.post('/check-in', requireAuth,
     const gps = validateGpsReport({ lat, lng, accuracyM, isMocked, maxAccuracyM: GPS_MAX_ACCURACY_M });
     if (!gps.isValid) { res.status(403).json({ error: '위치 정보 검증에 실패했습니다.', reasons: gps.reasons }); return; }
 
-    const existing = await pool.query('SELECT id FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, date]);
-    if (existing.rows.length > 0) { res.status(409).json({ error: '오늘 이미 출근 처리되었습니다.' }); return; }
+    // 실제 출근(check_in_time)이 있을 때만 막는다.
+    // 출근 인정 등으로 생성된 빈 행(check_in_time 없음)이면 그 행을 업데이트해 출근 처리한다.
+    const existing = await pool.query(
+      'SELECT id, check_in_time FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, date]
+    );
+    if (existing.rows[0]?.check_in_time) { res.status(409).json({ error: '오늘 이미 출근 처리되었습니다.' }); return; }
 
     const { distanceM } = await calcDistance(userId, lat, lng);
     const { rows: userRows } = await pool.query('SELECT scheduled_start FROM users WHERE id=$1', [userId]);
     const scheduledStart = userRows[0]?.scheduled_start?.slice(0, 5) || '09:00';
     const status = nowHHMM() > scheduledStart ? '지각' : '정상';
 
-    const { rows } = await pool.query(
-      `INSERT INTO attendance_records (user_id, date, check_in_time, check_in_lat, check_in_lng,
-         check_in_location_verified, check_in_distance_m, status)
-       VALUES ($1,$2,now(),$3,$4,TRUE,$5,$6) RETURNING id, check_in_time, status`,
-      [userId, date, lat, lng, distanceM, status]
-    );
+    let rows;
+    if (existing.rows[0]) {
+      // 기존 빈 행(출근 인정 등) → 실제 출근으로 업데이트
+      ({ rows } = await pool.query(
+        `UPDATE attendance_records
+         SET check_in_time=now(), check_in_lat=$1, check_in_lng=$2,
+             check_in_location_verified=TRUE, check_in_distance_m=$3, status=$4
+         WHERE id=$5 RETURNING id, check_in_time, status`,
+        [lat, lng, distanceM, status, existing.rows[0].id]
+      ));
+    } else {
+      ({ rows } = await pool.query(
+        `INSERT INTO attendance_records (user_id, date, check_in_time, check_in_lat, check_in_lng,
+           check_in_location_verified, check_in_distance_m, status)
+         VALUES ($1,$2,now(),$3,$4,TRUE,$5,$6) RETURNING id, check_in_time, status`,
+        [userId, date, lat, lng, distanceM, status]
+      ));
+    }
     res.status(201).json({ success: true, record: rows[0], distanceM });
   }
 );
