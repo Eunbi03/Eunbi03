@@ -18,8 +18,16 @@ function deviceRaw() {
   ].join("|");
 }
 
+// 기기 식별자는 최초 1회만 지문으로 계산해 저장하고, 이후로는 저장값을 그대로 재사용한다.
+// (WebView/OS 자동 업데이트로 userAgent가 바뀌어도 기기가 바뀌지 않도록 — DEVICE_MISMATCH 재발 방지)
 export async function getDeviceId() {
-  return (await sha256("att::device::" + deviceRaw())).slice(0, 32);
+  try {
+    const stored = localStorage.getItem("att::deviceId");
+    if (stored) return stored;
+  } catch { /* 무시 */ }
+  const id = (await sha256("att::device::" + deviceRaw())).slice(0, 32);
+  try { localStorage.setItem("att::deviceId", id); } catch { /* 무시 */ }
+  return id;
 }
 
 export function deviceLabel() {
