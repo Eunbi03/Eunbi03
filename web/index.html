@@ -20,10 +20,24 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
+      // 서비스워커 자동 업데이트 + 자동 새로고침
+      // 새 버전이 배포되면 앱이 스스로 감지해 최신 화면으로 전환한다. (수동 캐시 삭제 불필요)
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () =>
-          navigator.serviceWorker.register("/sw.js")
-        );
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
+        window.addEventListener("load", async () => {
+          try {
+            const reg = await navigator.serviceWorker.register("/sw.js");
+            reg.update();
+            document.addEventListener("visibilitychange", () => {
+              if (document.visibilityState === "visible") reg.update();
+            });
+          } catch (e) { /* 무시 */ }
+        });
       }
     </script>
   </body>
