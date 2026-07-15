@@ -6,7 +6,7 @@ import { isWithinRadius, validateGpsReport } from '../utils/geo';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
-const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '200');
+const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '500');
 
 // 특정 체크 슬롯에 위치를 기록하는 공통 로직
 async function recordCheckLocation(

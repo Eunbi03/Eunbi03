@@ -83,13 +83,28 @@ export async function checkLocationPermission() {
   } catch { return "unknown"; }
 }
 
-export async function getLocation() {
-  if (_lastPos) return { ..._lastPos };
+// 정확도가 기준(desiredAccuracy) 이내가 될 때까지 최대 maxWaitMs 동안 재시도하며
+// 가장 정확한 위치를 잡아서 반환한다. (한 번에 저장 실패 방지)
+export async function getLocation(opts = {}) {
+  const desiredAccuracy = opts.desiredAccuracy ?? 500; // m — 이 이내면 즉시 사용
+  const maxWaitMs = opts.maxWaitMs ?? 12000;
   await ensurePermission();
-  try {
-    const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-    return { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
-  } catch { return null; }
+
+  // 이미 상시 감지(watch)로 충분히 정확한 위치가 있으면 바로 사용
+  let best = _lastPos ? { ..._lastPos } : null;
+  if (best && best.acc <= desiredAccuracy) return best;
+
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+      const loc = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
+      if (!best || loc.acc < best.acc) best = loc;
+      if (loc.acc <= desiredAccuracy) return loc; // 기준 충족 → 즉시 반환
+    } catch { /* 실패 시 잠시 후 재시도 */ }
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  return best; // 최선의 위치(없으면 null)
 }
 
 export const locText = (loc) => (loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : "위치 없음");

@@ -7,7 +7,7 @@ import { workdaysBetween, isHoliday } from '../utils/holidays';
 import { classifyDay } from '../utils/attendanceKpi';
 
 const router = Router();
-const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '200');
+const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '500');
 
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
