@@ -18,6 +18,7 @@ export default function Splash({ slides, onDone }) {
   }, [i]);
 
   const s = slides[i] || {};
+  const isVideo = typeof s.src === "string" && /\.(mp4|webm|mov|m4v)$/i.test(s.src);
   return (
     <div
       onClick={step}
@@ -27,16 +28,33 @@ export default function Splash({ slides, onDone }) {
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 0,
       }}
     >
-      <img
-        src={s.src}
-        alt=""
-        style={{ width: "100%", height: "100%", objectFit: "contain" }}
-        onError={(e) => {
-          e.currentTarget.style.display = "none";
-          const n = e.currentTarget.nextSibling;
-          if (n) n.style.display = "block";
-        }}
-      />
+      {isVideo ? (
+        <video
+          key={s.src}
+          src={s.src}
+          autoPlay
+          muted
+          playsInline
+          onEnded={step}
+          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+            const n = e.currentTarget.nextSibling;
+            if (n) n.style.display = "block";
+          }}
+        />
+      ) : (
+        <img
+          src={s.src}
+          alt=""
+          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+            const n = e.currentTarget.nextSibling;
+            if (n) n.style.display = "block";
+          }}
+        />
+      )}
       <div style={{ display: "none", textAlign: "center", position: "absolute" }}>
         {s.title && <div style={{ fontSize: 40, fontWeight: 800, color: "#333" }}>{s.title}</div>}
         {s.sub && <div style={{ fontSize: 16, color: "#555", marginTop: 8 }}>{s.sub}</div>}
