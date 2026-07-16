@@ -127,6 +127,18 @@ export default function Employee({ user }) {
     finally { setBusy(false); }
   };
 
+  // 복귀 — 진행 중인 외근을 종료하고 기본 근무지 상태로 돌아온다.
+  const returnToBase = async () => {
+    if (!activeOuting) return;
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      await api.endOuting(activeOuting.id);
+      await load(true);
+      setMsg("복귀 처리되었습니다.");
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
   const saveNote = async () => {
     if (!noteDraft.trim()) { setErr("오늘 업무 내용을 입력해주세요."); return; }
     setNoteBusy(true); setErr(""); setMsg("");
@@ -241,7 +253,10 @@ export default function Employee({ user }) {
         ) : isCheckedIn ? (
           <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
             <button style={{ flex: 1, background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, color: W.ink, cursor: "pointer" }} onClick={() => setView("outing")}>외근</button>
-            <button style={{ flex: 2, border: "none", borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, background: W.ink, color: "#fff", cursor: "pointer" }} onClick={() => setView("out")}>퇴근하기</button>
+            {activeOuting && (
+              <button style={{ flex: 1, background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, color: W.ink, cursor: "pointer", opacity: busy ? 0.6 : 1 }} onClick={returnToBase} disabled={busy}>복귀</button>
+            )}
+            <button style={{ flex: activeOuting ? 1 : 2, border: "none", borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, background: W.ink, color: "#fff", cursor: "pointer" }} onClick={() => setView("out")}>퇴근하기</button>
           </div>
         ) : null}
       </div>
