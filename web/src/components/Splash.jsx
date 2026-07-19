@@ -23,9 +23,9 @@ export default function Splash({ slides, onDone }) {
     <div
       onClick={step}
       style={{
-        position: "fixed", inset: 0, zIndex: 2000, cursor: "pointer",
+        position: "fixed", inset: 0, zIndex: 2000, cursor: "pointer", overflow: "hidden",
         background: "#f4f6f7",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 0,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", padding: 0,
       }}
     >
       {isVideo ? (
@@ -36,7 +36,7 @@ export default function Splash({ slides, onDone }) {
           muted
           playsInline
           onEnded={step}
-          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          style={{ width: "100%", height: "auto", display: "block" }}
           onError={(e) => {
             e.currentTarget.style.display = "none";
             const n = e.currentTarget.nextSibling;
@@ -47,7 +47,7 @@ export default function Splash({ slides, onDone }) {
         <img
           src={s.src}
           alt=""
-          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          style={{ width: "100%", height: "auto", display: "block" }}
           onError={(e) => {
             e.currentTarget.style.display = "none";
             const n = e.currentTarget.nextSibling;
