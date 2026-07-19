@@ -80,8 +80,7 @@ export default function App() {
     return (
       <Splash
         slides={[
-          { src: "/intro1.png", ms: 2000, title: "TimeCard", sub: "근태관리 어플리케이션" },
-          { src: "/intro2.png", ms: 2000, title: "지구와 인간의 건강한 가치실현", sub: "신뢰와 자부심으로 가득한 조직" },
+          { src: "/intro1.gif", ms: 4000, title: "TimeCard", sub: "근태관리 어플리케이션" },
         ]}
         onDone={() => setShowSplash(false)}
       />

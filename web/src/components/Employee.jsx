@@ -163,7 +163,7 @@ export default function Employee({ user }) {
   if (showCheckoutSplash)
     return (
       <Splash
-        slides={[{ src: "/checkout.png", ms: 3000, title: "오늘 하루도 수고하셨습니다!" }]}
+        slides={[{ src: "/checkout.gif", ms: 3500, title: "오늘 하루도 수고하셨습니다!" }]}
         onDone={() => setShowCheckoutSplash(false)}
       />
     );
