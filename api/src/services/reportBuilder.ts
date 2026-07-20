@@ -25,13 +25,14 @@ export interface BuiltReport {
 // 개별 리포트 데이터를 [from, to] 전 기간(달력용) 기준으로 산출한다.
 export async function buildIndividualReport(userId: string, from: string, to: string): Promise<BuiltReport | null> {
   const { rows: userRows } = await pool.query(
-    `SELECT u.id, u.name, u.corp, u.division, u.team, u.email, u.phone, u.note_exempt, w.name AS wp_name
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.email, u.phone, u.note_exempt, u.irregular_worker, w.name AS wp_name
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [userId]
   );
   if (!userRows[0]) return null;
   const u = userRows[0];
   const workplaceName: string | null = u.wp_name || null;
   const noteExempt = !!u.note_exempt;
+  const irregular = !!u.irregular_worker;
 
   const { rows: records } = await pool.query(
     `SELECT id, date::text AS date, check_in_time, check_out_time, check_out_is_field, status, leave_type,
@@ -81,7 +82,8 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     if (k.isLeave) { day.leaveType = '연차'; days.push(day); continue; }
 
     if (!k.present) {
-      if (isWorkday) {
+      // 비정기 근무자는 근무일이 특정되지 않으므로 결근(출근누락/노트누락) 집계에서 제외
+      if (isWorkday && !irregular) {
         missingIn++; day.missing = true;
         if (k.missingNote) { missingNote++; noteMissDates.push(date); }
       }

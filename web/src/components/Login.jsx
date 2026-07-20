@@ -71,6 +71,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [failCount, setFailCount] = useState(0);
+  const [serverNote, setServerNote] = useState(""); // 기기 불일치 등 조치가 필요한 실제 안내
 
   const t = THEMES[mode] || THEMES.worker;
 
@@ -79,6 +80,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
     if (!email.trim() || !password) { setErr(`${t.idLabel}와 비밀번호를 입력해주세요.`); return; }
     setBusy(true);
     setErr("");
+    setServerNote("");
     try {
       const deviceId = await getDeviceId();
       // 근로자는 전화번호(숫자만), 관리자는 이메일(소문자)로 로그인
@@ -89,8 +91,12 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
       setErr(e.message);
       // 서버의 실제 누적 실패 횟수와 연동 (remainingAttempts = 5 - 누적실패)
       const rem = e.payload?.remainingAttempts;
+      const msg = e.message || "";
+      const isLocked = /(잠겼|잠금)/.test(msg);
+      // 기기 불일치/승인 대기 등 조치가 필요한 사유(403, 잠금 제외)는 실제 안내를 그대로 노출
+      if (e.status === 403 && !isLocked) setServerNote(msg);
       if (typeof rem === "number") setFailCount(Math.max(1, 5 - rem));
-      else if (e.status === 403 && /(잠겼|잠금)/.test(e.message || "")) setFailCount(5);
+      else if (isLocked) setFailCount(5);
       else setFailCount((c) => c + 1);
     } finally {
       setBusy(false);
@@ -191,11 +197,13 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
             lineHeight: 1.6,
             fontWeight: 600,
             whiteSpace: "pre-line",
-            color: failCount >= 1 || extraError ? "#cb6156" : "#333333",
+            color: failCount >= 1 || extraError || serverNote ? "#cb6156" : "#333333",
           }}
         >
           {extraError
             ? extraError
+            : serverNote
+            ? serverNote
             : failCount >= 5
             ? "로그인에 실패했습니다.\n인사팀에 문의해주세요."
             : failCount >= 1

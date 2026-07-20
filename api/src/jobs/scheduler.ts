@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
 import { generateRandomMinuteOffsets, offsetsToDateTimes } from '../utils/randomTimeSlots';
 import { sendDataPush, fcmEnabled } from '../services/fcm';
+import { isWorkday } from '../utils/holidays';
 
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
@@ -78,14 +79,22 @@ async function activateDueRandomChecks() {
 
 async function finalizeAbsentees() {
   const date = todayKST();
-  const { rows: users } = await pool.query("SELECT id FROM users WHERE role='worker' AND is_active=TRUE");
+  // 주말·공휴일에는 결근으로 처리하지 않는다.
+  if (!isWorkday(date)) {
+    console.log(`[결근 마감] ${date} — 근무일 아님(주말/공휴일), 건너뜀`);
+    return;
+  }
+  // 정기 근무자만 대상. 비정기 근무자는 근무일이 특정되지 않으므로 결근 처리에서 제외한다.
+  const { rows: users } = await pool.query(
+    "SELECT id FROM users WHERE role='worker' AND is_active=TRUE AND COALESCE(irregular_worker, FALSE)=FALSE"
+  );
   for (const u of users) {
     const { rows } = await pool.query('SELECT id FROM attendance_records WHERE user_id=$1 AND date=$2', [u.id, date]);
     if (rows.length === 0) {
       await pool.query("INSERT INTO attendance_records (user_id, date, status) VALUES ($1,$2,'결근')", [u.id, date]);
     }
   }
-  console.log(`[결근 마감] ${date} 완료`);
+  console.log(`[결근 마감] ${date} 완료 (정기 근무자 ${users.length}명 대상)`);
 }
 
 export function startScheduler() {

@@ -1,3 +1,5 @@
+import { getDeviceId } from "../utils/device.js";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 let accessToken = null;
 
@@ -7,13 +9,38 @@ const setStoredRefreshToken = (t) => t ? localStorage.setItem("att_refresh_token
 const getStoredUserId = () => localStorage.getItem("att_user_id");
 const setStoredUserId = (id) => id ? localStorage.setItem("att_user_id", id) : localStorage.removeItem("att_user_id");
 
-async function request(path, { method = "GET", body, auth = true } = {}) {
+// access 토큰 만료(401) 시 저장된 refresh 토큰으로 재발급. 동시 요청이 몰려도 갱신은 한 번만.
+let refreshPromise = null;
+function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const userId = getStoredUserId();
+    const refreshToken = getStoredRefreshToken();
+    if (!userId || !refreshToken) return false;
+    try {
+      const deviceId = await getDeviceId();
+      const data = await request("/auth/auto-login",
+        { method: "POST", body: { userId, deviceId, refreshToken }, auth: false, retry: false });
+      setAccessToken(data.accessToken);
+      return true;
+    } catch { return false; }
+  })();
+  refreshPromise.finally(() => { refreshPromise = null; });
+  return refreshPromise;
+}
+
+async function request(path, { method = "GET", body, auth = true, retry = true } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const res = await fetch(`${API_BASE}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   let data = null;
   try { data = await res.json(); } catch { /* 204 */ }
   if (!res.ok) {
+    // 토큰 만료 → 자동 재발급 후 원 요청 1회 재시도
+    if (res.status === 401 && auth && retry && getStoredRefreshToken()) {
+      const ok = await refreshAccessToken();
+      if (ok) return request(path, { method, body, auth, retry: false });
+    }
     const message = data?.error || data?.errors?.[0]?.msg || "요청 처리 중 오류가 발생했습니다.";
     const err = new Error(message);
     err.status = res.status; err.payload = data;

@@ -329,7 +329,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
 
   // 직원 전체
   const { rows: workers } = await pool.query(
-    `SELECT id, name, corp, division, team, job_title, scheduled_start, note_exempt
+    `SELECT id, name, corp, division, team, job_title, scheduled_start, note_exempt, irregular_worker
      FROM users WHERE role='worker' AND is_active=TRUE ORDER BY corp, division, team, name`
   );
   if (workers.length === 0) { res.json({ teams: [], period: { from: fromDate, to: toDate, workdays: workdayCount } }); return; }
@@ -359,7 +359,11 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     for (const day of workdays) {
       const k = classifyDay(recByDate[day], !!w.note_exempt);
       if (k.isLeave) continue;
-      if (!k.present) { missingIn++; continue; }
+      if (!k.present) {
+        // 비정기 근무자는 근무일이 특정되지 않으므로 결근(출근누락/노트누락) 집계에서 제외
+        if (!w.irregular_worker) { missingIn++; if (k.missingNote) missingNote++; }
+        continue;
+      }
       if (k.missingOut) missingOut++;
       else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
@@ -399,7 +403,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   // 직원 정보
   const { rows: userRows } = await pool.query(
-    `SELECT u.id, u.name, u.corp, u.division, u.team, u.job_title, u.scheduled_start, u.scheduled_end, u.note_exempt,
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.job_title, u.scheduled_start, u.scheduled_end, u.note_exempt, u.irregular_worker,
             w.id AS wp_id, w.name AS wp_name, w.lat AS wp_lat, w.lng AS wp_lng, w.radius_m
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`,
     [userId]
@@ -407,6 +411,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   if (!userRows[0]) { res.status(404).json({ error: '직원을 찾을 수 없습니다.' }); return; }
   const user = userRows[0];
   const noteExempt = !!user.note_exempt;
+  const irregular = !!user.irregular_worker;
 
   // 출퇴근 기록
   const { rows: records } = await pool.query(
@@ -465,8 +470,10 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     if (k.isLeave) return { date: day, leaveType: '연차' };
 
     if (!k.present) {
-      if (isWorkday) { missingIn++; if (k.missingNote) missingNote++; }
-      return { date: day, missing: true, noNote: isWorkday && k.missingNote };
+      // 비정기 근무자는 결근(출근누락/노트누락) 집계에서 제외
+      const countAbsent = isWorkday && !irregular;
+      if (countAbsent) { missingIn++; if (k.missingNote) missingNote++; }
+      return { date: day, missing: countAbsent, noNote: countAbsent && k.missingNote };
     }
 
     const hasIn = Boolean(r.check_in_time);
@@ -515,11 +522,12 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
   const workdaySet = new Set(workdays);
 
   const { rows: users } = await pool.query(
-    `SELECT id, note_exempt FROM users WHERE role='worker' AND is_active=TRUE`
+    `SELECT id, note_exempt, irregular_worker FROM users WHERE role='worker' AND is_active=TRUE`
   );
   const ids = users.map((u: any) => u.id);
   const noteExemptById: Record<string, boolean> = {};
-  for (const u of users) noteExemptById[u.id] = !!u.note_exempt;
+  const irregularById: Record<string, boolean> = {};
+  for (const u of users) { noteExemptById[u.id] = !!u.note_exempt; irregularById[u.id] = !!u.irregular_worker; }
   if (!ids.length) { res.json({ scores: {} }); return; }
 
   const { rows: records } = await pool.query(
@@ -552,7 +560,8 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
       const k = classifyDay(r, noteExemptById[uid]);
       if (k.isLeave) continue;
       if (!k.present) {
-        if (isWorkday) { missingIn++; if (k.missingNote) missingNote++; }
+        // 비정기 근무자는 결근(출근누락/노트누락) 집계에서 제외
+        if (isWorkday && !irregularById[uid]) { missingIn++; if (k.missingNote) missingNote++; }
         continue;
       }
       if (isWorkday || Boolean(r?.check_in_time)) {
