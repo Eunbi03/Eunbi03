@@ -10,10 +10,12 @@ function todayKST(): string {
 }
 
 async function generateDailyRandomCheckSlots() {
-  const { rows: users } = await pool.query(
-    "SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE role='worker' AND is_active=TRUE"
-  );
   const date = todayKST();
+  // 주말·공휴일에는 아예 생성하지 않는다.
+  if (!isWorkday(date)) { console.log(`[랜덤체크] ${date} 근무일 아님 — 생성 건너뜀`); return; }
+  const { rows: users } = await pool.query(
+    "SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE role='worker' AND is_active=TRUE AND COALESCE(irregular_worker, FALSE)=FALSE"
+  );
   let total = 0;
   for (const user of users) {
     try {
@@ -32,6 +34,8 @@ export async function generateRandomCheckSlotsForUser(
   date: string,
   onlyFuture = false,
 ): Promise<number> {
+  // 주말·공휴일 등 근무일이 아니면 랜덤 확인 슬롯을 만들지 않는다.
+  if (!isWorkday(date)) return 0;
   // 값이 없을 수 있으므로 기본값으로 방어 (미설정 근로자도 생성 실패하지 않게)
   const offsets = generateRandomMinuteOffsets({
     workStart: (user.scheduled_start || '09:00').slice(0, 5),
