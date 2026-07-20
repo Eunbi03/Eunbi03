@@ -3,9 +3,10 @@ import { C, S } from "../styles.js";
 import { getLocation } from "../utils/device.js";
 import * as api from "../api/client.js";
 
-export default function OutForm({ onClose, onDone, workplaceName, initialNote = "", outings = [] }) {
+export default function OutForm({ onClose, onDone, workplaceName, initialNote = "", outings = [], activeOuting = null }) {
   const dests = outings.map((o) => o.destination).filter(Boolean);
-  const lastDest = dests.length ? dests[dests.length - 1] : "";
+  // "외근지에서 바로 퇴근?"은 복귀하지 않고 진행 중인 외근이 있을 때만 물어본다.
+  const lastDest = activeOuting?.destination || "";
 
   const [workNoteIn, setWorkNoteIn] = useState(workplaceName || "");
   const [workNoteOut, setWorkNoteOut] = useState(workplaceName || "");
@@ -14,8 +15,8 @@ export default function OutForm({ onClose, onDone, workplaceName, initialNote = 
   const [workNoteToday, setWorkNoteToday] = useState(initialNote);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  // 외근이 있으면 "외근지에서 바로 퇴근?" 팝업을 먼저 띄운다.
-  const [askOuting, setAskOuting] = useState(dests.length > 0);
+  // 진행 중인 외근이 있을 때만 "외근지에서 바로 퇴근?" 팝업을 띄운다. (복귀했으면 안 뜸)
+  const [askOuting, setAskOuting] = useState(!!activeOuting);
 
   const submit = async () => {
     setBusy(true);
