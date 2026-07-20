@@ -130,10 +130,21 @@ router.post('/login',
     const isAuthority = isAdminUser ? await deviceIsAuthority(user.id, deviceId) : false;
 
     const { plainToken, tokenHash } = generateRefreshToken();
-    await pool.query(
-      'UPDATE users SET failed_login_attempts=0, refresh_token_hash=$1, refresh_token_expires_at=$2 WHERE id=$3',
-      [tokenHash, getRefreshTokenExpiry(), user.id]
-    );
+    const refreshExpiry = getRefreshTokenExpiry();
+    await pool.query('UPDATE users SET failed_login_attempts=0 WHERE id=$1', [user.id]);
+    if (isAdminUser) {
+      // 관리자: refresh 토큰을 이 기기(admin_devices) 행에 저장 → 기기마다 독립적으로 자동로그인 유지
+      await pool.query(
+        'UPDATE admin_devices SET refresh_token_hash=$1, refresh_token_expires_at=$2 WHERE user_id=$3 AND device_id=$4',
+        [tokenHash, refreshExpiry, user.id, deviceId]
+      );
+    } else {
+      // 일반 직원: 단일 기기이므로 users 행에 저장
+      await pool.query(
+        'UPDATE users SET refresh_token_hash=$1, refresh_token_expires_at=$2 WHERE id=$3',
+        [tokenHash, refreshExpiry, user.id]
+      );
+    }
     await logAttempt({ userId: user.id, email, deviceId, success: true, req });
 
     res.json({
@@ -164,20 +175,27 @@ router.post('/auto-login',
     if (user.is_locked) { res.status(403).json({ error: '계정이 잠겨 있습니다.' }); return; }
 
     const isAdminUser = user.role === 'admin' || user.role === 'hr';
+    const tokenHash = hashToken(refreshToken);
+    // 검증할 토큰 해시/만료: 관리자는 기기(admin_devices)별, 일반 직원은 users 기준
+    let storedHash: string | null;
+    let storedExpiry: Date | string | null;
     if (isAdminUser) {
-      // 관리자: admin_devices에서 승인 여부 확인
+      // 관리자: 이 기기가 승인되어 있고, 그 기기에 저장된 refresh 토큰과 일치해야 함
       const { rows: deviceRows } = await pool.query(
-        'SELECT * FROM admin_devices WHERE user_id=$1 AND device_id=$2 AND is_approved=TRUE',
+        'SELECT refresh_token_hash, refresh_token_expires_at FROM admin_devices WHERE user_id=$1 AND device_id=$2 AND is_approved=TRUE',
         [userId, deviceId]
       );
       if (deviceRows.length === 0) { res.status(403).json({ error: '기기 정보가 일치하지 않거나 승인되지 않았습니다.' }); return; }
+      storedHash = deviceRows[0].refresh_token_hash;
+      storedExpiry = deviceRows[0].refresh_token_expires_at;
     } else {
       if (!user.device_id || user.device_id !== deviceId) { res.status(403).json({ error: '기기 정보가 일치하지 않습니다.' }); return; }
+      storedHash = user.refresh_token_hash;
+      storedExpiry = user.refresh_token_expires_at;
     }
 
-    const tokenHash = hashToken(refreshToken);
-    const isExpired = user.refresh_token_expires_at && new Date(user.refresh_token_expires_at) < new Date();
-    if (!user.refresh_token_hash || user.refresh_token_hash !== tokenHash || isExpired) {
+    const isExpired = storedExpiry && new Date(storedExpiry) < new Date();
+    if (!storedHash || storedHash !== tokenHash || isExpired) {
       res.status(403).json({ error: '로그인 세션이 만료되었습니다.' }); return;
     }
 
