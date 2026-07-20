@@ -189,7 +189,7 @@ export default function Employee({ user }) {
   );
   if (view === "out") return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || outingDests} outings={outings} activeOuting={activeOuting} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} initialNote={today?.noteToday || ""} outings={outings} activeOuting={activeOuting} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
     </div>
   );
   if (view === "history") return <HistoryView onBack={() => setView("main")} />;
