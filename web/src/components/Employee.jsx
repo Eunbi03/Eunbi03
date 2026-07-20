@@ -96,7 +96,8 @@ export default function Employee({ user }) {
   useEffect(() => {
     if (isCheckedIn && !isCheckedOut) startLocationWatch();
     else stopLocationWatch();
-    return () => { if (isCheckedOut) stopLocationWatch(); };
+    // 화면을 벗어나면(로그아웃·이동 포함) 항상 GPS 감지를 종료 (배터리 누수 방지)
+    return () => { stopLocationWatch(); };
   }, [isCheckedIn, isCheckedOut]);
 
   // 출퇴근/노트 알림을 현재 상태에 맞게 (재)예약 — 버튼 이미 눌렀으면 해당 알림은 예약 안 됨

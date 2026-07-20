@@ -23,11 +23,22 @@
       // 서비스워커 자동 업데이트 + 자동 새로고침
       // 새 버전이 배포되면 앱이 스스로 감지해 최신 화면으로 전환한다. (수동 캐시 삭제 불필요)
       if ("serviceWorker" in navigator) {
+        // 새 버전 감지 시 즉시 새로고침하지 않고, 앱이 백그라운드로 갈 때만 적용한다.
+        // (노트/퇴근폼 작성 중 새로고침으로 입력이 사라지는 것을 방지)
+        let updatePending = false;
         let refreshing = false;
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (refreshing) return;
+        const applyUpdate = () => {
+          if (refreshing || !updatePending) return;
+          if (document.visibilityState === "visible") return; // 화면 보고 있으면 대기
           refreshing = true;
           window.location.reload();
+        };
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          updatePending = true;
+          applyUpdate();
+        });
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") applyUpdate();
         });
         window.addEventListener("load", async () => {
           try {
