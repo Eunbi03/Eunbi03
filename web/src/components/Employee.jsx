@@ -229,8 +229,8 @@ export default function Employee({ user }) {
 
         {/* 외근 중 안내 박스 (항목15) */}
         {activeOuting && (
-          <div style={{ marginTop: 12, padding: "7px 14px", background: W.amberBg, borderRadius: 10, fontSize: 16, fontWeight: 600, color: W.amber }}>
-            외근 중  {fmtTime(activeOuting.startTime)}  {activeOuting.destination}
+          <div style={{ marginTop: 12, padding: "7px 14px", background: W.amberBg, borderRadius: 10, fontSize: 13, fontWeight: 400, color: W.amber }}>
+            <span style={{ fontWeight: 700 }}>외근 중</span>  {fmtTime(activeOuting.startTime)}  {activeOuting.destination}
           </div>
         )}
 
