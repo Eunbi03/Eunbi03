@@ -52,6 +52,7 @@ import { Geolocation } from "@capacitor/geolocation";
 
 let _watchId = null;
 let _lastPos = null;
+let _autoStopTimer = null;
 
 // 위치 권한이 없으면 요청한다.
 async function ensurePermission() {
@@ -63,9 +64,17 @@ async function ensurePermission() {
   } catch { /* 웹 등에서 무시 */ }
 }
 
-// 출근 중 GPS 상시 감지 (랜덤 위치 확인용)
-export async function startLocationWatch() {
-  if (_watchId !== null) return;
+// 출근 중 GPS 상시 감지 (랜덤 위치 확인용).
+// autoStopAtMs: 이 시각(타임스탬프, ms)이 되면 자동으로 감지를 종료한다.
+//   (퇴근 버튼을 누르지 않아도 기본 퇴근시간+2시간에 GPS가 꺼지도록)
+export async function startLocationWatch(autoStopAtMs = null) {
+  // 자동 종료 예약(있으면 갱신)
+  if (_autoStopTimer !== null) { clearTimeout(_autoStopTimer); _autoStopTimer = null; }
+  if (typeof autoStopAtMs === "number") {
+    const delay = Math.max(0, autoStopAtMs - Date.now());
+    _autoStopTimer = setTimeout(() => { stopLocationWatch(); }, delay);
+  }
+  if (_watchId !== null) return; // 이미 감지 중이면 타이머만 갱신
   await ensurePermission();
   try {
     _watchId = await Geolocation.watchPosition(
@@ -76,6 +85,7 @@ export async function startLocationWatch() {
 }
 
 export async function stopLocationWatch() {
+  if (_autoStopTimer !== null) { clearTimeout(_autoStopTimer); _autoStopTimer = null; }
   if (_watchId !== null) {
     try { await Geolocation.clearWatch({ id: _watchId }); } catch { /* 무시 */ }
     _watchId = null; _lastPos = null;

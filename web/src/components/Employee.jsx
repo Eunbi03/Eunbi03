@@ -26,6 +26,14 @@ function todayLabel() {
   return `${m}/${d} (${dow})`;
 }
 
+// 오늘(KST) 기본 퇴근시간 + 2시간의 타임스탬프(ms) — GPS 자동 종료 시각
+function endPlus2hMs(endHHMM) {
+  const [h, m] = String(endHHMM || "18:00").split(":").map(Number);
+  const ymd = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const dt = new Date(`${ymd}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+09:00`);
+  return dt.getTime() + 2 * 60 * 60 * 1000;
+}
+
 function WarnIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ verticalAlign: "middle" }} aria-label="누락">
@@ -94,11 +102,16 @@ export default function Employee({ user }) {
   }, []);
 
   useEffect(() => {
-    if (isCheckedIn && !isCheckedOut) startLocationWatch();
-    else stopLocationWatch();
-    // 화면을 벗어나면(로그아웃·이동 포함) 항상 GPS 감지를 종료 (배터리 누수 방지)
-    return () => { stopLocationWatch(); };
-  }, [isCheckedIn, isCheckedOut]);
+    if (isCheckedIn && !isCheckedOut) {
+      // 출근 중: GPS 감지 시작. 퇴근을 누르지 않아도 기본 퇴근시간+2시간에 자동 종료.
+      startLocationWatch(endPlus2hMs(schedule.end));
+    } else if (isCheckedOut) {
+      // 퇴근 버튼을 누르면 즉시 종료
+      stopLocationWatch();
+    }
+    // 로그아웃/화면 이탈 시에는 끄지 않는다 — 랜덤 확인을 위해 근무 세션 동안 유지
+    // (퇴근 또는 기본 퇴근시간+2시간에 자동 종료됨)
+  }, [isCheckedIn, isCheckedOut, schedule.end]);
 
   // 출퇴근/노트 알림을 현재 상태에 맞게 (재)예약 — 버튼 이미 눌렀으면 해당 알림은 예약 안 됨
   useEffect(() => {
