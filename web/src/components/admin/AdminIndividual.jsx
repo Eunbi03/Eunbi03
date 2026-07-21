@@ -147,6 +147,23 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, isHR }) {
 
   const hasOutingsOrNote = (day.outings && day.outings.length) || day.noteToday || day.timeChangeReason;
 
+  // 근무일이 아닌 날(주말·공휴일 등, 아무 기록·인정 없음) — 회색 '근무일 X'
+  // 인정 버튼으로 관리자가 무엇이든 인정하면 그날이 근무일로 전환된다.
+  if (day.offday) {
+    return (
+      <>{popup}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderBottom: `1px solid ${C.lineAdmin}`, background: "#fafafa" }}>
+          <div style={{ width: 42, flexShrink: 0, textAlign: "center", lineHeight: 1.3 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: COL.gray }}>{day.date.slice(5)}</div>
+            <div style={{ fontSize: 11, color: COL.gray }}>{dow}</div>
+          </div>
+          <span style={{ ...S.badge, background: "#ececec", color: COL.gray, fontSize: 12 }}>근무일 X</span>
+          <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
+        </div>
+      </>
+    );
+  }
+
   // 연차 / 출퇴근 인정 전체
   if (isLeaveFull) {
     return (

@@ -448,38 +448,41 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
 
   let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
 
-  // 주말은 근무일에서 제외하되, 실제로 출근(체크인)했거나 출근 관련 연차/처리가 있는 날만 표시
-  const weekendRecordDays = Object.keys(recByDate).filter(d => {
-    if (workdaySet.has(d)) return false;
-    const r = recByDate[d];
-    const lt = r?.leave_type;
-    const actuallyWorked = Boolean(r?.check_in_time) || lt === '연차' || leaveCountsAsCheckIn(lt);
-    if (!actuallyWorked) return false;
-    const [dy, dm, dd2] = d.split('-').map(Number);
-    const dow = new Date(Date.UTC(dy, dm - 1, dd2, 12)).getUTCDay();
-    return dow === 0 || dow === 6;
-  }).sort();
+  // 기간 내 모든 달력 날짜(주말·공휴일 포함)를 표시한다.
+  const allDays: string[] = [];
+  {
+    const cur = new Date(from + 'T00:00:00+09:00');
+    const endDt = new Date(to + 'T00:00:00+09:00');
+    while (cur <= endDt) {
+      allDays.push(cur.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' }));
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
 
-  const allDisplayDays = [...workdays, ...weekendRecordDays].sort();
-
-  const buildDayEntry = (day: string, isWorkday: boolean) => {
+  const buildDayEntry = (day: string) => {
     const r = recByDate[day];
     const lt = r?.leave_type;
+    const isCalWorkday = workdaySet.has(day);
+    // 비근무일(주말·공휴일)이라도 실제 출근했거나 관리자가 무엇이든 인정하면 근무일로 취급
+    const treatWorkday = isCalWorkday || Boolean(r?.check_in_time) || Boolean(lt);
+
+    // 근무일이 아니고 아무 기록·인정도 없으면 회색 '근무일 X'로 표시(집계 제외)
+    if (!treatWorkday) return { date: day, offday: true };
+
     const k = classifyDay(r, noteExempt);
 
     if (k.isLeave) return { date: day, leaveType: '연차' };
 
     if (!k.present) {
       // 비정기 근무자는 결근(출근누락/노트누락) 집계에서 제외
-      const countAbsent = isWorkday && !irregular;
+      const countAbsent = treatWorkday && !irregular;
       if (countAbsent) { missingIn++; if (k.missingNote) missingNote++; }
       return { date: day, missing: countAbsent, noNote: countAbsent && k.missingNote };
     }
 
     const hasIn = Boolean(r.check_in_time);
 
-    // 평일 KPI + 주말 출근한 경우도 KPI 반영
-    if (isWorkday || hasIn) {
+    if (treatWorkday || hasIn) {
       if (k.missingOut)  missingOut++;
       else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
@@ -503,7 +506,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     };
   };
 
-  const days = allDisplayDays.map(day => buildDayEntry(day, workdaySet.has(day)));
+  const days = allDays.map(buildDayEntry);
 
   res.json({
     user,
