@@ -368,11 +368,16 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
     }
-    // 주말 출근 기록도 KPI에 반영 (미출근 주말은 제외)
+    // 비근무일이라도 실제 출근했거나 관리자가 무엇이든 인정한 날은 근무일로 취급해 KPI 반영
     for (const r of recs) {
       if (workdays.includes(r.date)) continue;
+      if (!(r.check_in_time || r.leave_type)) continue; // 활성화되지 않은 비근무일은 제외
       const k = classifyDay(r, !!w.note_exempt);
-      if (k.isLeave || !k.present) continue;
+      if (k.isLeave) continue;
+      if (!k.present) {
+        if (!w.irregular_worker) { missingIn++; if (k.missingNote) missingNote++; }
+        continue;
+      }
       if (k.missingOut) missingOut++;
       else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
@@ -542,32 +547,31 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
 
   // user|date -> record
   const recByUD: Record<string, any> = {};
-  const weekendWorkByUser: Record<string, Set<string>> = {};
+  // 비근무일이라도 실제 출근했거나 관리자가 무엇이든 인정(leave_type)한 날은 근무일로 취급
+  const activatedByUser: Record<string, Set<string>> = {};
   for (const r of records) {
     recByUD[`${r.user_id}|${r.date}`] = r;
-    const [dy, dm, dd] = r.date.split('-').map(Number);
-    const dow = new Date(Date.UTC(dy, dm - 1, dd, 12)).getUTCDay();
-    if ((dow === 0 || dow === 6) && !workdaySet.has(r.date)) {
-      const worked = Boolean(r.check_in_time) || r.leave_type === '연차' || leaveCountsAsCheckIn(r.leave_type);
-      if (worked) (weekendWorkByUser[r.user_id] ||= new Set()).add(r.date);
+    if (!workdaySet.has(r.date) && (Boolean(r.check_in_time) || Boolean(r.leave_type))) {
+      (activatedByUser[r.user_id] ||= new Set()).add(r.date);
     }
   }
 
   const scores: Record<string, any> = {};
   for (const uid of ids) {
     let lateCount = 0, missingIn = 0, missingOut = 0, missingNote = 0;
-    const days = [...workdays, ...(weekendWorkByUser[uid] || [])];
+    const days = [...workdays, ...(activatedByUser[uid] || [])];
     for (const day of days) {
-      const isWorkday = workdaySet.has(day);
       const r = recByUD[`${uid}|${day}`];
+      // 달력상 근무일이거나, 비근무일이어도 출근/인정으로 활성화된 날 → 근무일로 취급
+      const treatWorkday = workdaySet.has(day) || Boolean(r?.check_in_time) || Boolean(r?.leave_type);
       const k = classifyDay(r, noteExemptById[uid]);
       if (k.isLeave) continue;
       if (!k.present) {
         // 비정기 근무자는 결근(출근누락/노트누락) 집계에서 제외
-        if (isWorkday && !irregularById[uid]) { missingIn++; if (k.missingNote) missingNote++; }
+        if (treatWorkday && !irregularById[uid]) { missingIn++; if (k.missingNote) missingNote++; }
         continue;
       }
-      if (isWorkday || Boolean(r?.check_in_time)) {
+      if (treatWorkday || Boolean(r?.check_in_time)) {
         if (k.missingOut) missingOut++;
         else if (k.isLate) lateCount++;
         if (k.missingNote) missingNote++;
@@ -1260,8 +1264,9 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
 
       if (lt === '연차') { leaveCount++; days.push({ leave: '연차' }); continue; }
 
-      // 근무일 판정: 비정기 근로자는 실제 출근(또는 출근인정)한 날만, 그 외엔 평일(공휴일 제외)+공휴일/주말 출근한 날
-      const workday = w.irregular_worker ? present : ((!isWeekend && !isHol) || present);
+      // 근무일 판정: 비근무일이어도 실제 출근했거나 관리자가 무엇이든 인정(leave_type)하면 근무일로 취급
+      const activated = present || !!lt;
+      const workday = w.irregular_worker ? activated : ((!isWeekend && !isHol) || activated);
 
       if (!workday) { days.push({ off: true }); continue; }   // 근무일 아님 → '-'
       if (present) dayTotals[d]++; // 실제 출근 또는 관리자 출근인정 모두 포함

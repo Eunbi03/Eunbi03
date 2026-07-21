@@ -76,6 +76,8 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     const isWorkday = workdaySet.has(date);
     const k = classifyDay(r, noteExempt);
     const lt = r?.leave_type ?? null;
+    // 비근무일이어도 실제 출근했거나 관리자가 무엇이든 인정(leave_type)하면 근무일로 취급
+    const treatWorkday = isWorkday || Boolean(r?.check_in_time) || Boolean(lt);
 
     const day: ReportDay = { date, dow, isWeekend, isHol, holidayName: holNameByDate[date] || null, outings: [] };
 
@@ -83,7 +85,7 @@ export async function buildIndividualReport(userId: string, from: string, to: st
 
     if (!k.present) {
       // 비정기 근무자는 근무일이 특정되지 않으므로 결근(출근누락/노트누락) 집계에서 제외
-      if (isWorkday && !irregular) {
+      if (treatWorkday && !irregular) {
         missingIn++; day.missing = true;
         if (k.missingNote) { missingNote++; noteMissDates.push(date); }
       }
@@ -91,7 +93,7 @@ export async function buildIndividualReport(userId: string, from: string, to: st
       continue;
     }
 
-    if (isWorkday || Boolean(r.check_in_time)) {
+    if (treatWorkday || Boolean(r.check_in_time)) {
       if (k.missingOut) missingOut++;
       else if (k.isLate) lateCount++;
       if (k.missingNote) { missingNote++; noteMissDates.push(date); }

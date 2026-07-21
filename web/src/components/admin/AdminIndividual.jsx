@@ -157,7 +157,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, isHR }) {
             <div style={{ fontSize: 13, fontWeight: 700, color: COL.gray }}>{day.date.slice(5)}</div>
             <div style={{ fontSize: 11, color: COL.gray }}>{dow}</div>
           </div>
-          <span style={{ ...S.badge, background: "#ececec", color: COL.gray, fontSize: 12 }}>근무일 X</span>
+          <span style={{ ...S.badge, background: "#ececec", color: COL.gray, fontSize: 12 }}>비근무일</span>
           <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
       </>
