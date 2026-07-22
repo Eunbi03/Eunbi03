@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { C, S } from "../styles.js";
 import { fmtTime, fmtDur } from "../utils/format.js";
 import { getLocation, startLocationWatch, stopLocationWatch, checkLocationPermission } from "../utils/device.js";
+import { startIosBackgroundLocation, stopIosBackgroundLocation } from "../utils/iosLocation.js";
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
 import Splash from "./Splash.jsx";
@@ -121,9 +122,11 @@ export default function Employee({ user }) {
     if (isCheckedIn && !isCheckedOut) {
       // 출근 중: GPS 감지 시작. 퇴근을 누르지 않아도 기본 퇴근시간+2시간에 자동 종료.
       startLocationWatch(endPlus2hMs(schedule.end));
+      startIosBackgroundLocation(); // iOS 백그라운드 수집(안드로이드에서는 무시됨)
     } else if (isCheckedOut) {
       // 퇴근 버튼을 누르면 즉시 종료
       stopLocationWatch();
+      stopIosBackgroundLocation();
     }
     // 로그아웃/화면 이탈 시에는 끄지 않는다 — 랜덤 확인을 위해 근무 세션 동안 유지
     // (퇴근 또는 기본 퇴근시간+2시간에 자동 종료됨)

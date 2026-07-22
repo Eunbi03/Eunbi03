@@ -59,6 +59,30 @@ router.post('/native-submit',
   }
 );
 
+// GET /api/random-check/today-tokens
+// iOS 백그라운드 수집용: 오늘 아직 제출하지 않은 슬롯 목록과, 각 슬롯 전용 단기 서명 토큰(t)을 반환한다.
+// (iOS는 무음 푸시로 시각에 맞춰 깨울 수 없으므로, 출근 시 토큰을 받아 네이티브가 해당 시각에 제출한다.)
+router.get('/today-tokens', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query(
+    `SELECT id, scheduled_time FROM random_location_checks
+     WHERE user_id=$1 AND date=(now() AT TIME ZONE 'Asia/Seoul')::date
+       AND skipped=FALSE AND submitted_time IS NULL
+     ORDER BY scheduled_time`,
+    [req.user.userId]
+  );
+  const slots = rows.map((r: any) => {
+    // 각 토큰은 해당 슬롯 마감(시각+5분) 직후까지만 유효
+    const expSec = Math.floor(new Date(r.scheduled_time).getTime() / 1000) + 6 * 60;
+    const t = jwt.sign(
+      { checkId: r.id, uid: req.user.userId, purpose: 'rc' },
+      process.env.JWT_SECRET as string,
+      { expiresIn: Math.max(60, expSec - Math.floor(Date.now() / 1000)) }
+    );
+    return { checkId: r.id, scheduledTime: r.scheduled_time, t };
+  });
+  res.json({ slots });
+});
+
 // GET /api/random-check/pending
 router.get('/pending', requireAuth, async (req: Request, res: Response): Promise<void> => {
   // 활성화(notification_sent)된 슬롯 중, 스킵되지 않고 미제출이며

@@ -88,6 +88,7 @@ export const getAttendanceHistory = (params = {}) => { const qs = new URLSearchP
 
 /* 랜덤 체크 */
 export const getPendingRandomCheck = () => request("/random-check/pending");
+export const getRandomCheckTokens = () => request("/random-check/today-tokens");
 export const submitRandomCheck = (checkId, location) => request(`/random-check/${checkId}/submit`, {
   method: "POST", body: { lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false },
 });
