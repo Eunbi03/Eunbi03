@@ -3,12 +3,13 @@ import { C, S } from "../styles.js";
 import { getLocation } from "../utils/device.js";
 import * as api from "../api/client.js";
 
-export default function OutForm({ onClose, onDone, workplaceName, initialNote = "", outings = [], activeOuting = null }) {
+export default function OutForm({ onClose, onDone, workplaceName, checkInPlace = null, initialNote = "", outings = [], activeOuting = null }) {
   const dests = outings.map((o) => o.destination).filter(Boolean);
   // "외근지에서 바로 퇴근?"은 복귀하지 않고 진행 중인 외근이 있을 때만 물어본다.
   const lastDest = activeOuting?.destination || "";
 
-  const [workNoteIn, setWorkNoteIn] = useState(workplaceName || "");
+  // 출근 장소: 외근지에서 출근한 것으로 판단되면 그 외근지를, 아니면 기본 근무지를 기본값으로.
+  const [workNoteIn, setWorkNoteIn] = useState(checkInPlace || workplaceName || "");
   const [workNoteOut, setWorkNoteOut] = useState(workplaceName || "");
   // 외근 장소: 오늘 다녀온 외근지들을 순서대로 자동 기입 (수정 가능)
   const [workNoteField, setWorkNoteField] = useState(dests.join(", "));

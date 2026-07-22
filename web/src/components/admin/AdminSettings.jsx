@@ -76,7 +76,7 @@ function CardRow({ children }) {
 }
 
 /* ── 근무지 관리 (카카오 주소검색 → 좌표 자동) ─────────────────────────────── */
-const emptyWp = { name: "", radius_m: 300, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
+const emptyWp = { name: "", radius_m: 500, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
 function WorkplaceSection() {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false); const [editing, setEditing] = useState(null);
@@ -105,7 +105,7 @@ function WorkplaceSection() {
     if (!form.name.trim()) { setMsg({ text: "근무지명을 입력해주세요.", ok: false }); return; }
     if (form.lat === "" || form.lng === "") { setMsg({ text: "주소를 검색해 좌표를 채워주세요.", ok: false }); return; }
     setBusy(true); setMsg(null); setDup({ name: false, address: false });
-    const body = { name: form.name.trim(), lat: parseFloat(form.lat), lng: parseFloat(form.lng), radiusM: parseInt(form.radius_m, 10) || 300, address: form.address.trim(), postalCode: form.postalCode, detailAddress: form.detailAddress.trim() };
+    const body = { name: form.name.trim(), lat: parseFloat(form.lat), lng: parseFloat(form.lng), radiusM: parseInt(form.radius_m, 10) || 500, address: form.address.trim(), postalCode: form.postalCode, detailAddress: form.detailAddress.trim() };
     try {
       if (editing) await api.updateWorkplace(editing, body); else await api.createWorkplace(body);
       reset(); setMsg({ text: "저장되었습니다.", ok: true }); load();
@@ -175,10 +175,10 @@ function WorkplaceSection() {
       {loading ? <div style={S.empty}>불러오는 중…</div> : !list.length && !adding ? <div style={S.empty}>등록된 근무지가 없습니다.</div> : list.map((wp) => (
         <CardRow key={wp.id}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{wp.name} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {wp.radius_m || 300}m</span></p>
+            <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{wp.name} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {wp.radius_m || 500}m</span></p>
             <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
           </div>
-          <EditButton onClick={() => { setForm({ name: wp.name || "", radius_m: wp.radius_m || 300, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setEditing(wp.id); setAdding(false); setMsg(null); setDup({ name: false, address: false }); }} />
+          <EditButton onClick={() => { setForm({ name: wp.name || "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setEditing(wp.id); setAdding(false); setMsg(null); setDup({ name: false, address: false }); }} />
           <DeleteButton onClick={() => del(wp.id)} disabled={busy} />
         </CardRow>
       ))}

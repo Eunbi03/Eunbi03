@@ -92,7 +92,7 @@ router.post('/workplaces', requireAdmin, async (req: Request, res: Response): Pr
   if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
   const { rows } = await pool.query(
     'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-    [name, lat, lng, radiusM || 300, address || null, postalCode || null, detailAddress || null]
+    [name, lat, lng, radiusM || 500, address || null, postalCode || null, detailAddress || null]
   );
   res.status(201).json({ workplace: rows[0] });
 });
@@ -103,7 +103,7 @@ router.put('/workplaces/:id', requireAdmin, async (req: Request, res: Response):
   if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
   const { rows } = await pool.query(
     'UPDATE workplaces SET name=$1, lat=$2, lng=$3, radius_m=$4, address=$5, postal_code=$6, detail_address=$7 WHERE id=$8 RETURNING *',
-    [name, lat, lng, radiusM || 300, address || null, postalCode || null, detailAddress || null, req.params.id]
+    [name, lat, lng, radiusM || 500, address || null, postalCode || null, detailAddress || null, req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '근무지를 찾을 수 없습니다.' }); return; }
   res.json({ workplace: rows[0] });
@@ -133,7 +133,7 @@ router.post('/workplaces/bulk', requireAdmin, async (req: Request, res: Response
       if (!g) { failed.push({ name, reason: '주소 검색 실패(좌표 없음)' }); continue; }
       await pool.query(
         'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [name, g.lat, g.lng, parseInt(r.radiusM, 10) || 300, g.road, g.zone || null, (r.detailAddress || '').trim() || null]
+        [name, g.lat, g.lng, parseInt(r.radiusM, 10) || 500, g.road, g.zone || null, (r.detailAddress || '').trim() || null]
       );
       success++;
     } catch (e: any) { failed.push({ name, reason: e.message }); }

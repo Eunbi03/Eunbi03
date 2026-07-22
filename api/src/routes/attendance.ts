@@ -24,7 +24,7 @@ async function calcDistance(userId: string, lat: number, lng: number): Promise<{
      LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [userId]
   );
   if (!rows[0] || rows[0].lat == null) return { distanceM: null, wpName: null };
-  const { distanceM } = isWithinRadius({ lat, lng, workplaceLat: rows[0].lat, workplaceLng: rows[0].lng, radiusM: rows[0].radius_m || 200 });
+  const { distanceM } = isWithinRadius({ lat, lng, workplaceLat: rows[0].lat, workplaceLng: rows[0].lng, radiusM: rows[0].radius_m || 500 });
   return { distanceM: Math.round(distanceM * 10) / 10, wpName: rows[0].name };
 }
 
@@ -225,7 +225,7 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
   const date = todayKST();
   const [{ rows: attRows }, { rows: userRows }] = await Promise.all([
     pool.query(`SELECT * FROM attendance_records WHERE user_id=$1 AND date=$2`, [req.user.userId, date]),
-    pool.query(`SELECT u.scheduled_start, u.scheduled_end, u.irregular_worker, w.name AS workplace_name
+    pool.query(`SELECT u.scheduled_start, u.scheduled_end, u.irregular_worker, w.name AS workplace_name, w.radius_m
                 FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [req.user.userId]),
   ]);
 
@@ -233,6 +233,7 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
     start: userRows[0]?.scheduled_start?.slice(0, 5) || '09:00',
     end: userRows[0]?.scheduled_end?.slice(0, 5) || '18:00',
     workplaceName: userRows[0]?.workplace_name || null,
+    radiusM: userRows[0]?.radius_m ?? 500,
   };
 
   // 알림용: 비정기 근무자 여부 + 오늘이 근무일(주말·공휴일 제외)인지
