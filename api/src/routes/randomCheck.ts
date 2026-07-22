@@ -71,7 +71,7 @@ router.get('/today-tokens', requireAuth, async (req: Request, res: Response): Pr
     [req.user.userId]
   );
   const slots = rows.map((r: any) => {
-    // 각 토큰은 해당 슬롯 마감(시각+5분) 직후까지만 유효
+    // 각 토큰은 해당 슬롯 마감(시각+5분) 직후(+6분)까지만 유효
     const expSec = Math.floor(new Date(r.scheduled_time).getTime() / 1000) + 6 * 60;
     const t = jwt.sign(
       { checkId: r.id, uid: req.user.userId, purpose: 'rc' },

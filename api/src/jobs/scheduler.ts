@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
 import { generateRandomMinuteOffsets, offsetsToDateTimes } from '../utils/randomTimeSlots';
 import { sendDataPush, fcmEnabled } from '../services/fcm';
-import { isWorkday } from '../utils/holidays';
+import { isWorkday, loadHolidayCache } from '../utils/holidays';
 
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
@@ -11,6 +11,8 @@ function todayKST(): string {
 
 async function generateDailyRandomCheckSlots() {
   const date = todayKST();
+  // 공휴일 판정이 최신이 되도록 캐시를 다시 로드(부팅 시 실패로 비어있는 경우 방지)
+  try { await loadHolidayCache(); } catch (e: any) { console.error('[랜덤체크] 공휴일 캐시 로드 실패, 생성 건너뜀:', e.message); return; }
   // 주말·공휴일에는 아예 생성하지 않는다.
   if (!isWorkday(date)) { console.log(`[랜덤체크] ${date} 근무일 아님 — 생성 건너뜀`); return; }
   const { rows: users } = await pool.query(
@@ -83,6 +85,8 @@ async function activateDueRandomChecks() {
 
 async function finalizeAbsentees() {
   const date = todayKST();
+  // 공휴일 판정 캐시를 다시 로드. 실패하면 결근 오처리를 막기 위해 마감을 건너뛴다(fail-safe).
+  try { await loadHolidayCache(); } catch (e: any) { console.error('[결근 마감] 공휴일 캐시 로드 실패, 마감 건너뜀:', e.message); return; }
   // 주말·공휴일에는 결근으로 처리하지 않는다.
   if (!isWorkday(date)) {
     console.log(`[결근 마감] ${date} — 근무일 아님(주말/공휴일), 건너뜀`);

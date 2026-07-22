@@ -15,7 +15,9 @@ router.use(requireAuth, requireAdmin);
 // 직원 신규 등록/재활성화 시 당일 남은 랜덤 확인 슬롯을 생성한다(실패해도 등록은 진행).
 async function generateTodaySlots(
   userId: string, scheduledStart?: string, scheduledEnd?: string, lunchStart?: string, lunchEnd?: string,
+  irregular?: boolean,
 ): Promise<void> {
+  if (irregular) return; // 비정기 근무자는 랜덤 확인 대상이 아니므로 생성하지 않음
   try {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
     await generateRandomCheckSlotsForUser(
@@ -220,7 +222,7 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
            scheduledStart || '09:00', scheduledEnd || '18:00', lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null,
            !!noteExempt, !!irregularWorker, passwordHash, ex.id]
         );
-        await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
+        await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, !!irregularWorker);
         res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits, reactivated: true });
         return;
       }
@@ -245,7 +247,7 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
        scheduledStart || '09:00', scheduledEnd || '18:00',
        lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker]
     );
-    await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd);
+    await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, !!irregularWorker);
     res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 정보입니다.' });

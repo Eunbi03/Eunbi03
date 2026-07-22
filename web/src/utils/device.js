@@ -71,8 +71,9 @@ export async function startLocationWatch(autoStopAtMs = null) {
   // 자동 종료 예약(있으면 갱신)
   if (_autoStopTimer !== null) { clearTimeout(_autoStopTimer); _autoStopTimer = null; }
   if (typeof autoStopAtMs === "number") {
-    const delay = Math.max(0, autoStopAtMs - Date.now());
-    _autoStopTimer = setTimeout(() => { stopLocationWatch(); }, delay);
+    const delay = autoStopAtMs - Date.now();
+    // 이미 지난 시각이면(예: 기본 퇴근+2시간 이후 출근) 즉시 종료하지 않고 그냥 감지를 유지
+    if (delay > 0) _autoStopTimer = setTimeout(() => { stopLocationWatch(); }, delay);
   }
   if (_watchId !== null) return; // 이미 감지 중이면 타이머만 갱신
   await ensurePermission();
