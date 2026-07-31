@@ -5,6 +5,7 @@ import { isWithinRadius, validateGpsReport, haversineDistanceMeters } from '../u
 import { requireAuth } from '../middleware/auth';
 import { workdaysBetween, isHoliday } from '../utils/holidays';
 import { classifyDay } from '../utils/attendanceKpi';
+import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
 
 const router = Router();
 const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '500');
@@ -84,6 +85,22 @@ router.post('/check-in', requireAuth,
         [userId, date, lat, lng, distanceM, status]
       ));
     }
+    // 오늘 랜덤 확인 슬롯이 아직 없으면, 출근을 기준으로 그날 남은 시간에 생성한다.
+    // - 비정기 근무자: 새벽 5시 자동생성 대상이 아니므로 출근한 날에만 생성
+    // - 정기 근무자가 비근무일(주말·공휴일)에 출근한 경우: 5시 생성이 건너뛰어졌으므로 생성
+    // - 정기 근무자의 평일: 이미 5시에 생성되어 슬롯이 있으므로 건너뜀(중복 방지)
+    try {
+      const { rows: slotRows } = await pool.query(
+        'SELECT 1 FROM random_location_checks WHERE user_id=$1 AND date=$2 LIMIT 1', [userId, date]
+      );
+      if (slotRows.length === 0) {
+        const { rows: u } = await pool.query(
+          'SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE id=$1', [userId]
+        );
+        if (u[0]) await generateRandomCheckSlotsForUser(u[0], date, true, true); // onlyFuture + force
+      }
+    } catch (e: any) { console.error('[출근 시 랜덤슬롯 생성 실패]', e.message); }
+
     res.status(201).json({ success: true, record: rows[0], distanceM });
   }
 );

@@ -35,9 +35,11 @@ export async function generateRandomCheckSlotsForUser(
   user: { id: string; scheduled_start: string; scheduled_end: string; lunch_start: string; lunch_end: string },
   date: string,
   onlyFuture = false,
+  force = false,
 ): Promise<number> {
   // 주말·공휴일 등 근무일이 아니면 랜덤 확인 슬롯을 만들지 않는다.
-  if (!isWorkday(date)) return 0;
+  // (force=true면 근무일 여부와 무관하게 생성 — 비근무일 실제 출근, 비정기 근무자 출근 대응)
+  if (!force && !isWorkday(date)) return 0;
   // 값이 없을 수 있으므로 기본값으로 방어 (미설정 근로자도 생성 실패하지 않게)
   const offsets = generateRandomMinuteOffsets({
     workStart: (user.scheduled_start || '09:00').slice(0, 5),
