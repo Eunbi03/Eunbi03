@@ -44,3 +44,20 @@ export async function sendDataPush(token: string, data: Record<string, string>):
     return false;
   }
 }
+
+// 화면에 보이는 알림(출근/퇴근/노트 리마인더용)
+export async function sendNotification(token: string, title: string, body: string): Promise<boolean> {
+  init();
+  if (!_enabled || !token) return false;
+  try {
+    await admin.messaging().send({
+      token,
+      notification: { title, body },
+      android: { priority: 'high', notification: { sound: 'default' } },
+    });
+    return true;
+  } catch (e: any) {
+    console.error('[FCM] 알림 전송 실패:', e.message);
+    return false;
+  }
+}

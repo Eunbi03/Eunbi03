@@ -7,6 +7,7 @@ import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
 import Splash from "./Splash.jsx";
 import { scheduleDailyReminders } from "../utils/notify.js";
+import { Capacitor } from "@capacitor/core";
 import { registerPushToken } from "../utils/push.js";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
 import * as api from "../api/client.js";
@@ -135,6 +136,9 @@ export default function Employee({ user }) {
   // 출퇴근/노트 알림을 현재 상태에 맞게 (재)예약 — 버튼 이미 눌렀으면 해당 알림은 예약 안 됨
   useEffect(() => {
     if (!schedule) return;
+    // 안드로이드는 서버 FCM 푸시로 리마인더를 보내므로 로컬 알림을 예약하지 않는다(중복 방지).
+    // iOS·웹은 서버 푸시 경로가 없으므로 기존 로컬 알림을 유지한다.
+    if (Capacitor.getPlatform() === "android") return;
     scheduleDailyReminders({
       startTime: schedule.start,
       endTime: schedule.end,

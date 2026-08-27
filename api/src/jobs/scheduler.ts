@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
 import { generateRandomMinuteOffsets, offsetsToDateTimes } from '../utils/randomTimeSlots';
-import { sendDataPush, fcmEnabled } from '../services/fcm';
+import { sendDataPush, sendNotification, fcmEnabled } from '../services/fcm';
 import { isWorkday, loadHolidayCache } from '../utils/holidays';
 
 function todayKST(): string {
@@ -107,11 +107,78 @@ async function finalizeAbsentees() {
   console.log(`[결근 마감] ${date} 완료 (정기 근무자 ${users.length}명 대상)`);
 }
 
+// 현재 KST 기준 자정으로부터의 분(0~1439)
+function nowMinutesKST(): number {
+  const hm = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit' });
+  const [h, m] = hm.split(':').map(Number);
+  return h * 60 + m;
+}
+function hhmmToMin(hhmm: string): number {
+  const [h, m] = String(hhmm || '').slice(0, 5).split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// 출근-5분 / 퇴근-5분 / 노트(퇴근시각) 리마인더를 서버가 직접 푸시로 보낸다.
+// - 매분 실행. 각 근로자의 상태(출근/퇴근/노트/연차)를 DB로 판단해 필요한 사람에게만 발송.
+// - 하루 한 번만(daily_reminders_sent 로 중복 방지). 서버 지연 대비 15분 창 안이면 발송.
+async function sendDailyReminders() {
+  if (!fcmEnabled()) return;
+  const date = todayKST();
+  try { await loadHolidayCache(); } catch { /* 캐시 유지 */ }
+  const workday = isWorkday(date);
+  const nowMin = nowMinutesKST();
+  const WINDOW = 15; // 목표 시각 이후 15분 이내면 발송(지연·재시작 대비)
+
+  // 정기 근무자 + 오늘 근태/노트 상태
+  const { rows } = await pool.query(
+    `SELECT u.id, u.scheduled_start, u.scheduled_end, u.fcm_token,
+            ar.check_in_time, ar.check_out_time, ar.leave_type,
+            COALESCE(ar.work_note_today, ar.daily_report) AS note
+     FROM users u
+     LEFT JOIN attendance_records ar ON ar.user_id=u.id AND ar.date=$1
+     WHERE u.role='worker' AND u.is_active=TRUE AND COALESCE(u.irregular_worker,FALSE)=FALSE
+       AND u.fcm_token IS NOT NULL`,
+    [date]
+  );
+
+  for (const r of rows) {
+    if (r.leave_type === '연차') continue; // 연차일은 알림 없음
+    const startMin = hhmmToMin(r.scheduled_start || '09:00');
+    const endMin = hhmmToMin(r.scheduled_end || '18:00');
+    const hasIn = !!r.check_in_time;
+    const hasOut = !!r.check_out_time;
+    const hasNote = !!(r.note && String(r.note).trim());
+
+    const due: Array<{ type: string; title: string; body: string }> = [];
+    // 출근 5분 전 — 근무일이고 아직 출근 안 함
+    if (workday && !hasIn && nowMin >= startMin - 5 && nowMin < startMin - 5 + WINDOW)
+      due.push({ type: 'checkIn', title: 'TimeCard', body: '출근 체크 잊지 마세요!' });
+    // 퇴근 5분 전 — 출근했고 아직 퇴근 안 함
+    if (hasIn && !hasOut && nowMin >= endMin - 5 && nowMin < endMin - 5 + WINDOW)
+      due.push({ type: 'checkOut', title: 'TimeCard', body: '퇴근 체크 잊지 마세요!' });
+    // 노트 미작성 — 출근했고 노트 없음, 퇴근시각부터
+    if (hasIn && !hasNote && nowMin >= endMin && nowMin < endMin + WINDOW)
+      due.push({ type: 'note', title: 'TimeCard', body: '근무노트가 아직 작성되지 않았어요!' });
+
+    for (const d of due) {
+      // 중복 방지: 오늘 이 타입을 이미 보냈으면 skip
+      const ins = await pool.query(
+        `INSERT INTO daily_reminders_sent (user_id, date, type) VALUES ($1,$2,$3)
+         ON CONFLICT (user_id, date, type) DO NOTHING RETURNING 1`,
+        [r.id, date, d.type]
+      );
+      if (ins.rowCount === 0) continue; // 이미 보냄
+      await sendNotification(r.fcm_token, d.title, d.body);
+    }
+  }
+}
+
 export function startScheduler() {
   // 시작 시 FCM 초기화 상태를 즉시 로그로 남긴다.
   console.log(`[FCM] 푸시 사용 가능: ${fcmEnabled() ? '예' : '아니오(키 파일 확인 필요)'}`);
   cron.schedule('0 5 * * *', generateDailyRandomCheckSlots, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', activateDueRandomChecks, { timezone: 'Asia/Seoul' });
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
+  cron.schedule('* * * * *', sendDailyReminders, { timezone: 'Asia/Seoul' });
   console.log('[스케줄러] 모든 정기 작업 등록 완료');
 }
