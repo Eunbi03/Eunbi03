@@ -57,3 +57,59 @@ cd web/ios/App && pod install
 - 사용자가 "항상 허용"을 "앱 사용 중에만"으로 낮추거나, 정지 상태가 길어 위치 콜백이 창 안에 안 오면 놓칠 수 있음.
 - 앱 강제 종료 시 중단. (포그라운드에서는 제약 없이 수집)
 - 이 코드는 이 환경에서 컴파일 검증되지 않았습니다. 맥에서 빌드 중 오류가 나면 알려주세요.
+
+---
+
+# iOS 푸시 알림(APNs/FCM) — 출근/퇴근/노트 리마인더
+
+서버는 이미 FCM 토큰으로 `sendNotification`을 보냅니다. iOS가 **FCM 토큰을 등록**하고
+**APNs로 알림을 받도록** 아래를 설정하면, 안드로이드와 동일하게 서버 푸시 알림이 옵니다.
+**Apple 개발자 계정(유료)** 이 필요합니다.
+
+## 1. Firebase 콘솔 (iOS 앱 등록 + APNs 키)
+1. Firebase 콘솔 → 프로젝트 → **iOS 앱 추가**, Bundle ID = `com.kpride.timecard`(Xcode와 동일하게)
+2. **`GoogleService-Info.plist`** 다운로드
+3. Apple 개발자 사이트 → **APNs 인증 키(.p8)** 발급 (Key ID·Team ID 메모)
+4. Firebase → 프로젝트 설정 → **Cloud Messaging → Apple 앱 구성 → APNs 인증 키 업로드**(.p8 + Key ID + Team ID)
+
+## 2. Xcode
+1. 다운로드한 **`GoogleService-Info.plist`** 를 App/App 그룹에 드래그(Target App 체크)
+2. **Signing & Capabilities → + Capability**:
+   - **Push Notifications** 추가
+   - **Background Modes** → **Remote notifications** 체크(기존 Location updates와 함께)
+3. `web/ios-native/`의 **`FcmPlugin.swift`, `FcmPlugin.m`** 을 App/App 그룹에 추가(.m 추가 시 브리징 헤더 유지)
+4. **AppDelegate.swift** 를 `web/ios-native/AppDelegate-reference.swift` 의 ★ 표시대로 수정
+   (Firebase 초기화 + APNs 토큰 연결 + 포그라운드 배너 표시)
+
+## 3. Podfile (ios/App/Podfile)
+App 타깃에 Firebase Messaging 추가:
+```ruby
+target 'App' do
+  capacitor_pods
+  # ↓ 추가
+  pod 'FirebaseMessaging'
+end
+```
+그다음:
+```bash
+cd web/ios/App && pod install
+```
+
+## 4. 빌드·확인
+- 실기기에서 Run → 앱 로그인 시 알림 권한 허용 → `push.js`가 FCM 토큰을 서버에 등록
+- 서버가 출근-5분/퇴근-5분/노트 시각에 알림 발송 → iOS에 표시
+
+## 5. ⚠️ 로컬 알림 중복 끄기 (APNs 확인 후)
+현재 `web/src/components/Employee.jsx`는 **안드로이드만** 로컬 알림을 끕니다.
+iOS 서버 푸시가 정상 동작하는 걸 확인한 뒤, 그 가드를 아래처럼 바꿔 **iOS도 로컬 알림을 끄세요**
+(안 그러면 로컬+서버 알림이 중복됩니다):
+```js
+// 변경 전: if (Capacitor.getPlatform() === "android") return;
+// 변경 후(iOS도 서버 푸시 사용 시):
+if (Capacitor.getPlatform() !== "web") return;
+```
+> APNs 설정 전에는 이 줄을 바꾸지 마세요. 바꾸면 APNs가 준비되기 전 iOS에 리마인더가 아예 안 옵니다.
+
+## 참고
+- 시뮬레이터는 원격 푸시 수신이 제한적입니다. **실기기**에서 확인하세요.
+- 위 Swift/설정은 이 환경에서 컴파일 검증되지 않았습니다. 빌드 오류 시 로그를 알려주세요.
