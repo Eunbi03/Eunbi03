@@ -138,7 +138,8 @@ export default function Employee({ user }) {
     if (!schedule) return;
     // 안드로이드는 서버 FCM 푸시로 리마인더를 보내므로 로컬 알림을 예약하지 않는다(중복 방지).
     // 단, FCM 알림이 화면에 뜨려면 알림 권한(Android 13+)은 반드시 요청해야 한다.
-    // iOS·웹은 서버 푸시 경로가 없으므로 기존 로컬 알림을 유지한다.
+    // iOS는 APNs 설정 전까지 로컬 알림 유지. APNs 연동 후에는 이 가드를 '!== "web"'로 바꿔
+    // iOS도 로컬을 꺼야 한다(서버 푸시와 중복 방지). 자세한 절차는 web/ios-native/README 참고.
     if (Capacitor.getPlatform() === "android") { ensureNotifPermission(); return; }
     scheduleDailyReminders({
       startTime: schedule.start,

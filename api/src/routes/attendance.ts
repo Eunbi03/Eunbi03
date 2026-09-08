@@ -15,7 +15,8 @@ function todayKST(): string {
 }
 
 function nowHHMM(): string {
-  return new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false }).slice(0, 5);
+  const s = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false }).slice(0, 5);
+  return s === '24:00' ? '00:00' : s; // 일부 환경에서 자정이 24:00으로 나오는 경우 방어
 }
 
 // 사용자 근무지 정보 조회 + 거리 계산 (블록하지 않음, 기록만)

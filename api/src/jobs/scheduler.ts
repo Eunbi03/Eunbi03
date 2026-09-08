@@ -111,7 +111,8 @@ async function finalizeAbsentees() {
 function nowMinutesKST(): number {
   const hm = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit' });
   const [h, m] = hm.split(':').map(Number);
-  return h * 60 + m;
+  const min = h * 60 + m;
+  return min >= 1440 ? 0 : min; // 일부 환경에서 자정이 24:00으로 나오는 경우 방어
 }
 function hhmmToMin(hhmm: string): number {
   const [h, m] = String(hhmm || '').slice(0, 5).split(':').map(Number);
@@ -131,7 +132,7 @@ async function sendDailyReminders() {
 
   // 정기 근무자 + 오늘 근태/노트 상태
   const { rows } = await pool.query(
-    `SELECT u.id, u.scheduled_start, u.scheduled_end, u.fcm_token,
+    `SELECT u.id, u.scheduled_start, u.scheduled_end, u.fcm_token, u.note_exempt,
             ar.check_in_time, ar.check_out_time, ar.leave_type,
             COALESCE(ar.work_note_today, ar.daily_report) AS note
      FROM users u
@@ -156,19 +157,24 @@ async function sendDailyReminders() {
     // 퇴근 5분 전 — 출근했고 아직 퇴근 안 함
     if (hasIn && !hasOut && nowMin >= endMin - 5 && nowMin < endMin - 5 + WINDOW)
       due.push({ type: 'checkOut', title: 'TimeCard', body: '퇴근 체크 잊지 마세요!' });
-    // 노트 미작성 — 출근했고 노트 없음, 퇴근시각부터
-    if (hasIn && !hasNote && nowMin >= endMin && nowMin < endMin + WINDOW)
+    // 노트 미작성 — 출근했고 노트 없음, 퇴근시각부터 (근무노트 제외 대상은 알림 안 보냄)
+    if (hasIn && !hasNote && !r.note_exempt && nowMin >= endMin && nowMin < endMin + WINDOW)
       due.push({ type: 'note', title: 'TimeCard', body: '근무노트가 아직 작성되지 않았어요!' });
 
     for (const d of due) {
-      // 중복 방지: 오늘 이 타입을 이미 보냈으면 skip
-      const ins = await pool.query(
-        `INSERT INTO daily_reminders_sent (user_id, date, type) VALUES ($1,$2,$3)
-         ON CONFLICT (user_id, date, type) DO NOTHING RETURNING 1`,
+      // 이미 보냈으면 skip
+      const already = await pool.query(
+        'SELECT 1 FROM daily_reminders_sent WHERE user_id=$1 AND date=$2 AND type=$3',
         [r.id, date, d.type]
       );
-      if (ins.rowCount === 0) continue; // 이미 보냄
-      await sendNotification(r.fcm_token, d.title, d.body);
+      if ((already.rowCount ?? 0) > 0) continue;
+      // 전송에 성공했을 때만 발송 기록 → 실패 시 다음 분(창 내)에 재시도
+      const ok = await sendNotification(r.fcm_token, d.title, d.body);
+      if (ok) await pool.query(
+        `INSERT INTO daily_reminders_sent (user_id, date, type) VALUES ($1,$2,$3)
+         ON CONFLICT (user_id, date, type) DO NOTHING`,
+        [r.id, date, d.type]
+      );
     }
   }
 }
