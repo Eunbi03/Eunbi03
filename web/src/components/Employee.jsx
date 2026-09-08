@@ -6,7 +6,7 @@ import { startIosBackgroundLocation, stopIosBackgroundLocation } from "../utils/
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
 import Splash from "./Splash.jsx";
-import { scheduleDailyReminders } from "../utils/notify.js";
+import { scheduleDailyReminders, ensureNotifPermission } from "../utils/notify.js";
 import { Capacitor } from "@capacitor/core";
 import { registerPushToken } from "../utils/push.js";
 import useRandomCheckPolling from "../hooks/useRandomCheckPolling.js";
@@ -137,8 +137,9 @@ export default function Employee({ user }) {
   useEffect(() => {
     if (!schedule) return;
     // 안드로이드는 서버 FCM 푸시로 리마인더를 보내므로 로컬 알림을 예약하지 않는다(중복 방지).
+    // 단, FCM 알림이 화면에 뜨려면 알림 권한(Android 13+)은 반드시 요청해야 한다.
     // iOS·웹은 서버 푸시 경로가 없으므로 기존 로컬 알림을 유지한다.
-    if (Capacitor.getPlatform() === "android") return;
+    if (Capacitor.getPlatform() === "android") { ensureNotifPermission(); return; }
     scheduleDailyReminders({
       startTime: schedule.start,
       endTime: schedule.end,

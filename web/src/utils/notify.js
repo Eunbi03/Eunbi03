@@ -12,6 +12,12 @@ async function ensurePerm() {
   } catch { /* 웹 등에서 무시 */ }
 }
 
+// 알림 권한만 요청(Android 13+ POST_NOTIFICATIONS). 서버 FCM 알림 표시를 위해 필요.
+// 안드로이드는 로컬 알림을 예약하지 않지만, 이 권한이 있어야 FCM 알림이 화면에 뜬다.
+export async function ensureNotifPermission() {
+  await ensurePerm();
+}
+
 // "HH:MM" + 오늘 날짜 → Date(로컬시간), offsetMin 분 이동
 function todayAt(hhmm, offsetMin = 0) {
   if (!hhmm) return null;
