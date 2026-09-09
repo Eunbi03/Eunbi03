@@ -61,7 +61,7 @@ export default function FirstLoginFlow({ onDone }) {
         />
       )}
 
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: WBG, padding: 20 }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: WBG, padding: "max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom))" }}>
         <div style={{ ...CARD, width: "100%", maxWidth: 420 }}>
 
           {/* 단계 표시 */}

@@ -14,7 +14,7 @@ export default function Header({ user, onLogout }) {
   // 근로자 화면: 왼쪽 이름 / 오른쪽 로그아웃, 배경 #333333
   if (user?.role === "worker") {
     return (
-      <div style={{ background: "#333333", color: "#fff", padding: "14px clamp(14px, 4vw, 48px)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
+      <div style={{ background: "#333333", color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) clamp(14px, 4vw, 48px) 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
         <span style={{ fontWeight: 800, fontSize: 18, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name}</span>
         <button
           onClick={logout}
@@ -27,7 +27,7 @@ export default function Header({ user, onLogout }) {
   }
 
   return (
-    <div style={{ background: config.bg, color: "#fff", padding: "12px clamp(14px, 4vw, 48px)", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
+    <div style={{ background: config.bg, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) clamp(14px, 4vw, 48px) 12px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontWeight: 800, fontSize: 15, letterSpacing: -0.5, color: "#fff" }}>근태 관리</span>

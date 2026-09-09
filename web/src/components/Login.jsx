@@ -111,7 +111,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const labelStyle = { fontSize: t.labelSize, fontWeight: 700, color: t.labelColor };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: t.pageBg, padding: 20, transition: "background 0.2s" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: t.pageBg, padding: "max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom))", transition: "background 0.2s" }}>
       <form
         style={{
           width: "100%", maxWidth: 360, background: t.cardBg,
