@@ -136,11 +136,11 @@ export default function Employee({ user }) {
   // 출퇴근/노트 알림을 현재 상태에 맞게 (재)예약 — 버튼 이미 눌렀으면 해당 알림은 예약 안 됨
   useEffect(() => {
     if (!schedule) return;
-    // 안드로이드는 서버 FCM 푸시로 리마인더를 보내므로 로컬 알림을 예약하지 않는다(중복 방지).
-    // 단, FCM 알림이 화면에 뜨려면 알림 권한(Android 13+)은 반드시 요청해야 한다.
-    // iOS는 APNs 설정 전까지 로컬 알림 유지. APNs 연동 후에는 이 가드를 '!== "web"'로 바꿔
-    // iOS도 로컬을 꺼야 한다(서버 푸시와 중복 방지). 자세한 절차는 web/ios-native/README 참고.
-    if (Capacitor.getPlatform() === "android") { ensureNotifPermission(); return; }
+    // 네이티브 앱(안드로이드·iOS)은 서버 FCM/APNs 푸시로 리마인더를 보내므로
+    // 로컬 알림을 예약하지 않는다(중복 방지). 단, 알림이 화면에 뜨려면 알림 권한은 요청해야 한다.
+    // (웹만 로컬 알림 유지 — 웹은 서버 푸시 경로가 없음)
+    // ⚠️ iOS는 APNs/Firebase 연동(web/ios-native/README)이 완료돼야 서버 푸시가 옵니다.
+    if (Capacitor.getPlatform() !== "web") { ensureNotifPermission(); return; }
     scheduleDailyReminders({
       startTime: schedule.start,
       endTime: schedule.end,

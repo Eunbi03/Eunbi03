@@ -99,16 +99,15 @@ cd web/ios/App && pod install
 - 실기기에서 Run → 앱 로그인 시 알림 권한 허용 → `push.js`가 FCM 토큰을 서버에 등록
 - 서버가 출근-5분/퇴근-5분/노트 시각에 알림 발송 → iOS에 표시
 
-## 5. ⚠️ 로컬 알림 중복 끄기 (APNs 확인 후)
-현재 `web/src/components/Employee.jsx`는 **안드로이드만** 로컬 알림을 끕니다.
-iOS 서버 푸시가 정상 동작하는 걸 확인한 뒤, 그 가드를 아래처럼 바꿔 **iOS도 로컬 알림을 끄세요**
-(안 그러면 로컬+서버 알림이 중복됩니다):
+## 5. 로컬 알림 중복 방지 (이미 코드에 반영됨)
+`web/src/components/Employee.jsx`는 **네이티브(안드로이드·iOS) 모두** 로컬 알림을 예약하지 않고
+서버 FCM/APNs 푸시만 사용합니다(중복 방지). 별도 코드 수정은 필요 없습니다.
 ```js
-// 변경 전: if (Capacitor.getPlatform() === "android") return;
-// 변경 후(iOS도 서버 푸시 사용 시):
-if (Capacitor.getPlatform() !== "web") return;
+if (Capacitor.getPlatform() !== "web") { ensureNotifPermission(); return; }
 ```
-> APNs 설정 전에는 이 줄을 바꾸지 마세요. 바꾸면 APNs가 준비되기 전 iOS에 리마인더가 아예 안 옵니다.
+> ⚠️ 따라서 **iOS는 위 1~4단계(APNs/Firebase 연동)를 완료해야 리마인더가 옵니다.**
+> 연동 전에 iOS 앱을 배포하면 리마인더 알림이 오지 않습니다(로컬도 서버도 없음).
+> 랜덤 위치확인은 별개(BgLocation)라 이와 무관하게 동작합니다.
 
 ## 참고
 - 시뮬레이터는 원격 푸시 수신이 제한적입니다. **실기기**에서 확인하세요.
