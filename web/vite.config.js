@@ -13,7 +13,7 @@ export default defineConfig({
       manifest: false,
       includeAssets: ["favicon.png", "intro1.gif", "checkout.gif"],
       workbox: {
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/privacy\.html$/],
         globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
         runtimeCaching: [
           {
