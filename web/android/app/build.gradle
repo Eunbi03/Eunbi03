@@ -9,7 +9,7 @@ android {
     namespace "com.kpride.timecard"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.kpride.timecard"
+        applicationId "com.kpride.timecardapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersion
