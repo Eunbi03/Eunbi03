@@ -106,7 +106,7 @@ export async function checkLocationPermission() {
 // 가장 정확한 위치를 잡아서 반환한다. (한 번에 저장 실패 방지)
 export async function getLocation(opts = {}) {
   const desiredAccuracy = opts.desiredAccuracy ?? 500; // m — 이 이내면 즉시 사용
-  const maxWaitMs = opts.maxWaitMs ?? 12000;
+  const maxWaitMs = opts.maxWaitMs ?? 6000;
   await ensurePermission();
 
   // 이미 상시 감지(watch)로 충분히 정확한 위치가 있으면 바로 사용
@@ -116,7 +116,7 @@ export async function getLocation(opts = {}) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {
-      const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+      const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
       const loc = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
       if (!best || loc.acc < best.acc) best = loc;
       if (loc.acc <= desiredAccuracy) return loc; // 기준 충족 → 즉시 반환
