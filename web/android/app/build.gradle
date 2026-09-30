@@ -2,8 +2,16 @@ apply plugin: 'com.android.application'
 
 // ▼▼ 새 버전 배포 때 이 숫자만 1씩 올리세요 (예: 2, 3, …) ▼▼
 //    versionCode / versionName / APK 파일명이 모두 자동으로 맞춰집니다.
-def appVersion = 1
+def appVersion = 2
 // ▲▲ (숫자는 낮추면 안 됩니다) ▲▲
+
+// 릴리스 서명 설정: android/keystore.properties 에서 읽는다.
+// (비밀번호·키스토어 경로가 담기며 git에는 올리지 않는다. 파일이 없으면 서명 설정을 건너뛴다.)
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
 
 android {
     namespace "com.kpride.timecard"
@@ -21,8 +29,22 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            // keystore.properties가 있으면 릴리스 서명을 적용한다.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
