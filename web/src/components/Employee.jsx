@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { C, S } from "../styles.js";
 import { fmtTime, fmtDur } from "../utils/format.js";
 import { getLocation, startLocationWatch, stopLocationWatch, checkLocationPermission } from "../utils/device.js";
+import { ensureAlwaysLocation, openAppSettings } from "../utils/locationPerm.js";
 import { startIosBackgroundLocation, stopIosBackgroundLocation } from "../utils/iosLocation.js";
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
@@ -156,6 +157,16 @@ export default function Employee({ user }) {
   const checkIn = async () => {
     setBusy(true); setErr(""); setMsg("");
     try {
+      // 위치 권한이 "항상 허용"이 아니면 출근을 막고 설정으로 유도한다.
+      // (웹/플러그인 미탑재 시에는 ensureAlwaysLocation이 true를 반환해 막지 않음)
+      const always = await ensureAlwaysLocation();
+      if (!always) {
+        const go = window.confirm(
+          '출근하려면 위치 권한을 "항상 허용"으로 설정해야 합니다.\n\n설정 화면으로 이동하시겠습니까?'
+        );
+        if (go) await openAppSettings();
+        return;
+      }
       const loc = await getLocation();
       if (!loc) { setErr("위치를 가져올 수 없습니다. GPS를 확인해주세요."); return; }
       await api.checkIn(loc);

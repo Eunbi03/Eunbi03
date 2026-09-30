@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(FcmPlugin.class);
+        registerPlugin(LocationPermPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

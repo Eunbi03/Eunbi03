@@ -23,9 +23,15 @@ npx cap sync ios
 
 ## 2. 플러그인 파일 추가
 - Xcode로 `web/ios/App/App.xcworkspace` 열기.
-- 이 폴더의 **`BgLocationPlugin.swift`, `BgLocationPlugin.m`** 두 파일을
-  Xcode 프로젝트의 `App/App` 그룹에 드래그해 추가(“Copy items if needed” 체크).
+- 이 폴더의 다음 파일들을 Xcode 프로젝트의 `App/App` 그룹에 드래그해 추가(“Copy items if needed” 체크):
+  - **`BgLocationPlugin.swift`, `BgLocationPlugin.m`** (백그라운드 위치 수집)
+  - **`LocationPermPlugin.swift`, `LocationPermPlugin.m`** (출근 시 "항상 허용" 권한 확인/설정 유도)
 - `.m` 추가 시 Objective‑C 브리징 헤더 생성 여부를 물으면 **생성(Create)** 선택.
+
+> `LocationPerm` 플러그인은 출근 버튼을 누를 때 위치 권한이 "항상 허용"인지 확인하고,
+> 아니면 출근을 막고 설정 화면으로 유도합니다. (안드로이드는 이미 프로젝트에 포함되어 자동 반영)
+> ⚠️ 이 두 파일을 Xcode에 추가하지 않으면 iOS에서는 "항상 허용" 강제가 동작하지 않고
+> 기존처럼 출근이 그대로 진행됩니다(막지 않음 — fail-safe).
 
 ## 3. Info.plist 권한/배경 모드
 `web/ios/App/App/Info.plist` 에 추가:
