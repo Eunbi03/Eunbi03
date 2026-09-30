@@ -7,6 +7,8 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '500');
+// 위치 수집 응답 마감: 슬롯 시각 + 20분 (미수집 시 2분 간격 알림을 최대 10회 보내는 창과 일치)
+const RESPONSE_WINDOW_MS = 20 * 60 * 1000;
 
 // 특정 체크 슬롯에 위치를 기록하는 공통 로직
 async function recordCheckLocation(
@@ -19,7 +21,7 @@ async function recordCheckLocation(
   if (checkRows.length === 0) return { status: 404, body: { error: '체크 요청을 찾을 수 없습니다.' } };
   if (checkRows[0].submitted_time) return { status: 409, body: { error: '이미 제출되었습니다.' } };
   if (checkRows[0].skipped) return { status: 409, body: { error: '제외된 확인입니다.' } };
-  if (Date.now() - new Date(checkRows[0].scheduled_time).getTime() > 5 * 60 * 1000) {
+  if (Date.now() - new Date(checkRows[0].scheduled_time).getTime() > RESPONSE_WINDOW_MS) {
     return { status: 409, body: { error: '응답 시간이 지났습니다.' } };
   }
   const { rows: userRows } = await pool.query(
@@ -86,11 +88,11 @@ router.get('/today-tokens', requireAuth, async (req: Request, res: Response): Pr
 // GET /api/random-check/pending
 router.get('/pending', requireAuth, async (req: Request, res: Response): Promise<void> => {
   // 활성화(notification_sent)된 슬롯 중, 스킵되지 않고 미제출이며
-  // 마감(슬롯 시각 + 5분) 이내인 것만 반환한다. 5분이 지나면 미응답으로 확정되어 더 이상 수집하지 않는다.
+  // 마감(슬롯 시각 + 20분) 이내인 것만 반환한다. 20분이 지나면 미응답으로 확정되어 더 이상 수집하지 않는다.
   const { rows } = await pool.query(
     `SELECT id, scheduled_time AS "scheduledTime" FROM random_location_checks
      WHERE user_id=$1 AND notification_sent=TRUE AND skipped=FALSE AND submitted_time IS NULL
-       AND scheduled_time > now() - interval '5 minutes'
+       AND scheduled_time > now() - interval '20 minutes'
      ORDER BY scheduled_time DESC LIMIT 1`,
     [req.user.userId]
   );
@@ -113,8 +115,8 @@ router.post('/:checkId/submit', requireAuth,
     if (checkRows.length === 0) { res.status(404).json({ error: '체크 요청을 찾을 수 없습니다.' }); return; }
     if (checkRows[0].submitted_time) { res.status(409).json({ error: '이미 제출되었습니다.' }); return; }
     if (checkRows[0].skipped) { res.status(409).json({ error: '제외된 확인입니다.' }); return; }
-    // 마감(슬롯 시각 + 5분) 초과 시 미응답으로 확정 — 제출 거부
-    if (Date.now() - new Date(checkRows[0].scheduled_time).getTime() > 5 * 60 * 1000) {
+    // 마감(슬롯 시각 + 20분) 초과 시 미응답으로 확정 — 제출 거부
+    if (Date.now() - new Date(checkRows[0].scheduled_time).getTime() > RESPONSE_WINDOW_MS) {
       res.status(409).json({ error: '응답 시간이 지났습니다.' }); return;
     }
 

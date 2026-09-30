@@ -85,6 +85,42 @@ async function activateDueRandomChecks() {
   }
 }
 
+// 랜덤 확인이 제때 수집되지 않은 경우, 근무 중인(출근했고 아직 퇴근하지 않은) 근로자에게
+// "보이는 알림"을 2분 간격으로 최대 10회 보내 앱을 열어 위치를 확인하도록 유도한다.
+// - 무음 푸시/백그라운드 수집이 정상 동작해 이미 수집(submitted_time)되면 더 보내지 않는다.
+// - 첫 알림은 슬롯 시각 +2분부터, 마지막까지 슬롯 시각 +20분(수집 마감) 이내에만 보낸다.
+// - 출근을 누르지 않은 경우(휴일 등)에는 보내지 않는다(attendance_records의 check_in_time 기준).
+async function sendRandomCheckAlerts() {
+  const { rows } = await pool.query(
+    `SELECT rc.id, rc.user_id, u.fcm_token
+     FROM random_location_checks rc
+     JOIN users u ON u.id = rc.user_id
+     JOIN attendance_records ar ON ar.user_id = rc.user_id AND ar.date = rc.date
+     WHERE rc.submitted_time IS NULL
+       AND rc.skipped = FALSE
+       AND rc.alert_count < 10
+       AND u.fcm_token IS NOT NULL
+       AND ar.check_in_time IS NOT NULL
+       AND ar.check_out_time IS NULL
+       AND now() >= rc.scheduled_time + interval '2 minutes'
+       AND now() <= rc.scheduled_time + interval '20 minutes'
+       AND (rc.last_alert_at IS NULL OR now() >= rc.last_alert_at + interval '2 minutes')`
+  );
+  for (const r of rows) {
+    const ok = await sendNotification(
+      r.fcm_token,
+      '근무 위치 확인',
+      '근무 위치 확인이 필요합니다. 앱을 열어 위치를 확인해 주세요.'
+    );
+    if (ok) {
+      await pool.query(
+        'UPDATE random_location_checks SET alert_count = alert_count + 1, last_alert_at = now() WHERE id=$1',
+        [r.id]
+      );
+    }
+  }
+}
+
 async function finalizeAbsentees() {
   const date = todayKST();
   // 공휴일 판정 캐시를 다시 로드. 실패하면 결근 오처리를 막기 위해 마감을 건너뛴다(fail-safe).
@@ -184,6 +220,7 @@ export function startScheduler() {
   console.log(`[FCM] 푸시 사용 가능: ${fcmEnabled() ? '예' : '아니오(키 파일 확인 필요)'}`);
   cron.schedule('0 5 * * *', generateDailyRandomCheckSlots, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', activateDueRandomChecks, { timezone: 'Asia/Seoul' });
+  cron.schedule('* * * * *', sendRandomCheckAlerts, { timezone: 'Asia/Seoul' });
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', sendDailyReminders, { timezone: 'Asia/Seoul' });
   console.log('[스케줄러] 모든 정기 작업 등록 완료');
