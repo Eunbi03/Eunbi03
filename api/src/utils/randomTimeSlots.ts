@@ -8,19 +8,20 @@ function toMinutes(hhmm: string): number {
  * - 오전(출근+버퍼 ~ 점심시작) / 오후(점심끝 ~ 퇴근-버퍼) 중 한 쪽 2회, 다른 쪽 1회 (랜덤)
  * - 점심시간은 제외
  * - 출근 시각 이후 최소 startBufferMin(기본 60분), 퇴근 시각 이전 최소 endBufferMin(기본 60분)
+ * - 점심 종료 후 최소 lunchAfterBufferMin(기본 60분) 지난 뒤부터 오후 슬롯 생성(식사 직후 제외)
  * - 같은 half 내 두 슬롯은 최소 minGapMinutes(기본 90분) 간격
- * - 예) 9:00 출근·18:00 퇴근·점심 12~13 → 오전 10:00~12:00, 오후 13:00~17:00 사이에서 생성
+ * - 예) 9:00 출근·18:00 퇴근·점심 12~13 → 오전 10:00~12:00, 오후 14:00~17:00 사이에서 생성
  * - window가 너무 짧으면 가능한 만큼만 생성 (반차 등)
  */
 export function generateRandomMinuteOffsets(params: {
   workStart: string; workEnd: string;
   lunchStart?: string; lunchEnd?: string;
   slotCount?: number; minGapMinutes?: number;
-  startBufferMin?: number; endBufferMin?: number;
+  startBufferMin?: number; endBufferMin?: number; lunchAfterBufferMin?: number;
   randomFn?: () => number;
 }): number[] {
   const { workStart, workEnd, lunchStart, lunchEnd, minGapMinutes = 90,
-          startBufferMin = 60, endBufferMin = 60, randomFn = Math.random } = params;
+          startBufferMin = 60, endBufferMin = 60, lunchAfterBufferMin = 60, randomFn = Math.random } = params;
 
   // 출근 후 1시간 버퍼, 퇴근 전 1시간 버퍼를 적용한 실제 확인 가능 범위
   const workStartMin = toMinutes(workStart) + startBufferMin;
@@ -28,7 +29,7 @@ export function generateRandomMinuteOffsets(params: {
 
   // 오전/오후 경계 (점심 없으면 12:00/13:00 기본값) — 점심시간 제외
   const morningEnd       = lunchStart ? Math.min(toMinutes(lunchStart), workEndMin) : Math.min(toMinutes('12:00'), workEndMin);
-  const afternoonStartMin = lunchEnd  ? Math.max(toMinutes(lunchEnd), workStartMin) : Math.max(toMinutes('13:00'), workStartMin);
+  const afternoonStartMin = lunchEnd  ? Math.max(toMinutes(lunchEnd) + lunchAfterBufferMin, workStartMin) : Math.max(toMinutes('13:00'), workStartMin);
   const afternoonEnd     = workEndMin;
 
   // 슬롯 1개 뽑기 (window 안 임의 위치)
