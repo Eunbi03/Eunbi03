@@ -9,7 +9,13 @@ import CoreLocation
 // 설계 근거: iOS는 서버가 정한 시각에 백그라운드 앱을 깨울 수 없으므로,
 // 위치 업데이트로 앱을 살려두고, (콜백 + 주기 타이머)로 제출 시각 창을 확인해 전송한다.
 @objc(BgLocationPlugin)
-public class BgLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
+public class BgLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDelegate {
+    public let identifier = "BgLocationPlugin"
+    public let jsName = "BgLocation"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise)
+    ]
 
     private let manager = CLLocationManager()
     private var apiBase: String = ""

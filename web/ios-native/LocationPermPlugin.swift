@@ -6,7 +6,14 @@ import UIKit
 // 위치 권한이 "항상 허용(authorizedAlways)"인지 확인/요청하고, 앱 설정 페이지를 여는 플러그인.
 // 출근 버튼을 누를 때 "항상 허용"이 아니면 출근을 막고 설정으로 유도하는 용도.
 @objc(LocationPermPlugin)
-public class LocationPermPlugin: CAPPlugin, CLLocationManagerDelegate {
+public class LocationPermPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDelegate {
+    public let identifier = "LocationPermPlugin"
+    public let jsName = "LocationPerm"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "checkAlways", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestAlways", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
+    ]
 
     private let manager = CLLocationManager()
     private var pendingRequestCall: CAPPluginCall?
