@@ -1439,6 +1439,9 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
     if (team)     { params.push(team);     conds.push(`u.team=$${params.length}`); }
     if (position) { params.push(position); conds.push(`u.position=$${params.length}`); }
   }
+  // 권한 범위(권한 팀) 적용 — 전체현황도 직원관리/개별리포트와 동일하게 필터
+  const scope = await getReadScope(req);
+  if (scope) { params.push(scope); conds.push(`u.team = ANY($${params.length})`); }
   const full = req.query.full === '1'; // 다운로드용: 페이지네이션 없이 전체 + 출퇴근지·비고 포함
   const { rows: allWorkers } = await pool.query(
     `SELECT u.id, u.name, u.corp, u.division, u.team, u.position, u.remark, u.note_exempt, u.irregular_worker,
