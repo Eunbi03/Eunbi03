@@ -7,7 +7,7 @@ import { classifyDay, leaveCountsAsCheckIn, leaveCountsAsCheckOut, leaveCountsAs
 import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
 import jwt from 'jsonwebtoken';
 import { buildIndividualReport } from '../services/reportBuilder';
-import { sendReportLink } from '../services/reportSender';
+import { sendReportLink, sendAdminDeviceInvite } from '../services/reportSender';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -920,6 +920,7 @@ function normalizeTeams(input: any): string[] {
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
   if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 수정할 수 있습니다.' }); return; }
   const { phone, confirmMerge } = req.body;
+  const corp = (req.body.corp ?? '').trim() || null;   // 담당 법인(월간 리포트 발신담당 매핑에 사용)
   const newName = (req.body.deviceName ?? '').trim();
   if (!newName) { res.status(400).json({ error: '관리자명을 입력해주세요.' }); return; }
   const canRead = req.body.canRead !== false;
@@ -967,22 +968,22 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
       // oldName 그룹 + newName 그룹 전부를 newName + 병합권한으로 통일
       const names = oldName ? [oldName, newName] : [newName];
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, phone=$2, can_read=$3, can_write=$4, scope_teams=$5
-         WHERE device_name = ANY($6) OR id=$7`,
-        [newName, phone || null, mergedRead, mergedWrite, mergedTeams, names, req.params.id]
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, can_read=$4, can_write=$5, scope_teams=$6
+         WHERE device_name = ANY($7) OR id=$8`,
+        [newName, corp, phone || null, mergedRead, mergedWrite, mergedTeams, names, req.params.id]
       );
     } else if (oldName) {
       // 같은 관리자명 그룹 전체에 동기화 (이름 변경 포함)
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, phone=$2, can_read=$3, can_write=$4, scope_teams=$5
-         WHERE device_name=$6 OR id=$7`,
-        [newName, phone || null, canRead, canWrite, teams, oldName, req.params.id]
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, can_read=$4, can_write=$5, scope_teams=$6
+         WHERE device_name=$7 OR id=$8`,
+        [newName, corp, phone || null, canRead, canWrite, teams, oldName, req.params.id]
       );
     } else {
       // 기존 이름이 비어 있으면 이 기기 1개만 설정
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, phone=$2, can_read=$3, can_write=$4, scope_teams=$5 WHERE id=$6`,
-        [newName, phone || null, canRead, canWrite, teams, req.params.id]
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, can_read=$4, can_write=$5, scope_teams=$6 WHERE id=$7`,
+        [newName, corp, phone || null, canRead, canWrite, teams, req.params.id]
       );
     }
     await client.query('COMMIT');
@@ -993,6 +994,37 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
     client.release();
   }
   res.json({ success: true, merged: collision });
+});
+
+// 기기 추가 초대(+버튼) — 권한자/최고관리자만. 등록 링크를 이메일 AND 문자로 발송한다.
+// 링크를 '등록하려는 기기'에서 열면 공용 관리자 계정에 그 기기가 등록된다.
+router.post('/devices/invite', async (req: Request, res: Response): Promise<void> => {
+  if (req.user.role !== 'hr' && !req.user.isAuthority) { res.status(403).json({ error: '권한자만 기기를 추가할 수 있습니다.' }); return; }
+  const managerName = (req.body.managerName ?? '').trim();
+  const email = (req.body.email ?? '').trim() || null;
+  const phone = (req.body.phone ?? '').trim() || null;
+  const corp = (req.body.corp ?? '').trim() || null;
+  if (!managerName) { res.status(400).json({ error: '관리자명을 입력해주세요.' }); return; }
+  if (!email && !phone) { res.status(400).json({ error: '이메일 또는 전화번호를 입력해주세요.' }); return; }
+  const canRead = req.body.canRead !== false;
+  const canWrite = req.body.canWrite === true;
+  const teams = normalizeTeams(req.body.teams);
+
+  const token = jwt.sign(
+    { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, corp, canRead, canWrite, teams },
+    process.env.JWT_SECRET as string, { expiresIn: '7d' }
+  );
+  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const link = `${base}/admin/register-device?t=${encodeURIComponent(token)}`;
+  // 발신번호: 033-340-0024 (SMS_SENDER 미설정 시에도 고정)
+  const senderPhone = process.env.SMS_SENDER || '0333400024';
+  try {
+    const sent = await sendAdminDeviceInvite({ name: managerName, email, phone, link, senderPhone });
+    if (!sent.email && !sent.sms) { res.status(502).json({ error: '이메일/문자 발송에 실패했습니다. 발송 설정을 확인하세요.' }); return; }
+    res.json({ success: true, sent });
+  } catch (e: any) {
+    res.status(502).json({ error: `발송 실패: ${e.message}` });
+  }
 });
 
 // 권한자 이전 (현재 권한자 기기 → 대상 기기). 이전 후에는 재로그인 시 반영.

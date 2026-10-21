@@ -7,6 +7,7 @@ import Header from "./components/Header.jsx";
 import Employee from "./components/Employee.jsx";
 import AdminApp from "./components/AdminApp.jsx";
 import Terms from "./components/Terms.jsx";
+import RegisterDevice from "./components/RegisterDevice.jsx";
 import Splash from "./components/Splash.jsx";
 import { S, C } from "./styles.js";
 
@@ -22,6 +23,9 @@ function getMode() {
 }
 
 export default function App() {
+  // 기기 등록 링크 페이지 — 로그인 불필요, 단독 처리
+  if (window.location.pathname.startsWith("/admin/register-device")) return <RegisterDevice />;
+
   const mode = getMode();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);

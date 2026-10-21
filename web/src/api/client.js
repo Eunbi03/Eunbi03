@@ -140,6 +140,8 @@ export const approveAdminDevice = (deviceRowId) => request(`/admin/devices/${dev
 export const removeAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}`, { method: "DELETE" });
 export const transferAuthority = (targetDeviceId) => request("/admin/authority/transfer", { method: "PUT", body: { targetDeviceId } });
 export const updateDeviceInfo = (deviceRowId, data) => request(`/admin/devices/${deviceRowId}/info`, { method: "PUT", body: data });
+export const inviteAdminDevice = (data) => request("/admin/devices/invite", { method: "POST", body: data });
+export const registerDeviceLink = (t, deviceId) => request("/auth/register-device-link", { method: "POST", body: { t, deviceId }, auth: false });
 
 /* 관리자 — 설정 */
 export const getCompanySettings = () => request("/admin/company-settings");

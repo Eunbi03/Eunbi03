@@ -233,6 +233,7 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
   const [editing, setEditing] = useState(false);
   const [detail, setDetail] = useState(false);
   const [name, setName] = useState(d.device_name || "");
+  const [corp, setCorp] = useState(d.corp || "");
   const [phone, setPhone] = useState(d.phone || "");
   const [canRead, setCanRead] = useState(d.can_read !== false);
   const [canWrite, setCanWrite] = useState(!!d.can_write);
@@ -241,7 +242,7 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
   const [mergeAsk, setMergeAsk] = useState("");  // 병합 확인 메시지(있으면 팝업)
 
   const buildPayload = (confirmMerge) => ({
-    deviceName: name.trim(), phone: phone.trim(),
+    deviceName: name.trim(), corp: corp.trim(), phone: phone.trim(),
     canRead, canWrite,
     teams: teams.split(",").map((x) => x.trim()).filter(Boolean),
     ...(confirmMerge ? { confirmMerge: true } : {}),
@@ -300,6 +301,7 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
         <div style={{ marginTop: 8, padding: "8px 10px", background: "#f6f8fa", borderRadius: 8, fontSize: 12, color: C.ink, display: "flex", flexDirection: "column", gap: 4 }}>
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>읽기/쓰기 · </span>{rwText(d)}</div>
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>권한 팀 · </span>{teamsText(d.scope_teams)}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 법인 · </span>{d.corp || "-"}</div>
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>업무용 전화번호 · </span>{fmtPhone(d.phone) || "-"}</div>
         </div>
       )}
@@ -307,6 +309,7 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
           <input style={inp} placeholder="관리자명" value={name} onChange={(e) => setName(e.target.value)} />
+          <input style={inp} placeholder="담당 법인 (여러 개는 쉼표로)" value={corp} onChange={(e) => setCorp(e.target.value)} />
           <input style={inp} placeholder="업무용 전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한</span>
@@ -344,6 +347,29 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   const [showPw, setShowPw] = useState(false);
   const [msg, setMsg] = useState({ text: "", ok: true });
   const [busy, setBusy] = useState(false);
+
+  // 기기 추가(+버튼) — 권한자/최고관리자만
+  const canInvite = currentUser?.role === "hr" || currentUser?.isAuthorityHolder;
+  const [showInvite, setShowInvite] = useState(false);
+  const [inv, setInv] = useState({ managerName: "", email: "", phone: "", corp: "", canRead: true, canWrite: false, teams: "" });
+  const [invMsg, setInvMsg] = useState({ text: "", ok: true });
+
+  const submitInvite = async () => {
+    if (!inv.managerName.trim()) { setInvMsg({ text: "관리자명을 입력해주세요.", ok: false }); return; }
+    if (!inv.email.trim() && !inv.phone.trim()) { setInvMsg({ text: "이메일 또는 전화번호를 입력해주세요.", ok: false }); return; }
+    setBusy(true); setInvMsg({ text: "", ok: true });
+    try {
+      const r = await api.inviteAdminDevice({
+        managerName: inv.managerName.trim(), email: inv.email.trim(), phone: inv.phone.trim(), corp: inv.corp.trim(),
+        canRead: inv.canRead, canWrite: inv.canWrite,
+        teams: inv.teams.split(",").map((x) => x.trim()).filter(Boolean),
+      });
+      const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
+      setInvMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
+      setInv({ managerName: "", email: "", phone: "", corp: "", canRead: true, canWrite: false, teams: "" });
+    } catch (e) { setInvMsg({ text: e.message, ok: false }); }
+    finally { setBusy(false); }
+  };
 
   const handleSaveName = async () => {
     if (!name.trim()) return;
@@ -451,7 +477,38 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
 
         {/* 등록된 기기 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <label style={S.fieldLabel}>등록된 기기</label>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <label style={S.fieldLabel}>등록된 기기</label>
+            {canInvite && (
+              <button
+                onClick={() => { setShowInvite((v) => !v); setInvMsg({ text: "", ok: true }); }}
+                style={{ border: `1px solid ${C.blue}`, background: showInvite ? C.blue : "#fff", color: showInvite ? "#fff" : C.blue, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >{showInvite ? "닫기" : "＋ 기기 추가"}</button>
+            )}
+          </div>
+
+          {canInvite && showInvite && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", background: "#f6f8fa", border: `1px solid ${C.line}`, borderRadius: 10, marginBottom: 4 }}>
+              <div style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5 }}>관리자 정보를 입력하면 등록 링크를 이메일·문자로 보냅니다. 받은 사람이 <b>등록할 기기</b>에서 링크를 열면 등록됩니다.</div>
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="관리자명" value={inv.managerName} onChange={(e) => setInv({ ...inv, managerName: e.target.value })} />
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="이메일" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="전화번호" value={inv.phone} onChange={(e) => setInv({ ...inv, phone: e.target.value })} />
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="담당 법인 (여러 개는 쉼표로)" value={inv.corp} onChange={(e) => setInv({ ...inv, corp: e.target.value })} />
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한</span>
+                {["canRead", "canWrite"].map((k) => (
+                  <span key={k} onClick={() => setInv({ ...inv, [k]: !inv[k] })}
+                    style={{ padding: "6px 12px", borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${inv[k] ? C.blue : C.line}`, background: inv[k] ? C.blue : "#fff", color: inv[k] ? "#fff" : C.inkSoft }}>
+                    {k === "canRead" ? "읽기" : "쓰기"}
+                  </span>
+                ))}
+              </div>
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="권한 팀 (여러 개는 쉼표로, 미입력 시 전체)" value={inv.teams} onChange={(e) => setInv({ ...inv, teams: e.target.value })} />
+              {invMsg.text && <div style={{ fontSize: 12, fontWeight: 600, color: invMsg.ok ? C.green : C.seal }}>{invMsg.text}</div>}
+              <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.blue, color: "#fff", cursor: "pointer", opacity: busy ? 0.6 : 1 }} onClick={submitInvite} disabled={busy}>{busy ? "발송 중…" : "등록 링크 보내기"}</button>
+            </div>
+          )}
+
           {!isHolder ? (
             <div style={{ fontSize: 13, color: C.inkSoft }}>최고관리자(인사팀)만 기기를 관리할 수 있습니다.</div>
           ) : loadingDevices ? (

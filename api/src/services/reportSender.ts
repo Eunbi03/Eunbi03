@@ -31,6 +31,41 @@ async function sendSolapiSms(to: string, text: string, fromOverride?: string): P
   return true;
 }
 
+// 관리자 기기 등록 링크를 이메일과 문자(SOLAPI)로 함께 발송한다.
+// 반환: 실제로 발송된 채널 목록.
+export async function sendAdminDeviceInvite(opts: {
+  name: string; email?: string | null; phone?: string | null; link: string; senderPhone?: string;
+}): Promise<{ email: boolean; sms: boolean }> {
+  const { name, email, phone, link, senderPhone = '' } = opts;
+  const subject = 'TimeCard 관리자 기기 등록 안내';
+  const bodyText =
+    `[TimeCard 관리자 기기 등록]\n\n` +
+    `${name || '관리자'}님, 아래 링크를 등록하려는 기기(휴대폰/PC)에서 열면 해당 기기가 관리자 기기로 등록됩니다.\n\n` +
+    `${link}\n\n` +
+    `링크는 7일간 유효합니다.`;
+  const bodyHtml =
+    `<div style="font-family:sans-serif;font-size:14px;color:#1e2430;line-height:1.7;">` +
+    `<p><b>${name || '관리자'}</b>님, 아래 링크를 <b>등록하려는 기기</b>(휴대폰/PC)에서 열면 해당 기기가 관리자 기기로 등록됩니다.</p>` +
+    `<p style="margin:14px 0;"><a href="${link}">🔗 관리자 기기 등록하기</a></p>` +
+    `<p style="color:#8b94a8;font-size:12px;">링크는 7일간 유효합니다.</p></div>`;
+
+  const result = { email: false, sms: false };
+  if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+    try { await transporter.sendMail({ from: process.env.SMTP_USER, to: email, subject, html: bodyHtml, text: bodyText }); result.email = true; }
+    catch (e: any) { console.error('[기기등록 이메일 실패]', e.message); }
+  }
+  if (phone && process.env.SOLAPI_API_KEY && process.env.SOLAPI_API_SECRET) {
+    try { result.sms = await sendSolapiSms(phone, bodyText, senderPhone || process.env.SMS_SENDER || ''); }
+    catch (e: any) { console.error('[기기등록 문자 실패]', e.message); }
+  }
+  return result;
+}
+
 interface ReportData {
   to: string; name: string; yearMonth: string;
   lateCount: number; earlyLeaveCount: number; missingClockCount: number;

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
 import { generateAccessToken, generateRefreshToken, hashToken, getRefreshTokenExpiry } from '../utils/authTokens';
@@ -36,6 +37,44 @@ router.get('/teams', async (_req: Request, res: Response): Promise<void> => {
   );
   res.json({ teams: rows });
 });
+
+// POST /api/auth/register-device-link — 기기 추가 초대 링크로 '이 기기'를 관리자 기기로 등록
+router.post('/register-device-link',
+  [body('t').isString().notEmpty(), body('deviceId').notEmpty()],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
+    let p: any;
+    try { p = jwt.verify(req.body.t, process.env.JWT_SECRET as string); }
+    catch { res.status(401).json({ error: '유효하지 않거나 만료된 링크입니다.' }); return; }
+    if (p.purpose !== 'admin-device-invite' || !p.uid || !p.managerName) {
+      res.status(401).json({ error: '잘못된 링크입니다.' }); return;
+    }
+    const deviceId = req.body.deviceId;
+    // 이미 등록된 기기면 안내만
+    const { rows: existing } = await pool.query('SELECT id FROM admin_devices WHERE device_id=$1 LIMIT 1', [deviceId]);
+    if (existing.length > 0) { res.json({ alreadyRegistered: true }); return; }
+    // 같은 관리자명이 이미 있으면 권한 공유(기존 그룹 권한 상속)
+    const { rows: grp } = await pool.query(
+      'SELECT can_read, can_write, scope_teams, corp, phone FROM admin_devices WHERE device_name=$1 LIMIT 1', [p.managerName]
+    );
+    let canRead = p.canRead !== false;
+    let canWrite = p.canWrite === true;
+    let teams = Array.isArray(p.teams) && p.teams.length ? p.teams : ['전체'];
+    let corp = p.corp || null;
+    let phone = p.phone || null;
+    if (grp[0]) {
+      canRead = grp[0].can_read; canWrite = grp[0].can_write;
+      teams = grp[0].scope_teams || teams; corp = grp[0].corp || corp; phone = grp[0].phone || phone;
+    }
+    await pool.query(
+      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, can_read, can_write, scope_teams)
+       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8) ON CONFLICT (user_id, device_id) DO NOTHING`,
+      [p.uid, deviceId, p.managerName, corp, phone, canRead, canWrite, teams]
+    );
+    res.json({ success: true, managerName: p.managerName });
+  }
+);
 
 // POST /api/auth/login
 router.post('/login',
