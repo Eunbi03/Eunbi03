@@ -1,5 +1,15 @@
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import { renderTemplate } from './messageTemplates';
+
+// 템플릿 본문(일반 텍스트)을 이메일 HTML로 변환: 이스케이프 + 링크 자동연결 + 줄바꿈.
+function htmlizeBody(text: string, link?: string): string {
+  const esc = (s: string) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
+  let h = esc(text);
+  if (link) h = h.split(esc(link)).join(`<a href="${link}">${esc(link)}</a>`);
+  h = h.replace(/\n/g, '<br>');
+  return `<div style="font-family:'맑은 고딕',sans-serif;color:#333;font-size:14px;line-height:1.7;">${h}</div>`;
+}
 
 // 솔라피(SOLAPI) 단문/장문 발송. 성공 시 true.
 async function sendSolapiSms(to: string, text: string, fromOverride?: string): Promise<boolean> {
@@ -37,17 +47,8 @@ export async function sendAdminDeviceInvite(opts: {
   name: string; email?: string | null; phone?: string | null; link: string; senderPhone?: string;
 }): Promise<{ email: boolean; sms: boolean }> {
   const { name, email, phone, link, senderPhone = '' } = opts;
-  const subject = 'TimeCard 관리자 기기 등록 안내';
-  const bodyText =
-    `[TimeCard 관리자 기기 등록]\n\n` +
-    `${name || '관리자'}님, 아래 링크를 등록하려는 기기(휴대폰/PC)에서 열면 해당 기기가 관리자 기기로 등록됩니다.\n\n` +
-    `${link}\n\n` +
-    `링크는 7일간 유효합니다.`;
-  const bodyHtml =
-    `<div style="font-family:sans-serif;font-size:14px;color:#1e2430;line-height:1.7;">` +
-    `<p><b>${name || '관리자'}</b>님, 아래 링크를 <b>등록하려는 기기</b>(휴대폰/PC)에서 열면 해당 기기가 관리자 기기로 등록됩니다.</p>` +
-    `<p style="margin:14px 0;"><a href="${link}">🔗 관리자 기기 등록하기</a></p>` +
-    `<p style="color:#8b94a8;font-size:12px;">링크는 7일간 유효합니다.</p></div>`;
+  const { subject, body: bodyText } = await renderTemplate('device_invite', { name: name || '관리자', link });
+  const bodyHtml = htmlizeBody(bodyText, link);
 
   const result = { email: false, sms: false };
   if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
@@ -79,37 +80,16 @@ export async function sendReportLink(opts: {
   corpName?: string; over?: boolean; deadlineText?: string; managers?: { name: string; phone: string }[]; senderPhone?: string;
 }): Promise<'email' | 'sms' | 'none'> {
   const { name, email, phone, monthLabel, link, corpName = '', over = false, deadlineText = '', managers = [], senderPhone = '' } = opts;
-  const RED = '#cb6156';
-  const subject = `[${monthLabel}월 근태관리 리포트 안내]`;
-  const esc = (s: string) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
 
-  // 한 법인에 담당자가 여러 명이면 모두 표기
-  const mgrHtml = managers.map((m) => `${esc(m.name)} 담당자 (☎ ${esc(m.phone)})`).join('<br>');
-  const signature =
-    `<p style="margin:18px 0 0;">감사합니다.</p>` +
-    (mgrHtml ? `<p style="margin:14px 0 0;">${mgrHtml}</p>` : '');
-  const linkLine = `<p style="margin:14px 0 0;"><a href="${link}">📄 ${monthLabel}월 근태관리 리포트 열기</a></p>`;
-
-  const reprimandLine = over
-    ? `<p style="margin:12px 0 0;color:${RED};">이번 근태 내역과 관련하여 <b>${esc(deadlineText)}</b>까지 시말서를 제출하여 주시기바랍니다.</p>`
+  // 설정의 템플릿을 치환해 제목/본문 생성 ({reprimand}, {managers}는 서버가 계산)
+  const reprimand = over
+    ? `이번 근태 내역과 관련하여 ${deadlineText}까지 시말서를 제출하여 주시기 바랍니다. 향후 원활한 근태관리를 위해 관련 규정을 준수하여 주시기 바랍니다.\n`
     : '';
-
-  const bodyHtml =
-    `<div style="font-family:'맑은 고딕',sans-serif;color:#333;font-size:14px;line-height:1.7;">` +
-    `<p style="margin:0;">안녕하세요, ${esc(name)}님.<br>${esc(corpName)} 인사팀입니다.</p>` +
-    `<p style="margin:14px 0 0;">${monthLabel}월 근태관리 리포트를 보내드립니다.</p>` +
-    reprimandLine +
-    `<p style="margin:12px 0 0;">근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있${over ? '으며, 향후 원활한 근태관리를 위해 관련 규정을 준수하여 주시기 바랍니다.' : '습니다.'}</p>` +
-    `<p style="margin:12px 0 0;">문의사항이 있으시면 본 메일에 회신하시거나 아래 연락처로 문의해 주시기 바랍니다.</p>` +
-    linkLine + signature + `</div>`;
-
-  // 문자 본문은 이메일과 동일한 문구(메일 전용 표현만 제외)
-  const bodyText =
-    `안녕하세요, ${name}님.\n${corpName} 인사팀입니다.\n\n${monthLabel}월 근태관리 리포트를 보내드립니다.\n` +
-    (over ? `이번 근태 내역과 관련하여 ${deadlineText}까지 시말서를 제출하여 주시기바랍니다.\n` : '') +
-    `근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있${over ? '으며, 향후 원활한 근태관리를 위해 관련 규정을 준수하여 주시기 바랍니다.' : '습니다.'}\n` +
-    `문의사항이 있으시면 아래 연락처로 문의해 주시기 바랍니다.\n리포트: ${link}\n\n감사합니다.\n` +
-    managers.map((m) => `${m.name} 담당자 (☎ ${m.phone})`).join('\n');
+  const managersText = managers.map((m) => `${m.name} 담당자 (☎ ${m.phone})`).join('\n');
+  const { subject, body: bodyText } = await renderTemplate('monthly_report', {
+    name, corp: corpName, month: monthLabel, link, deadline: deadlineText, reprimand, managers: managersText,
+  });
+  const bodyHtml = htmlizeBody(bodyText, link);
 
   if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
     const port = parseInt(process.env.SMTP_PORT || '587', 10);

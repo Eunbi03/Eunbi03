@@ -559,6 +559,54 @@ function HolidaySection() {
   );
 }
 
+/* ── 발송 메시지 관리 (문자/이메일/푸시 제목·내용) ─────────────────────────── */
+function MessageTemplateSection() {
+  const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState({});
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState(null);
+  const load = () => {
+    setLoading(true);
+    api.getMessageTemplates().then((d) => {
+      const ts = d.templates || [];
+      setList(ts);
+      const dr = {}; ts.forEach((t) => { dr[t.key] = { subject: t.subject || "", body: t.body || "" }; });
+      setDraft(dr);
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+  const set = (key, field, v) => setDraft((d) => ({ ...d, [key]: { ...d[key], [field]: v } }));
+  const save = async (key) => {
+    setBusy(key); setMsg(null);
+    try { await api.updateMessageTemplate(key, draft[key]); setMsg({ text: "저장되었습니다.", ok: true }); }
+    catch (e) { setMsg({ text: e.message, ok: false }); }
+    finally { setBusy(""); }
+  };
+  if (loading) return <div style={S.empty}>불러오는 중…</div>;
+  const ta = { ...S.input, minHeight: 130, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6, padding: "10px 12px" };
+  return (
+    <div>
+      <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: "0 0 6px" }}>발송 메시지 관리</p>
+      <p style={{ fontSize: 13, color: C.inkSoft, margin: "0 0 14px" }}>문자·이메일·푸시 알림의 제목과 내용을 수정할 수 있습니다. {"{ }"} 안의 치환자는 발송 시 실제 값으로 바뀝니다.</p>
+      <Msg msg={msg} />
+      {list.map((t) => (
+        <div key={t.key} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, padding: "14px 18px", marginBottom: 12, background: "#fff" }}>
+          <p style={{ fontWeight: 800, fontSize: 15, color: COL.blue, margin: "0 0 10px" }}>{t.label}</p>
+          <label style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft }}>제목</label>
+          <input style={{ ...S.input, margin: "4px 0 10px" }} value={draft[t.key]?.subject || ""} onChange={(e) => set(t.key, "subject", e.target.value)} />
+          <label style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft }}>내용</label>
+          <textarea style={{ ...ta, margin: "4px 0 8px" }} value={draft[t.key]?.body || ""} onChange={(e) => set(t.key, "body", e.target.value)} />
+          {t.placeholders && <div style={{ fontSize: 11, color: COL.gray, marginBottom: 10 }}>치환자: {t.placeholders}</div>}
+          <button style={{ ...S.subPrimary, background: COL.blue, opacity: busy === t.key ? 0.6 : 1 }} onClick={() => save(t.key)} disabled={busy === t.key}>
+            {busy === t.key ? "저장 중…" : "저장"}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── 설정 페이지 (단일 카테고리 드롭다운) ─────────────────────────────────── */
 const CATEGORIES = [
   { key: "workplace", label: "근무지 관리" },
@@ -567,6 +615,7 @@ const CATEGORIES = [
   { key: "division", label: "본부 및 팀 관리" },
   { key: "position", label: "직책 관리" },
   { key: "holiday", label: "공휴일 관리" },
+  { key: "message", label: "발송 메시지 관리" },
 ];
 
 export default function AdminSettings() {
@@ -587,6 +636,7 @@ export default function AdminSettings() {
       {cat === "division" && <DivisionSection />}
       {cat === "position" && <PositionSection />}
       {cat === "holiday" && <HolidaySection />}
+      {cat === "message" && <MessageTemplateSection />}
     </div>
   );
 }

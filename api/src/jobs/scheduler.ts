@@ -4,6 +4,7 @@ import { pool } from '../db/pool';
 import { generateRandomMinuteOffsets, offsetsToDateTimes } from '../utils/randomTimeSlots';
 import { sendDataPush, sendNotification, fcmEnabled } from '../services/fcm';
 import { isWorkday, loadHolidayCache } from '../utils/holidays';
+import { renderTemplate } from '../services/messageTemplates';
 
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
@@ -105,12 +106,9 @@ async function sendRandomCheckAlerts() {
        AND now() >= rc.scheduled_time + interval '5 minutes'
        AND now() <= rc.scheduled_time + interval '10 minutes'`
   );
+  const tpl = rows.length ? await renderTemplate('random_check_push') : { subject: 'TimeCard', body: '위치 권한을 확인해 주세요.' };
   for (const r of rows) {
-    const ok = await sendNotification(
-      r.fcm_token,
-      'TimeCard',
-      '위치 권한을 확인해 주세요.'
-    );
+    const ok = await sendNotification(r.fcm_token, tpl.subject, tpl.body);
     if (ok) {
       await pool.query(
         'UPDATE random_location_checks SET alert_count = alert_count + 1, last_alert_at = now() WHERE id=$1',

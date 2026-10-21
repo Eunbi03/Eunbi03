@@ -168,6 +168,8 @@ export const createDivision = (name, teams) => request("/admin/divisions", { met
 export const deleteDivision = (id) => request(`/admin/divisions/${id}`, { method: "DELETE" });
 export const addTeam = (divisionId, name, grantTo = []) => request(`/admin/divisions/${divisionId}/teams`, { method: "POST", body: { name, grantTo } });
 export const getManagers = () => request("/admin/managers");
+export const getMessageTemplates = () => request("/admin/message-templates");
+export const updateMessageTemplate = (key, data) => request(`/admin/message-templates/${key}`, { method: "PUT", body: data });
 export const deleteTeam = (id) => request(`/admin/teams/${id}`, { method: "DELETE" });
 
 export const getPositions = () => request("/admin/positions");

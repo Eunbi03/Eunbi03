@@ -8,6 +8,7 @@ import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
 import jwt from 'jsonwebtoken';
 import { buildIndividualReport } from '../services/reportBuilder';
 import { sendReportLink, sendAdminDeviceInvite } from '../services/reportSender';
+import { invalidateTemplateCache } from '../services/messageTemplates';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -1111,6 +1112,26 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
     client.release();
   }
   res.json({ success: true });
+});
+
+// ── 발송 메시지 템플릿 (문자/이메일/푸시 제목·내용) ──────────
+router.get('/message-templates', async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query(
+    'SELECT key, label, subject, body, placeholders, updated_at FROM message_templates ORDER BY key'
+  );
+  res.json({ templates: rows });
+});
+
+router.put('/message-templates/:key', requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const { subject, body } = req.body;
+  const { rows } = await pool.query(
+    `UPDATE message_templates SET subject=$1, body=$2, updated_at=now() WHERE key=$3
+     RETURNING key, label, subject, body, placeholders`,
+    [subject ?? '', body ?? '', req.params.key]
+  );
+  if (!rows[0]) { res.status(404).json({ error: '템플릿을 찾을 수 없습니다.' }); return; }
+  invalidateTemplateCache();
+  res.json({ success: true, template: rows[0] });
 });
 
 // ── 설정 (회사 지오펜스 — 레거시, 근무지로 대체 권장) ──────────
