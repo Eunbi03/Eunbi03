@@ -241,6 +241,24 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
   const [saving, setSaving] = useState(false);
   const [mergeAsk, setMergeAsk] = useState("");  // 병합 확인 메시지(있으면 팝업)
 
+  // 이 관리자에 기기 추가(+): 관리자명·이메일·전화만 입력, 권한은 기존 관리자명 상속
+  const [addDev, setAddDev] = useState(false);
+  const [addForm, setAddForm] = useState({ name: d.device_name || "", email: "", phone: "" });
+  const [addMsg, setAddMsg] = useState({ text: "", ok: true });
+  const [addBusy, setAddBusy] = useState(false);
+  const submitAddDevice = async () => {
+    if (!addForm.name.trim()) { setAddMsg({ text: "관리자명을 입력해주세요.", ok: false }); return; }
+    if (!addForm.email.trim() && !addForm.phone.trim()) { setAddMsg({ text: "이메일 또는 전화번호를 입력해주세요.", ok: false }); return; }
+    setAddBusy(true); setAddMsg({ text: "", ok: true });
+    try {
+      const r = await api.inviteAdminDevice({ managerName: addForm.name.trim(), email: addForm.email.trim(), phone: addForm.phone.trim() });
+      const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
+      setAddMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
+      setAddForm({ name: d.device_name || "", email: "", phone: "" });
+    } catch (e) { setAddMsg({ text: e.message, ok: false }); }
+    finally { setAddBusy(false); }
+  };
+
   const buildPayload = (confirmMerge) => ({
     deviceName: name.trim(), corp: corp.trim(), phone: phone.trim(),
     canRead, canWrite,
@@ -275,7 +293,16 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
               ? <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>
               : <span style={{ fontSize: 10, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "1px 7px", borderRadius: 20 }}>관리자</span>}
           </div>
-          <div style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.device_id}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.device_id}</span>
+            {isHolder && (
+              <button
+                title="이 관리자에 기기 추가"
+                onClick={() => { setAddDev((v) => !v); setAddMsg({ text: "", ok: true }); }}
+                style={{ flexShrink: 0, width: 20, height: 20, lineHeight: "18px", textAlign: "center", border: `1px solid ${C.blue}`, background: addDev ? C.blue : "#fff", color: addDev ? "#fff" : C.blue, borderRadius: 6, fontSize: 14, fontWeight: 700, cursor: "pointer", padding: 0 }}
+              >＋</button>
+            )}
+          </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, alignItems: "flex-end" }}>
@@ -318,6 +345,17 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
           </div>
           <input style={inp} placeholder="권한 팀 (여러 개는 쉼표로)" value={teams} onChange={(e) => setTeams(e.target.value)} />
           <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1 }} onClick={() => save(false)} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+        </div>
+      )}
+
+      {addDev && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, padding: "10px 12px", background: "#eef5ff", border: `1px solid ${C.blueSoft}`, borderRadius: 10 }}>
+          <div style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5 }}><b>{d.device_name || "이 관리자"}</b>에 기기를 추가합니다. 권한은 기존과 동일하게 적용돼요. 링크를 받은 사람이 <b>등록할 기기</b>에서 열면 등록됩니다.</div>
+          <input style={{ ...inp }} placeholder="관리자명" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} />
+          <input style={{ ...inp }} placeholder="링크 받을 이메일" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} />
+          <input style={{ ...inp }} placeholder="링크 받을 전화번호" value={addForm.phone} onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })} />
+          {addMsg.text && <div style={{ fontSize: 12, fontWeight: 600, color: addMsg.ok ? C.green : C.seal }}>{addMsg.text}</div>}
+          <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.blue, color: "#fff", cursor: "pointer", opacity: addBusy ? 0.6 : 1 }} onClick={submitAddDevice} disabled={addBusy}>{addBusy ? "발송 중…" : "등록 링크 보내기"}</button>
         </div>
       )}
 
@@ -483,7 +521,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               <button
                 onClick={() => { setShowInvite((v) => !v); setInvMsg({ text: "", ok: true }); }}
                 style={{ border: `1px solid ${C.blue}`, background: showInvite ? C.blue : "#fff", color: showInvite ? "#fff" : C.blue, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-              >{showInvite ? "닫기" : "＋ 기기 추가"}</button>
+              >{showInvite ? "닫기" : "＋ 관리자 추가"}</button>
             )}
           </div>
 
