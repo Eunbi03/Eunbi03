@@ -939,7 +939,11 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
   const { rows } = await pool.query('SELECT is_authority FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
-  if (rows[0].is_authority) { res.status(400).json({ error: '권한자 기기는 삭제할 수 없습니다. 먼저 권한을 이전하세요.' }); return; }
+  // 권한자 기기도 삭제 가능. 단, 마지막 권한자 기기(권한자가 1개만 남은 경우)는 삭제 불가.
+  if (rows[0].is_authority) {
+    const { rows: cnt } = await pool.query('SELECT COUNT(*)::int AS c FROM admin_devices WHERE is_authority=TRUE');
+    if (cnt[0].c <= 1) { res.status(400).json({ error: '마지막 권한자 기기는 삭제할 수 없습니다.' }); return; }
+  }
   await pool.query('DELETE FROM admin_devices WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });

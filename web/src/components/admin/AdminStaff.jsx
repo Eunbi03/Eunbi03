@@ -229,7 +229,7 @@ const teamsText = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : 
 const rwText = (d) => [d.can_read ? "읽기" : null, d.can_write ? "쓰기" : null].filter(Boolean).join(" · ") || "권한 없음";
 
 // 관리자 카드 — 관리자명당 1개. 공통 정보(권한/법인/전화)는 한 번만, 기기코드는 아래에 목록으로.
-function ManagerCard({ name, devices, isHolder, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
+function ManagerCard({ name, devices, isHolder, authorityCount = 0, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
   const rep = devices[0] || {};                       // 공통 정보 대표 기기(권한은 그룹 동기화됨)
   const anyAuthority = devices.some((d) => d.is_authority);
   const [editing, setEditing] = useState(false);
@@ -317,7 +317,7 @@ function ManagerCard({ name, devices, isHolder, corpList = [], teamList = [], on
               <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                 {!d.is_approved && <button style={smallBtn(C.green)} onClick={() => onApprove(d.id)}>승인</button>}
                 {d.is_approved && !d.is_authority && <button style={smallBtn("#b9820f")} onClick={() => onTransfer(d)}>권한자 변경</button>}
-                {!d.is_authority && <button style={{ ...smallBtn(C.seal, "#fef5f5"), border: "none" }} onClick={() => onRemove(d.id)}>삭제</button>}
+                {(!d.is_authority || authorityCount > 1) && <button style={{ ...smallBtn(C.seal, "#fef5f5"), border: "none" }} onClick={() => onRemove(d.id)}>삭제</button>}
               </div>
             )}
           </div>
@@ -606,12 +606,14 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                 const k = d.device_name || "(이름없음)";
                 (acc[k] ||= []).push(d); return acc;
               }, {})).map(([mName, devs]) => (
-                <ManagerCard key={mName} name={mName} devices={devs} isHolder={isHolder} corpList={corpList} teamList={teamList}
+                <ManagerCard key={mName} name={mName} devices={devs} isHolder={isHolder}
+                  authorityCount={adminDevices.filter((x) => x.is_authority).length}
+                  corpList={corpList} teamList={teamList}
                   onApprove={onApproveDevice} onRemove={onRemoveDevice} onTransfer={handleTransfer} onSaveInfo={onSaveDeviceInfo} />
               ))}
             </div>
           )}
-          <div style={{ fontSize: 11, color: C.inkSoft }}>권한자 기기는 삭제할 수 없고, 권한 이전 후 삭제할 수 있습니다.</div>
+          <div style={{ fontSize: 11, color: C.inkSoft }}>권한자 기기도 삭제할 수 있지만, 마지막 권한자 기기는 삭제할 수 없습니다.</div>
         </div>
         )}
 
