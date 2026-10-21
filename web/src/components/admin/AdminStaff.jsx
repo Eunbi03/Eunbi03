@@ -228,23 +228,25 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
 const teamsText = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "전체");
 const rwText = (d) => [d.can_read ? "읽기" : null, d.can_write ? "쓰기" : null].filter(Boolean).join(" · ") || "권한 없음";
 
-// 등록 기기 행 — 관리자명·업무용 전화번호·읽기/쓰기·권한 팀 편집 + 상세
-function DeviceRow({ d, isHolder, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
+// 관리자 카드 — 관리자명당 1개. 공통 정보(권한/법인/전화)는 한 번만, 기기코드는 아래에 목록으로.
+function ManagerCard({ name, devices, isHolder, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
+  const rep = devices[0] || {};                       // 공통 정보 대표 기기(권한은 그룹 동기화됨)
+  const anyAuthority = devices.some((d) => d.is_authority);
   const [editing, setEditing] = useState(false);
   const [detail, setDetail] = useState(false);
-  const [name, setName] = useState(d.device_name || "");
-  const [corpSel, setCorpSel] = useState(d.corp ? d.corp.split(/[,·]/).map((s) => s.trim()).filter(Boolean) : []);
-  const [phone, setPhone] = useState(d.phone || "");
-  const [canRead, setCanRead] = useState(d.can_read !== false);
-  const [canWrite, setCanWrite] = useState(!!d.can_write);
-  const [teamSel, setTeamSel] = useState(Array.isArray(d.scope_teams) ? d.scope_teams.filter((t) => t !== "전체") : []);
+  const [nm, setNm] = useState(name || "");
+  const [corpSel, setCorpSel] = useState(rep.corp ? rep.corp.split(/[,·]/).map((s) => s.trim()).filter(Boolean) : []);
+  const [phone, setPhone] = useState(rep.phone || "");
+  const [canRead, setCanRead] = useState(rep.can_read !== false);
+  const [canWrite, setCanWrite] = useState(!!rep.can_write);
+  const [teamSel, setTeamSel] = useState(Array.isArray(rep.scope_teams) ? rep.scope_teams.filter((t) => t !== "전체") : []);
   const toggle = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const [saving, setSaving] = useState(false);
-  const [mergeAsk, setMergeAsk] = useState("");  // 병합 확인 메시지(있으면 팝업)
+  const [mergeAsk, setMergeAsk] = useState("");
 
-  // 이 관리자에 기기 추가(+): 관리자명·이메일·전화만 입력, 권한은 기존 관리자명 상속
+  // 이 관리자에 기기 추가(+): 관리자명·이메일·전화만, 권한은 기존 관리자명 상속
   const [addDev, setAddDev] = useState(false);
-  const [addForm, setAddForm] = useState({ name: d.device_name || "", email: "", phone: "" });
+  const [addForm, setAddForm] = useState({ name: name || "", email: "", phone: "" });
   const [addMsg, setAddMsg] = useState({ text: "", ok: true });
   const [addBusy, setAddBusy] = useState(false);
   const submitAddDevice = async () => {
@@ -255,25 +257,23 @@ function DeviceRow({ d, isHolder, corpList = [], teamList = [], onApprove, onRem
       const r = await api.inviteAdminDevice({ managerName: addForm.name.trim(), email: addForm.email.trim(), phone: addForm.phone.trim(), confirmMerge: true });
       const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
       setAddMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
-      setAddForm({ name: d.device_name || "", email: "", phone: "" });
+      setAddForm({ name: name || "", email: "", phone: "" });
     } catch (e) { setAddMsg({ text: e.message, ok: false }); }
     finally { setAddBusy(false); }
   };
 
   const buildPayload = (confirmMerge) => ({
-    deviceName: name.trim(), corp: corpSel.join(", "), phone: phone.trim(),
-    canRead, canWrite,
-    teams: teamSel,
+    deviceName: nm.trim(), corp: corpSel.join(", "), phone: phone.trim(),
+    canRead, canWrite, teams: teamSel,
     ...(confirmMerge ? { confirmMerge: true } : {}),
   });
-
   const save = async (confirmMerge = false) => {
     setSaving(true);
     try {
-      await onSaveInfo(d.id, buildPayload(confirmMerge));
+      await onSaveInfo(rep.id, buildPayload(confirmMerge));  // 서버가 같은 관리자명 그룹 전체에 동기화
       setEditing(false); setMergeAsk("");
     } catch (e) {
-      if (e.payload?.needMerge) { setMergeAsk(e.message); }  // 중복 관리자명 → 병합 확인 팝업
+      if (e.payload?.needMerge) { setMergeAsk(e.message); }
       else alert(e.message);
     } finally { setSaving(false); }
   };
@@ -283,60 +283,59 @@ function DeviceRow({ d, isHolder, corpList = [], teamList = [], onApprove, onRem
     padding: "6px 12px", borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: "pointer",
     border: `1px solid ${active ? C.blue : C.line}`, background: active ? C.blue : "#fff", color: active ? "#fff" : C.inkSoft,
   });
+  const smallBtn = (color, bg = "#fff") => ({ border: `1px solid ${color}`, background: bg, borderRadius: 8, padding: "4px 9px", fontSize: 11, color, fontWeight: 700, cursor: "pointer" });
 
   return (
-    <div style={{ background: d.is_approved ? "#fff" : "#fef5f5", border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 12px" }}>
+    <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px" }}>
+      {/* 헤더: 관리자명 + 권한자/관리자 + 정보수정/상세/+ */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            {d.device_name || "기기"}
-            {d.is_authority
-              ? <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>
-              : <span style={{ fontSize: 10, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "1px 7px", borderRadius: 20 }}>관리자</span>}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.device_id}</span>
+        <div style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 14, color: C.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {name || "(이름없음)"}
+          {anyAuthority
+            ? <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>
+            : <span style={{ fontSize: 10, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "1px 7px", borderRadius: 20 }}>관리자</span>}
+        </div>
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          <button style={smallBtn(C.blue)} onClick={() => { setEditing((v) => !v); setDetail(false); }}>{editing ? "닫기" : "정보 수정"}</button>
+          <button style={smallBtn(C.inkSoft)} onClick={() => { setDetail((v) => !v); setEditing(false); }}>{detail ? "닫기" : "상세"}</button>
+          {isHolder && <button title="이 관리자에 기기 추가" style={{ ...smallBtn(C.blue), width: 28, padding: "4px 0", textAlign: "center", background: addDev ? C.blue : "#fff", color: addDev ? "#fff" : C.blue }} onClick={() => { setAddDev((v) => !v); setAddMsg({ text: "", ok: true }); }}>＋</button>}
+        </div>
+      </div>
+
+      {/* 등록 기기코드 목록 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+        {devices.map((d) => (
+          <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, background: d.is_approved ? "#f6f8fa" : "#fef5f5", borderRadius: 8, padding: "6px 10px" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>{d.device_id}</span>
+                {d.is_authority && <span style={{ fontSize: 9, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 6px", borderRadius: 20 }}>권한자</span>}
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
+            </div>
             {isHolder && (
-              <button
-                title="이 관리자에 기기 추가"
-                onClick={() => { setAddDev((v) => !v); setAddMsg({ text: "", ok: true }); }}
-                style={{ flexShrink: 0, width: 20, height: 20, lineHeight: "18px", textAlign: "center", border: `1px solid ${C.blue}`, background: addDev ? C.blue : "#fff", color: addDev ? "#fff" : C.blue, borderRadius: 6, fontSize: 14, fontWeight: 700, cursor: "pointer", padding: 0 }}
-              >＋</button>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                {!d.is_approved && <button style={smallBtn(C.green)} onClick={() => onApprove(d.id)}>승인</button>}
+                {d.is_approved && !d.is_authority && <button style={smallBtn("#b9820f")} onClick={() => onTransfer(d)}>권한자 변경</button>}
+                {!d.is_authority && <button style={{ ...smallBtn(C.seal, "#fef5f5"), border: "none" }} onClick={() => onRemove(d.id)}>삭제</button>}
+              </div>
             )}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, alignItems: "flex-end" }}>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button style={{ border: `1px solid ${C.blueSoft}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.blue, fontWeight: 700, cursor: "pointer" }} onClick={() => { setEditing((v) => !v); setDetail(false); }}>
-              {editing ? "닫기" : "정보 수정"}
-            </button>
-            <button style={{ border: `1px solid ${C.line}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.inkSoft, fontWeight: 700, cursor: "pointer" }} onClick={() => { setDetail((v) => !v); setEditing(false); }}>
-              {detail ? "닫기" : "상세"}
-            </button>
-          </div>
-          {isHolder && !d.is_authority && (
-            <div style={{ display: "flex", gap: 4 }}>
-              {!d.is_approved && <button style={{ border: `1px solid ${C.green}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.green, fontWeight: 700, cursor: "pointer" }} onClick={() => onApprove(d.id)}>승인</button>}
-              {d.is_approved && <button style={{ border: `1px solid #b9820f`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: "#b9820f", fontWeight: 700, cursor: "pointer" }} onClick={() => onTransfer(d)}>권한자 변경</button>}
-              <button style={{ border: "none", background: "#fef5f5", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.seal, fontWeight: 700, cursor: "pointer" }} onClick={() => onRemove(d.id)}>삭제</button>
-            </div>
-          )}
-        </div>
+        ))}
       </div>
 
       {detail && (
         <div style={{ marginTop: 8, padding: "8px 10px", background: "#f6f8fa", borderRadius: 8, fontSize: 12, color: C.ink, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>읽기/쓰기 · </span>{rwText(d)}</div>
-          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>권한 팀 · </span>{teamsText(d.scope_teams)}</div>
-          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 법인 · </span>{d.corp || "-"}</div>
-          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>업무용 전화번호 · </span>{fmtPhone(d.phone) || "-"}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>읽기/쓰기 · </span>{rwText(rep)}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>권한 팀 · </span>{teamsText(rep.scope_teams)}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 법인 · </span>{rep.corp || "-"}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>업무용 전화번호 · </span>{fmtPhone(rep.phone) || "-"}</div>
         </div>
       )}
 
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-          <input style={inp} placeholder="관리자명" value={name} onChange={(e) => setName(e.target.value)} />
+          <input style={inp} placeholder="관리자명" value={nm} onChange={(e) => setNm(e.target.value)} />
           <input style={inp} placeholder="업무용 전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>담당 법인 (복수 선택)</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -359,7 +358,7 @@ function DeviceRow({ d, isHolder, corpList = [], teamList = [], onApprove, onRem
 
       {addDev && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, padding: "10px 12px", background: "#eef5ff", border: `1px solid ${C.blueSoft}`, borderRadius: 10 }}>
-          <div style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5 }}><b>{d.device_name || "이 관리자"}</b>에 기기를 추가합니다. 권한은 기존과 동일하게 적용돼요. 링크를 받은 사람이 <b>등록할 기기</b>에서 열면 등록됩니다.</div>
+          <div style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5 }}><b>{name || "이 관리자"}</b>에 기기를 추가합니다. 권한은 기존과 동일하게 적용돼요. 링크를 받은 사람이 <b>등록할 기기</b>에서 열면 등록됩니다.</div>
           <input style={{ ...inp }} placeholder="관리자명" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} />
           <input style={{ ...inp }} placeholder="링크 받을 이메일" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} />
           <input style={{ ...inp }} placeholder="링크 받을 전화번호" value={addForm.phone} onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })} />
@@ -604,9 +603,12 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
           ) : adminDevices.length === 0 ? (
             <div style={{ fontSize: 13, color: C.inkSoft }}>등록된 기기가 없습니다.</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {adminDevices.map((d) => (
-                <DeviceRow key={d.id} d={d} isHolder={isHolder} corpList={corpList} teamList={teamList}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {Object.entries(adminDevices.reduce((acc, d) => {
+                const k = d.device_name || "(이름없음)";
+                (acc[k] ||= []).push(d); return acc;
+              }, {})).map(([mName, devs]) => (
+                <ManagerCard key={mName} name={mName} devices={devs} isHolder={isHolder} corpList={corpList} teamList={teamList}
                   onApprove={onApproveDevice} onRemove={onRemoveDevice} onTransfer={handleTransfer} onSaveInfo={onSaveDeviceInfo} />
               ))}
             </div>
