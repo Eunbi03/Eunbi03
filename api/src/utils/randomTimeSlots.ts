@@ -7,10 +7,10 @@ function toMinutes(hhmm: string): number {
  * 하루 3회 랜덤 위치 확인 시간 생성 규칙:
  * - 오전(출근+버퍼 ~ 점심시작) / 오후(점심끝 ~ 퇴근-버퍼) 중 한 쪽 2회, 다른 쪽 1회 (랜덤)
  * - 점심시간은 제외
- * - 출근 시각 이후 최소 startBufferMin(기본 60분), 퇴근 시각 이전 최소 endBufferMin(기본 60분)
- * - 점심 종료 후 최소 lunchAfterBufferMin(기본 60분) 지난 뒤부터 오후 슬롯 생성(식사 직후 제외)
+ * - 출근 시각 이후 최소 startBufferMin(기본 40분), 퇴근 시각 이전 최소 endBufferMin(기본 40분)
+ * - 점심 종료 후 최소 lunchAfterBufferMin(기본 40분) 지난 뒤부터 오후 슬롯 생성(식사 직후 제외)
  * - 같은 half 내 두 슬롯은 최소 minGapMinutes(기본 90분) 간격
- * - 예) 9:00 출근·18:00 퇴근·점심 12~13 → 오전 10:00~12:00, 오후 14:00~17:00 사이에서 생성
+ * - 예) 9:00 출근·18:00 퇴근·점심 12~13 → 오전 9:40~12:00, 오후 13:40~17:20 사이에서 생성
  * - window가 너무 짧으면 가능한 만큼만 생성 (반차 등)
  */
 export function generateRandomMinuteOffsets(params: {
@@ -21,9 +21,9 @@ export function generateRandomMinuteOffsets(params: {
   randomFn?: () => number;
 }): number[] {
   const { workStart, workEnd, lunchStart, lunchEnd, minGapMinutes = 90,
-          startBufferMin = 60, endBufferMin = 60, lunchAfterBufferMin = 60, randomFn = Math.random } = params;
+          startBufferMin = 40, endBufferMin = 40, lunchAfterBufferMin = 40, randomFn = Math.random } = params;
 
-  // 출근 후 1시간 버퍼, 퇴근 전 1시간 버퍼를 적용한 실제 확인 가능 범위
+  // 출근 후 40분 버퍼, 퇴근 전 40분 버퍼를 적용한 실제 확인 가능 범위
   const workStartMin = toMinutes(workStart) + startBufferMin;
   const workEndMin   = toMinutes(workEnd) - endBufferMin;
 

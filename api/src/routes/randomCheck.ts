@@ -7,8 +7,8 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '500');
-// 위치 수집 응답 마감: 슬롯 시각 + 20분 (미수집 시 2분 간격 알림을 최대 10회 보내는 창과 일치)
-const RESPONSE_WINDOW_MS = 20 * 60 * 1000;
+// 위치 수집 응답 마감: 슬롯 시각 + 10분 (미수집 시 +5분에 알림 1회를 보내는 창과 일치)
+const RESPONSE_WINDOW_MS = 10 * 60 * 1000;
 
 // 특정 체크 슬롯에 위치를 기록하는 공통 로직
 async function recordCheckLocation(
@@ -88,11 +88,11 @@ router.get('/today-tokens', requireAuth, async (req: Request, res: Response): Pr
 // GET /api/random-check/pending
 router.get('/pending', requireAuth, async (req: Request, res: Response): Promise<void> => {
   // 활성화(notification_sent)된 슬롯 중, 스킵되지 않고 미제출이며
-  // 마감(슬롯 시각 + 20분) 이내인 것만 반환한다. 20분이 지나면 미응답으로 확정되어 더 이상 수집하지 않는다.
+  // 마감(슬롯 시각 + 10분) 이내인 것만 반환한다. 10분이 지나면 미응답으로 확정되어 더 이상 수집하지 않는다.
   const { rows } = await pool.query(
     `SELECT id, scheduled_time AS "scheduledTime" FROM random_location_checks
      WHERE user_id=$1 AND notification_sent=TRUE AND skipped=FALSE AND submitted_time IS NULL
-       AND scheduled_time > now() - interval '20 minutes'
+       AND scheduled_time > now() - interval '10 minutes'
      ORDER BY scheduled_time DESC LIMIT 1`,
     [req.user.userId]
   );

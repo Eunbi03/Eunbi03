@@ -86,9 +86,9 @@ async function activateDueRandomChecks() {
 }
 
 // 랜덤 확인이 제때 수집되지 않은 경우, 근무 중인(출근했고 아직 퇴근하지 않은) 근로자에게
-// "보이는 알림"을 2분 간격으로 최대 10회 보내 앱을 열어 위치를 확인하도록 유도한다.
-// - 무음 푸시/백그라운드 수집이 정상 동작해 이미 수집(submitted_time)되면 더 보내지 않는다.
-// - 첫 알림은 슬롯 시각 +2분부터, 마지막까지 슬롯 시각 +20분(수집 마감) 이내에만 보낸다.
+// "보이는 알림"을 슬롯 시각 +5분에 딱 1회 보내 앱을 열어 위치를 확인하도록 유도한다.
+// - 무음 푸시/백그라운드 수집이 정상 동작해 이미 수집(submitted_time)되면 보내지 않는다.
+// - 알림은 슬롯 시각 +5분부터 +10분(수집 마감) 이내에 1회만 보낸다.
 // - 출근을 누르지 않은 경우(휴일 등)에는 보내지 않는다(attendance_records의 check_in_time 기준).
 async function sendRandomCheckAlerts() {
   const { rows } = await pool.query(
@@ -98,19 +98,18 @@ async function sendRandomCheckAlerts() {
      JOIN attendance_records ar ON ar.user_id = rc.user_id AND ar.date = rc.date
      WHERE rc.submitted_time IS NULL
        AND rc.skipped = FALSE
-       AND rc.alert_count < 10
+       AND rc.alert_count < 1
        AND u.fcm_token IS NOT NULL
        AND ar.check_in_time IS NOT NULL
        AND ar.check_out_time IS NULL
-       AND now() >= rc.scheduled_time + interval '2 minutes'
-       AND now() <= rc.scheduled_time + interval '20 minutes'
-       AND (rc.last_alert_at IS NULL OR now() >= rc.last_alert_at + interval '2 minutes')`
+       AND now() >= rc.scheduled_time + interval '5 minutes'
+       AND now() <= rc.scheduled_time + interval '10 minutes'`
   );
   for (const r of rows) {
     const ok = await sendNotification(
       r.fcm_token,
-      '근무 위치 확인',
-      '근무 위치 확인이 필요합니다. 앱을 열어 위치를 확인해 주세요.'
+      'TimeCard',
+      '위치 권한을 확인해 주세요.'
     );
     if (ok) {
       await pool.query(
