@@ -224,19 +224,46 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
   );
 }
 
-// 등록 기기 행 — 담당자명(기기 이름)·법인·전화번호 편집
+// 권한 팀 배열 → 표시 문자열
+const teamsText = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "전체");
+const rwText = (d) => [d.can_read ? "읽기" : null, d.can_write ? "쓰기" : null].filter(Boolean).join(" · ") || "권한 없음";
+
+// 등록 기기 행 — 관리자명·업무용 전화번호·읽기/쓰기·권한 팀 편집 + 상세
 function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo }) {
   const [editing, setEditing] = useState(false);
+  const [detail, setDetail] = useState(false);
   const [name, setName] = useState(d.device_name || "");
-  const [corp, setCorp] = useState(d.corp || "");
   const [phone, setPhone] = useState(d.phone || "");
+  const [canRead, setCanRead] = useState(d.can_read !== false);
+  const [canWrite, setCanWrite] = useState(!!d.can_write);
+  const [teams, setTeams] = useState(teamsText(d.scope_teams));
   const [saving, setSaving] = useState(false);
-  const save = async () => {
+  const [mergeAsk, setMergeAsk] = useState("");  // 병합 확인 메시지(있으면 팝업)
+
+  const buildPayload = (confirmMerge) => ({
+    deviceName: name.trim(), phone: phone.trim(),
+    canRead, canWrite,
+    teams: teams.split(",").map((x) => x.trim()).filter(Boolean),
+    ...(confirmMerge ? { confirmMerge: true } : {}),
+  });
+
+  const save = async (confirmMerge = false) => {
     setSaving(true);
-    try { await onSaveInfo(d.id, { deviceName: name.trim(), corp: corp.trim(), phone: phone.trim() }); setEditing(false); }
-    finally { setSaving(false); }
+    try {
+      await onSaveInfo(d.id, buildPayload(confirmMerge));
+      setEditing(false); setMergeAsk("");
+    } catch (e) {
+      if (e.payload?.needMerge) { setMergeAsk(e.message); }  // 중복 관리자명 → 병합 확인 팝업
+      else alert(e.message);
+    } finally { setSaving(false); }
   };
+
   const inp = { ...S.input, padding: "7px 10px", fontSize: 13 };
+  const chip = (active) => ({
+    padding: "6px 12px", borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${active ? C.blue : C.line}`, background: active ? C.blue : "#fff", color: active ? "#fff" : C.inkSoft,
+  });
+
   return (
     <div style={{ background: d.is_approved ? "#fff" : "#fef5f5", border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 12px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -246,19 +273,19 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
             {d.is_authority
               ? <span style={{ fontSize: 10, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 7px", borderRadius: 20 }}>권한자</span>
               : <span style={{ fontSize: 10, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "1px 7px", borderRadius: 20 }}>관리자</span>}
-            {(d.corp || d.phone) && (
-              <span style={{ fontWeight: 400, fontSize: 11, color: C.inkSoft }}>
-                {[d.corp, fmtPhone(d.phone)].filter(Boolean).join(" · ")}
-              </span>
-            )}
           </div>
           <div style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.device_id}</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, alignItems: "flex-end" }}>
-          <button style={{ border: `1px solid ${C.blueSoft}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.blue, fontWeight: 700, cursor: "pointer" }} onClick={() => setEditing((v) => !v)}>
-            {editing ? "닫기" : "정보 수정"}
-          </button>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button style={{ border: `1px solid ${C.blueSoft}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.blue, fontWeight: 700, cursor: "pointer" }} onClick={() => { setEditing((v) => !v); setDetail(false); }}>
+              {editing ? "닫기" : "정보 수정"}
+            </button>
+            <button style={{ border: `1px solid ${C.line}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.inkSoft, fontWeight: 700, cursor: "pointer" }} onClick={() => { setDetail((v) => !v); setEditing(false); }}>
+              {detail ? "닫기" : "상세"}
+            </button>
+          </div>
           {isHolder && !d.is_authority && (
             <div style={{ display: "flex", gap: 4 }}>
               {!d.is_approved && <button style={{ border: `1px solid ${C.green}`, background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, color: C.green, fontWeight: 700, cursor: "pointer" }} onClick={() => onApprove(d.id)}>승인</button>}
@@ -268,14 +295,38 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
           )}
         </div>
       </div>
+
+      {detail && (
+        <div style={{ marginTop: 8, padding: "8px 10px", background: "#f6f8fa", borderRadius: 8, fontSize: 12, color: C.ink, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>읽기/쓰기 · </span>{rwText(d)}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>권한 팀 · </span>{teamsText(d.scope_teams)}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>업무용 전화번호 · </span>{fmtPhone(d.phone) || "-"}</div>
+        </div>
+      )}
+
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <input style={{ ...inp, flex: "1 1 120px" }} placeholder="담당자명" value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={{ ...inp, flex: "1 1 120px" }} placeholder="담당 법인 (여러 개는 쉼표로)" value={corp} onChange={(e) => setCorp(e.target.value)} />
+          <input style={inp} placeholder="관리자명" value={name} onChange={(e) => setName(e.target.value)} />
+          <input style={inp} placeholder="업무용 전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한</span>
+            <span style={chip(canRead)} onClick={() => setCanRead((v) => !v)}>읽기</span>
+            <span style={chip(canWrite)} onClick={() => setCanWrite((v) => !v)}>쓰기</span>
           </div>
-          <input style={inp} placeholder="전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+          <input style={inp} placeholder="권한 팀 (여러 개는 쉼표로)" value={teams} onChange={(e) => setTeams(e.target.value)} />
+          <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1 }} onClick={() => save(false)} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+        </div>
+      )}
+
+      {mergeAsk && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 14, padding: "20px 18px", maxWidth: 340, width: "100%", display: "flex", flexDirection: "column", gap: 14 }}>
+            <p style={{ fontSize: 14, color: C.ink, fontWeight: 600, margin: 0, lineHeight: 1.6 }}>{mergeAsk}</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={{ flex: 1, border: `1px solid ${C.line}`, background: "#fff", borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 700, color: C.inkSoft, cursor: "pointer" }} onClick={() => setMergeAsk("")} disabled={saving}>취소</button>
+              <button style={{ flex: 1, border: "none", background: C.blue, borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 700, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1 }} onClick={() => save(true)} disabled={saving}>변경</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -857,7 +857,7 @@ router.get('/dashboard', async (req: Request, res: Response): Promise<void> => {
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
   const isHolder = req.user.role === 'hr'; // 최고관리자만 대기 기기(승인 대상) 목록 조회
   const { rows: myDevices } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, can_read, can_write, scope_teams, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
   );
   let pendingDevices: any[] = [];
@@ -875,7 +875,7 @@ router.get('/my-devices', async (req: Request, res: Response): Promise<void> => 
 // 특정 관리자의 기기 목록 (모든 관리자 조회 가능 — 편집 권한은 별도)
 router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, can_read, can_write, scope_teams, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.params.userId]
   );
   res.json({ devices: rows });
@@ -902,17 +902,97 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
   res.json({ success: true });
 });
 
-// 기기 정보(담당자명=device_name, 담당 법인, 전화번호) 수정 — 최고관리자만 (문자 발신번호로 쓰이므로)
+// 기기 정보(관리자명=device_name, 업무용 전화번호, 읽기/쓰기, 권한 팀) 수정 — 최고관리자만
+// 같은 관리자명을 가진 모든 기기에 함께 적용(동기화)한다.
+// 관리자명을 '이미 존재하는 다른 관리자명'으로 바꾸면 두 관리자의 권한을 합집합으로 병합한다.
+// (프론트에서 confirmMerge=true 확인을 받은 뒤 진행)
+function normalizeTeams(input: any): string[] {
+  let arr: string[];
+  if (Array.isArray(input)) arr = input.map((x) => String(x).trim());
+  else if (typeof input === 'string') arr = input.split(',').map((x) => x.trim());
+  else arr = [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of arr) { if (t && !seen.has(t)) { seen.add(t); out.push(t); } }
+  return out.length ? out : ['전체'];
+}
+
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
   if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 수정할 수 있습니다.' }); return; }
-  const { deviceName, corp, phone } = req.body;
-  const { rows } = await pool.query(
-    `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3 WHERE id=$4
-     RETURNING id, device_name, corp, phone`,
-    [deviceName || null, corp || null, phone || null, req.params.id]
-  );
-  if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
-  res.json({ success: true, device: rows[0] });
+  const { phone, confirmMerge } = req.body;
+  const newName = (req.body.deviceName ?? '').trim();
+  if (!newName) { res.status(400).json({ error: '관리자명을 입력해주세요.' }); return; }
+  const canRead = req.body.canRead !== false;
+  const canWrite = req.body.canWrite === true;
+  const teams = normalizeTeams(req.body.teams);
+
+  const { rows: cur } = await pool.query('SELECT device_name FROM admin_devices WHERE id=$1', [req.params.id]);
+  if (!cur[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
+  const oldName: string = (cur[0].device_name ?? '').trim();
+
+  // 이름이 바뀌었고, 바꾸려는 이름을 가진 '다른 그룹' 기기가 이미 있는지
+  const isRename = newName !== oldName;
+  let collision = false;
+  if (isRename) {
+    const { rows: ex } = await pool.query(
+      'SELECT 1 FROM admin_devices WHERE device_name=$1 LIMIT 1', [newName]
+    );
+    collision = ex.length > 0;
+  }
+
+  if (collision && !confirmMerge) {
+    res.status(409).json({
+      needMerge: true,
+      error: '해당 관리자명은 이미 존재하여, 계속 진행할 경우 권한 범위가 변경됩니다. 계속 진행하시겠습니까?',
+    });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (collision) {
+      // 병합: oldName 그룹 + newName 그룹의 권한을 합집합으로
+      const { rows: others } = await client.query(
+        'SELECT can_read, can_write, scope_teams FROM admin_devices WHERE device_name=$1', [newName]
+      );
+      let mergedRead = canRead, mergedWrite = canWrite;
+      const teamSet = new Set<string>(teams);
+      for (const o of others) {
+        if (o.can_read) mergedRead = true;
+        if (o.can_write) mergedWrite = true;
+        for (const t of (o.scope_teams || [])) teamSet.add(t);
+      }
+      const mergedTeams = Array.from(teamSet);
+      // oldName 그룹 + newName 그룹 전부를 newName + 병합권한으로 통일
+      const names = oldName ? [oldName, newName] : [newName];
+      await client.query(
+        `UPDATE admin_devices SET device_name=$1, phone=$2, can_read=$3, can_write=$4, scope_teams=$5
+         WHERE device_name = ANY($6) OR id=$7`,
+        [newName, phone || null, mergedRead, mergedWrite, mergedTeams, names, req.params.id]
+      );
+    } else if (oldName) {
+      // 같은 관리자명 그룹 전체에 동기화 (이름 변경 포함)
+      await client.query(
+        `UPDATE admin_devices SET device_name=$1, phone=$2, can_read=$3, can_write=$4, scope_teams=$5
+         WHERE device_name=$6 OR id=$7`,
+        [newName, phone || null, canRead, canWrite, teams, oldName, req.params.id]
+      );
+    } else {
+      // 기존 이름이 비어 있으면 이 기기 1개만 설정
+      await client.query(
+        `UPDATE admin_devices SET device_name=$1, phone=$2, can_read=$3, can_write=$4, scope_teams=$5 WHERE id=$6`,
+        [newName, phone || null, canRead, canWrite, teams, req.params.id]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+  res.json({ success: true, merged: collision });
 });
 
 // 권한자 이전 (현재 권한자 기기 → 대상 기기). 이전 후에는 재로그인 시 반영.
