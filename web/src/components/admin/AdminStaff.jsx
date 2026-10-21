@@ -387,7 +387,6 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   // 기기 관리·비밀번호 변경·권한자 변경은 '권한자'만. 이름은 모든 관리자 가능.
   // (공용 계정을 공유하므로 role이 아니라 권한자 여부로 구분)
   const isHolder = !!currentUser?.isAuthorityHolder;
-  const isSelf = currentUser?.id === worker?.id;
 
   const [name, setName] = useState(worker?.name || "");
   const [pw, setPw] = useState("");
@@ -667,8 +666,6 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [adminDevices, setAdminDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
-  const [page, setPage] = useState(1);
-  const PER_PAGE = 10;
   const [uploadResult, setUploadResult] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [etcPopup, setEtcPopup] = useState(null);
