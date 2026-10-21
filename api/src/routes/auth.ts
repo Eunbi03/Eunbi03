@@ -57,26 +57,38 @@ router.post('/register-device-link',
       res.status(401).json({ error: '잘못된 링크입니다.' }); return;
     }
     const deviceId = req.body.deviceId;
-    // 이미 등록된 기기면 안내만
+    // 이미 등록된 기기면 안내만 (링크 소모 없이)
     const { rows: existing } = await pool.query('SELECT id FROM admin_devices WHERE device_id=$1 LIMIT 1', [deviceId]);
     if (existing.length > 0) { res.json({ alreadyRegistered: true }); return; }
-    // 같은 관리자명이 이미 있으면 권한 공유(기존 그룹 권한 상속)
+    // 1회용 링크: nonce를 선점한다. 이미 사용된 링크면 등록하지 않는다.
+    if (p.nonce) {
+      const { rows: claim } = await pool.query(
+        'INSERT INTO used_invite_tokens (nonce, device_id) VALUES ($1,$2) ON CONFLICT (nonce) DO NOTHING RETURNING nonce',
+        [p.nonce, deviceId]
+      );
+      if (claim.length === 0) { res.json({ alreadyUsed: true }); return; }
+    }
+    // 같은 관리자명이 이미 있으면 권한 공유(기존 그룹 권한 상속). 그룹이 권한자면 새 기기도 권한자.
     const { rows: grp } = await pool.query(
-      'SELECT can_read, can_write, scope_teams, corp, phone FROM admin_devices WHERE device_name=$1 LIMIT 1', [p.managerName]
+      'SELECT can_read, can_write, scope_teams, corp, phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
+    );
+    const { rows: authRows } = await pool.query(
+      'SELECT 1 FROM admin_devices WHERE device_name=$1 AND is_authority=TRUE LIMIT 1', [p.managerName]
     );
     let canRead = p.canRead !== false;
     let canWrite = p.canWrite === true;
     let teams = Array.isArray(p.teams) && p.teams.length ? p.teams : ['전체'];
     let corp = p.corp || null;
     let phone = p.phone || null;
+    let isAuthority = authRows.length > 0;   // 권한자 그룹이면 새 기기도 권한자
     if (grp[0]) {
       canRead = grp[0].can_read; canWrite = grp[0].can_write;
       teams = grp[0].scope_teams || teams; corp = grp[0].corp || corp; phone = grp[0].phone || phone;
     }
     await pool.query(
-      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, can_read, can_write, scope_teams)
-       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8) ON CONFLICT (user_id, device_id) DO NOTHING`,
-      [p.uid, deviceId, p.managerName, corp, phone, canRead, canWrite, teams]
+      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, can_read, can_write, scope_teams, is_authority)
+       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8,$9) ON CONFLICT (user_id, device_id) DO NOTHING`,
+      [p.uid, deviceId, p.managerName, corp, phone, canRead, canWrite, teams, isAuthority]
     );
     res.json({ success: true, managerName: p.managerName });
   }

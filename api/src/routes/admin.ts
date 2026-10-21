@@ -1064,8 +1064,10 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
     }
   }
 
+  // nonce: 1회용 링크 식별자(한 초대로 기기 하나만 등록)
+  const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
   const token = jwt.sign(
-    { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, corp, canRead, canWrite, teams },
+    { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, corp, canRead, canWrite, teams, nonce },
     process.env.JWT_SECRET as string, { expiresIn: '7d' }
   );
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;

@@ -5,7 +5,7 @@ import * as api from "../api/client.js";
 // 관리자 기기 등록 링크(/admin/register-device?t=...) 처리 페이지.
 // 링크를 '등록하려는 기기'에서 열면 이 화면이 그 기기를 관리자 기기로 등록한다.
 export default function RegisterDevice() {
-  const [state, setState] = useState("loading"); // loading | success | already | error
+  const [state, setState] = useState("loading"); // loading | success | already | used | error
   const [msg, setMsg] = useState("");
   const [name, setName] = useState("");
 
@@ -18,6 +18,7 @@ export default function RegisterDevice() {
         const deviceId = await getDeviceId();
         const r = await api.registerDeviceLink(t, deviceId);
         if (r.alreadyRegistered) { setState("already"); return; }
+        if (r.alreadyUsed) { setState("used"); return; }
         setName(r.managerName || "");
         setState("success");
       } catch (e) {
@@ -63,6 +64,14 @@ export default function RegisterDevice() {
           <>
             <div style={{ fontSize: 40, marginBottom: 10 }}>ℹ️</div>
             <p style={{ fontSize: 20, fontWeight: 800, color: "#fff", margin: 0 }}>이미 등록된 기기입니다.</p>
+            <button style={btn} onClick={() => { window.location.href = "/admin"; }}>관리자 로그인으로</button>
+          </>
+        )}
+        {state === "used" && (
+          <>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>ℹ️</div>
+            <p style={{ fontSize: 20, fontWeight: 800, color: "#fff", margin: 0 }}>이미 사용된 링크입니다.</p>
+            <p style={{ fontSize: 14, color: "#aab3c5", margin: "12px 0 0", lineHeight: 1.6 }}>이 등록 링크로는 이미 기기가 등록되었습니다. 추가 기기가 필요하면 권한자에게 새 링크를 요청하세요.</p>
             <button style={btn} onClick={() => { window.location.href = "/admin"; }}>관리자 로그인으로</button>
           </>
         )}
