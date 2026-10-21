@@ -1012,15 +1012,14 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
             value={search} onChange={(e) => setSearch(e.target.value)} placeholder="이름 검색"
             style={{ ...S.input, padding: "7px 12px", fontSize: 13, width: isMobile ? 130 : 170 }}
           />
-          {/* 문제계정 / 전체 토글 (엑셀업로드 왼쪽) */}
-          <div style={{ display: "flex", border: `1px solid ${C.blueSoft}`, borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
-            {[["problem", "문제계정"], ["all", "전체"]].map(([v, label]) => (
-              <button key={v} onClick={() => setViewMode(v)}
-                style={{ border: "none", padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", background: viewMode === v ? C.blue : "#fff", color: viewMode === v ? "#fff" : C.inkSoft }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* 문제계정만 보기 토글 (엑셀업로드 왼쪽) */}
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0 }} title="문제계정만 보기">
+            <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, whiteSpace: "nowrap" }}>문제계정만</span>
+            <span onClick={() => setViewMode(viewMode === "problem" ? "all" : "problem")}
+              style={{ width: 38, height: 22, borderRadius: 11, background: viewMode === "problem" ? C.blue : "#cfd6e0", position: "relative", transition: "background .15s", flexShrink: 0 }}>
+              <span style={{ position: "absolute", top: 2, left: viewMode === "problem" ? 18 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left .15s", boxShadow: "0 1px 2px rgba(0,0,0,0.25)" }} />
+            </span>
+          </label>
           {canWrite && (
             <>
               <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />

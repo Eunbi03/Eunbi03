@@ -432,20 +432,13 @@ export default function AdminIndividual({ filters, isHR }) {
     finally { setSending(false); }
   };
 
-  // 법인 → 본부 → 팀 그룹화 (등장 순서 유지)
+  // 법인 > 본부 > 팀을 한 줄 라벨로 묶어 그룹화 (등장 순서 유지)
   const groups = [];
   const gIndex = {};
   for (const w of visibleWorkers) {
-    const corp = w.corp || "미지정";
-    const div = w.division || "미지정";
-    const team = w.team || "미지정";
-    const ck = corp;
-    if (!(ck in gIndex)) { gIndex[ck] = { name: corp, divs: [], di: {} }; groups.push(gIndex[ck]); }
-    const g = gIndex[ck];
-    if (!(div in g.di)) { g.di[div] = { name: div, teams: [], ti: {} }; g.divs.push(g.di[div]); }
-    const dv = g.di[div];
-    if (!(team in dv.ti)) { dv.ti[team] = { name: team, workers: [] }; dv.teams.push(dv.ti[team]); }
-    dv.ti[team].workers.push(w);
+    const label = [w.corp, w.division, w.team].filter(Boolean).join(" > ") || "미지정";
+    if (!(label in gIndex)) { gIndex[label] = { label, members: [] }; groups.push(gIndex[label]); }
+    gIndex[label].members.push(w);
   }
 
   const loadReport = async (w) => {
@@ -525,26 +518,19 @@ export default function AdminIndividual({ filters, isHR }) {
         )}
       </div>
 
-      {/* 법인 → 본부 → 팀 그룹 */}
+      {/* 법인 > 본부 > 팀 (한 줄 헤더 + 인원수) */}
       {groups.map((g) => (
-        <div key={g.name} style={{ marginBottom: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span style={{ width: 4, height: 18, background: COL.blue, borderRadius: 2 }} />
-            <span style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: COL.blue }}>{g.name}</span>
+        <div key={g.label} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight: 800, color: COL.blue, padding: "4px 2px", borderBottom: `2px solid ${C.lineAdmin}`, marginBottom: 8 }}>
+            {g.label} <span style={{ fontWeight: 400, color: COL.gray }}>({g.members.length})</span>
           </div>
-          {g.divs.map((dv) => (
-            <div key={dv.name} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: isMobile ? 14 : 16, fontWeight: 800, color: COL.black, margin: "0 0 6px 12px" }}>{dv.name}</div>
-              {dv.teams.map((tm) => (
-                <div key={tm.name} style={{ marginBottom: 8, marginLeft: 24 }}>
-                  <div style={{ fontSize: isMobile ? 13 : 15, fontWeight: 600, color: COL.gray, margin: "0 0 6px" }}>{tm.name}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {tm.workers.map((w) => {
-                      const isOpen = openId === w.id;
-                      const report = reportMap[w.id];
-                      const sc = scores[w.id];
-                      const over = sc && sc.score >= 5;
-                      return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {g.members.map((w) => {
+              const isOpen = openId === w.id;
+              const report = reportMap[w.id];
+              const sc = scores[w.id];
+              const over = sc && sc.score >= 5;
+              return (
                         <div key={w.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
                           <div style={{ padding: isMobile ? "11px 14px" : "14px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }} onClick={() => toggle(w)}>
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -588,14 +574,10 @@ export default function AdminIndividual({ filters, isHR }) {
                               ))}
                             </div>
                           )}
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
-              ))}
-            </div>
-          ))}
+              );
+            })}
+          </div>
         </div>
       ))}
 
