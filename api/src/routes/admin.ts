@@ -30,17 +30,27 @@ router.use(async (req: Request, res: Response, next): Promise<void> => {
   } catch (e) { next(e as any); }
 });
 
+// 이 요청을 보낸 기기가 '권한자'인지 DB로 확인한다.
+// (공용 계정을 공유하므로 role로는 권한자/일반 관리자를 구분할 수 없어 기기 기준으로 판단)
+async function reqIsAuthority(req: Request): Promise<boolean> {
+  if (!req.user.deviceId) return false;
+  const { rows } = await pool.query(
+    'SELECT is_authority FROM admin_devices WHERE user_id=$1 AND device_id=$2 AND is_approved=TRUE',
+    [req.user.userId, req.user.deviceId]
+  );
+  return !!rows[0]?.is_authority;
+}
+
 // 로그인한 관리자 기기의 열람 범위(권한 팀)를 반환한다.
-// null = 전체 열람(권한자 / 최고관리자 / 권한팀 '전체'). 배열 = 해당 팀만 열람.
+// null = 전체 열람(권한자 / 권한팀 '전체'). 배열 = 해당 팀만 열람.
 async function getReadScope(req: Request): Promise<string[] | null> {
-  if (req.user.role === 'hr' || req.user.isAuthority) return null;
   if (!req.user.deviceId) return null;
   const { rows } = await pool.query(
     'SELECT is_authority, scope_teams FROM admin_devices WHERE user_id=$1 AND device_id=$2',
     [req.user.userId, req.user.deviceId]
   );
   const d = rows[0];
-  if (!d || d.is_authority) return null;
+  if (!d || d.is_authority) return null;   // 권한자는 전체 열람
   const teams: string[] = d.scope_teams || [];
   if (teams.length === 0 || teams.includes('전체')) return null;
   return teams;
@@ -323,9 +333,9 @@ router.put('/workers/:id/reset-password', requireAdmin, async (req: Request, res
   const { newPassword } = req.body;
   const { rows: users } = await pool.query('SELECT id, name, phone, role FROM users WHERE id=$1 AND is_active=TRUE', [req.params.id]);
   if (!users[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
-  // 관리자(admin/hr) 계정의 비밀번호 변경은 최고관리자(HR)만 가능
-  if ((users[0].role === 'admin' || users[0].role === 'hr') && req.user.role !== 'hr') {
-    res.status(403).json({ error: '관리자 계정의 비밀번호는 최고관리자(인사팀)만 변경할 수 있습니다.' }); return;
+  // 관리자(admin/hr) 계정의 비밀번호 변경은 권한자만 가능
+  if ((users[0].role === 'admin' || users[0].role === 'hr') && !(await reqIsAuthority(req))) {
+    res.status(403).json({ error: '관리자 계정의 비밀번호는 권한자만 변경할 수 있습니다.' }); return;
   }
 
   let plain: string;
@@ -873,7 +883,7 @@ router.get('/dashboard', async (req: Request, res: Response): Promise<void> => {
 
 // 내 기기 목록 + 권한자면 전체 대기 기기 목록
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
-  const isHolder = req.user.role === 'hr'; // 최고관리자만 대기 기기(승인 대상) 목록 조회
+  const isHolder = await reqIsAuthority(req); // 권한자만 대기 기기(승인 대상) 목록 조회
   const { rows: myDevices } = await pool.query(
     'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, can_read, can_write, scope_teams, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
@@ -901,7 +911,7 @@ router.get('/admin-devices/:userId', async (req: Request, res: Response): Promis
 
 // 기기 승인 (권한자 기기만)
 router.post('/devices/:id/approve', async (req: Request, res: Response): Promise<void> => {
-  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 승인할 수 있습니다.' }); return; }
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 승인할 수 있습니다.' }); return; }
   const { rows } = await pool.query(
     'UPDATE admin_devices SET is_approved=TRUE, approved_by=$1, approved_at=now() WHERE id=$2 AND is_approved=FALSE RETURNING id',
     [req.user.userId, req.params.id]
@@ -912,7 +922,7 @@ router.post('/devices/:id/approve', async (req: Request, res: Response): Promise
 
 // 기기 삭제 (권한자 기기만, 권한자 기기 자신은 삭제 불가)
 router.delete('/devices/:id', async (req: Request, res: Response): Promise<void> => {
-  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 삭제할 수 있습니다.' }); return; }
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
   const { rows } = await pool.query('SELECT is_authority FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
   if (rows[0].is_authority) { res.status(400).json({ error: '권한자 기기는 삭제할 수 없습니다. 먼저 권한을 이전하세요.' }); return; }
@@ -936,7 +946,7 @@ function normalizeTeams(input: any): string[] {
 }
 
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
-  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 수정할 수 있습니다.' }); return; }
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 수정할 수 있습니다.' }); return; }
   const { phone, confirmMerge } = req.body;
   const corp = (req.body.corp ?? '').trim() || null;   // 담당 법인(월간 리포트 발신담당 매핑에 사용)
   const newName = (req.body.deviceName ?? '').trim();
@@ -1017,7 +1027,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
 // 기기 추가 초대(+버튼) — 권한자/최고관리자만. 등록 링크를 이메일 AND 문자로 발송한다.
 // 링크를 '등록하려는 기기'에서 열면 공용 관리자 계정에 그 기기가 등록된다.
 router.post('/devices/invite', async (req: Request, res: Response): Promise<void> => {
-  if (req.user.role !== 'hr' && !req.user.isAuthority) { res.status(403).json({ error: '권한자만 기기를 추가할 수 있습니다.' }); return; }
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 기기를 추가할 수 있습니다.' }); return; }
   const managerName = (req.body.managerName ?? '').trim();
   const email = (req.body.email ?? '').trim() || null;
   const phone = (req.body.phone ?? '').trim() || null;
@@ -1059,18 +1069,19 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
 
 // 권한자 이전 (현재 권한자 기기 → 대상 기기). 이전 후에는 재로그인 시 반영.
 router.put('/authority/transfer', async (req: Request, res: Response): Promise<void> => {
-  if (req.user.role !== 'hr') { res.status(403).json({ error: '최고관리자(인사팀)만 이전할 수 있습니다.' }); return; }
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 이전할 수 있습니다.' }); return; }
   const { targetDeviceId } = req.body; // admin_devices.id
   if (!targetDeviceId) { res.status(400).json({ error: 'targetDeviceId가 필요합니다.' }); return; }
   const { rows: target } = await pool.query(
     'SELECT id FROM admin_devices WHERE id=$1 AND is_approved=TRUE', [targetDeviceId]
   );
   if (!target[0]) { res.status(400).json({ error: '승인된 대상 기기를 찾을 수 없습니다.' }); return; }
-  // 두 UPDATE를 한 트랜잭션으로 — 중간 실패로 권한자가 0명이 되는 상황 방지
+  // '변경'을 누른 본인 기기의 권한자만 대상 기기로 넘긴다(다른 권한자는 그대로 유지 → 권한자 수 보존).
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE admin_devices SET is_authority=FALSE WHERE is_authority=TRUE');
+    await client.query('UPDATE admin_devices SET is_authority=FALSE WHERE user_id=$1 AND device_id=$2',
+      [req.user.userId, req.user.deviceId]);
     await client.query('UPDATE admin_devices SET is_authority=TRUE WHERE id=$1', [targetDeviceId]);
     await client.query('COMMIT');
   } catch (e) {
