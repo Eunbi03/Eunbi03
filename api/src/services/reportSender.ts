@@ -51,10 +51,11 @@ export async function sendAdminDeviceInvite(opts: {
 
   const result = { email: false, sms: false };
   if (email && process.env.SMTP_HOST && process.env.SMTP_USER) {
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587', 10),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      host: process.env.SMTP_HOST, port,
+      secure: port === 465, // 465=암시적 SSL, 587=STARTTLS (리포트 발송과 동일)
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
     });
     try { await transporter.sendMail({ from: process.env.SMTP_USER, to: email, subject, html: bodyHtml, text: bodyText }); result.email = true; }
     catch (e: any) { console.error('[기기등록 이메일 실패]', e.message); }
