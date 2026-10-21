@@ -50,11 +50,20 @@ async function request(path, { method = "GET", body, auth = true, retry = true }
 }
 
 /* 인증 */
-export async function login({ username, password, deviceId }) {
-  const data = await request("/auth/login", { method: "POST", body: { username, password, deviceId }, auth: false });
+export async function login({ username, password, deviceId, deviceName, managerName, phone, canRead, canWrite, teams }) {
+  const body = { username, password, deviceId };
+  if (deviceName) body.deviceName = deviceName;
+  // 승인요청(미등록 기기) 추가 정보 — 전달 시 서버가 승인 대기 등록을 진행한다.
+  if (managerName !== undefined) {
+    body.managerName = managerName; body.phone = phone;
+    body.canRead = canRead; body.canWrite = canWrite; body.teams = teams;
+  }
+  const data = await request("/auth/login", { method: "POST", body, auth: false });
   setAccessToken(data.accessToken); setStoredRefreshToken(data.refreshToken); setStoredUserId(data.user.id);
   return data.user;
 }
+// 승인요청 화면용: 권한 팀 선택 목록(로그인 전, 인증 불필요)
+export const getPublicTeams = () => request("/auth/teams", { auth: false });
 export async function tryAutoLogin({ deviceId }) {
   const userId = getStoredUserId(); const refreshToken = getStoredRefreshToken();
   if (!userId || !refreshToken) return null;

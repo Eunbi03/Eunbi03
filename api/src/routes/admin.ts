@@ -12,6 +12,22 @@ import { sendReportLink } from '../services/reportSender';
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
+// 로그인한 관리자 기기의 열람 범위(권한 팀)를 반환한다.
+// null = 전체 열람(권한자 / 최고관리자 / 권한팀 '전체'). 배열 = 해당 팀만 열람.
+async function getReadScope(req: Request): Promise<string[] | null> {
+  if (req.user.role === 'hr' || req.user.isAuthority) return null;
+  if (!req.user.deviceId) return null;
+  const { rows } = await pool.query(
+    'SELECT is_authority, scope_teams FROM admin_devices WHERE user_id=$1 AND device_id=$2',
+    [req.user.userId, req.user.deviceId]
+  );
+  const d = rows[0];
+  if (!d || d.is_authority) return null;
+  const teams: string[] = d.scope_teams || [];
+  if (teams.length === 0 || teams.includes('전체')) return null;
+  return teams;
+}
+
 // 직원 신규 등록/재활성화 시 당일 남은 랜덤 확인 슬롯을 생성한다(실패해도 등록은 진행).
 async function generateTodaySlots(
   userId: string, scheduledStart?: string, scheduledEnd?: string, lunchStart?: string, lunchEnd?: string,
@@ -162,6 +178,9 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
   if (needsAttention === 'true') {
     conditions.push(`u.role='worker' AND (u.device_id IS NULL OR u.must_change_password=TRUE)`);
   }
+  // 권한 범위(권한 팀) 적용: 권한자/최고관리자/'전체'가 아니면 해당 팀 직원만 열람
+  const scope = await getReadScope(req);
+  if (scope) { params.push(scope); conditions.push(`u.team = ANY($${params.length})`); }
 
   const where = `WHERE ${conditions.join(' AND ')}`;
   const { rows: countRows } = await pool.query(`SELECT COUNT(*) as count FROM users u ${where}`, params);
@@ -329,10 +348,14 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
   const workdays = workdaysBetween(fromDate, toDate);
   const workdayCount = workdays.length;
 
-  // 직원 전체
+  // 직원 전체 (권한 범위가 있으면 해당 팀만)
+  const scope = await getReadScope(req);
   const { rows: workers } = await pool.query(
     `SELECT id, name, corp, division, team, job_title, scheduled_start, note_exempt, irregular_worker
-     FROM users WHERE role='worker' AND is_active=TRUE ORDER BY corp, division, team, name`
+     FROM users WHERE role='worker' AND is_active=TRUE
+       ${scope ? 'AND team = ANY($1)' : ''}
+     ORDER BY corp, division, team, name`,
+    scope ? [scope] : []
   );
   if (workers.length === 0) { res.json({ teams: [], period: { from: fromDate, to: toDate, workdays: workdayCount } }); return; }
 
@@ -417,6 +440,9 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   );
   if (!userRows[0]) { res.status(404).json({ error: '직원을 찾을 수 없습니다.' }); return; }
   const user = userRows[0];
+  // 권한 범위 밖 직원 리포트 열람 차단
+  const scope = await getReadScope(req);
+  if (scope && !scope.includes(user.team)) { res.status(403).json({ error: '열람 권한이 없는 직원입니다.' }); return; }
   const noteExempt = !!user.note_exempt;
   const irregular = !!user.irregular_worker;
 

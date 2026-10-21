@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C, S } from "../styles.js";
 import { getDeviceId } from "../utils/device.js";
 import * as api from "../api/client.js";
@@ -73,7 +73,23 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const [failCount, setFailCount] = useState(0);
   const [serverNote, setServerNote] = useState(""); // 기기 불일치 등 조치가 필요한 실제 안내
 
+  // 미등록 관리자 기기: 승인요청(관리자명/업무용 전화번호/권한 범위) 2단계 화면
+  const [deviceStep, setDeviceStep] = useState(false);
+  const [teamsList, setTeamsList] = useState([]);
+  const [reqName, setReqName] = useState("");
+  const [reqPhone, setReqPhone] = useState("");
+  const [reqCanRead, setReqCanRead] = useState(true);
+  const [reqCanWrite, setReqCanWrite] = useState(false);
+  const [reqTeams, setReqTeams] = useState([]);   // 선택된 팀명 배열
+  const [reqDone, setReqDone] = useState("");      // 승인요청 완료 안내
+
   const t = THEMES[mode] || THEMES.worker;
+
+  useEffect(() => {
+    if (deviceStep && teamsList.length === 0) {
+      api.getPublicTeams().then((d) => setTeamsList(d.teams || [])).catch(() => {});
+    }
+  }, [deviceStep]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -88,16 +104,48 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
       const user = await api.login({ username, password, deviceId });
       onLogin(user);
     } catch (e) {
+      // 미등록 관리자 기기 → 승인요청 폼으로 전환
+      if (e.payload?.needDeviceRequest) { setDeviceStep(true); setErr(""); setBusy(false); return; }
       setErr(e.message);
-      // 서버의 실제 누적 실패 횟수와 연동 (remainingAttempts = 5 - 누적실패)
       const rem = e.payload?.remainingAttempts;
       const msg = e.message || "";
       const isLocked = /(잠겼|잠금)/.test(msg);
-      // 기기 불일치/승인 대기 등 조치가 필요한 사유(403, 잠금 제외)는 실제 안내를 그대로 노출
       if (e.status === 403 && !isLocked) setServerNote(msg);
       if (typeof rem === "number") setFailCount(Math.max(1, 5 - rem));
       else if (isLocked) setFailCount(5);
       else setFailCount((c) => c + 1);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleTeam = (name) => {
+    setReqTeams((prev) => prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]);
+  };
+
+  const submitDeviceRequest = async (e) => {
+    e.preventDefault();
+    if (!reqName.trim() || !reqPhone.trim()) { setErr("관리자명과 업무용 전화번호를 입력해주세요."); return; }
+    if (!reqCanRead && !reqCanWrite) { setErr("읽기 또는 쓰기 권한을 선택해주세요."); return; }
+    if (reqTeams.length === 0) { setErr("권한 팀을 1개 이상 선택해주세요."); return; }
+    setBusy(true); setErr("");
+    try {
+      const deviceId = await getDeviceId();
+      const username = email.trim().toLowerCase();
+      await api.login({
+        username, password, deviceId,
+        managerName: reqName.trim(), phone: reqPhone.trim(),
+        canRead: reqCanRead, canWrite: reqCanWrite, teams: reqTeams,
+      });
+      // 정상 로그인으로 이어지지 않고 승인 대기 응답(403)이 오므로 아래 catch에서 처리됨
+    } catch (e) {
+      if (e.payload?.pendingApproval) {
+        setReqDone("승인 요청이 전송되었습니다.\n권한자의 승인 후 로그인할 수 있습니다.");
+      } else if (e.payload?.duplicateManager) {
+        setErr(e.message); // 이미 등록된 관리자입니다...
+      } else {
+        setErr(e.message);
+      }
     } finally {
       setBusy(false);
     }
@@ -109,6 +157,72 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
     width: "100%", boxSizing: "border-box",
   };
   const labelStyle = { fontSize: t.labelSize, fontWeight: 700, color: t.labelColor };
+
+  // ── 미등록 관리자 기기: 승인요청 화면 ──────────────────────────
+  if (mode === "admin" && deviceStep) {
+    // 본부별로 팀 묶기
+    const byDivision = {};
+    for (const row of teamsList) { (byDivision[row.division] ||= []).push(row.team); }
+    const chipStyle = (active) => ({
+      padding: "7px 12px", borderRadius: 18, fontSize: 13, fontWeight: 700, cursor: "pointer",
+      border: `1px solid ${active ? "#2d6cdf" : t.inputBorder}`,
+      background: active ? "#2d6cdf" : t.inputBg, color: active ? "#fff" : t.inputColor,
+    });
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: t.pageBg, padding: "max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom))" }}>
+        <form onSubmit={submitDeviceRequest} style={{ width: "100%", maxWidth: 400, background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: 18, padding: "28px 24px", display: "flex", flexDirection: "column", gap: 12, boxShadow: t.cardShadow }}>
+          <div style={{ textAlign: "center", marginBottom: 4 }}>
+            <p style={{ fontSize: 22, fontWeight: 800, color: t.titleColor, margin: 0 }}>기기 승인 요청</p>
+            <p style={{ fontSize: 13, color: t.subColor, margin: "6px 0 0" }}>등록되지 않은 기기입니다. 아래 정보를 입력해 승인을 요청하세요.</p>
+          </div>
+
+          {reqDone ? (
+            <>
+              <p style={{ fontSize: 14, color: "#8fd19e", fontWeight: 700, whiteSpace: "pre-line", textAlign: "center", margin: "10px 0" }}>{reqDone}</p>
+              <button type="button" onClick={() => { setDeviceStep(false); setReqDone(""); }} style={{ border: "none", borderRadius: 10, padding: 13, fontSize: 15, fontWeight: 700, color: t.btnColor, background: t.btnBg, cursor: "pointer" }}>로그인 화면으로</button>
+            </>
+          ) : (
+            <>
+              <label style={labelStyle}>관리자명</label>
+              <input style={inputStyle} value={reqName} onChange={(e) => setReqName(e.target.value)} disabled={busy} placeholder="이름" />
+              <label style={labelStyle}>업무용 전화번호</label>
+              <input style={inputStyle} type="tel" value={reqPhone} onChange={(e) => setReqPhone(e.target.value)} disabled={busy} placeholder="예: 01012345678" />
+
+              <label style={labelStyle}>권한 범위 (읽기/쓰기)</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <span onClick={() => !busy && setReqCanRead((v) => !v)} style={chipStyle(reqCanRead)}>읽기</span>
+                <span onClick={() => !busy && setReqCanWrite((v) => !v)} style={chipStyle(reqCanWrite)}>쓰기</span>
+              </div>
+
+              <label style={labelStyle}>권한 팀 (복수 선택)</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 220, overflowY: "auto", padding: "4px 2px" }}>
+                {Object.keys(byDivision).length === 0 && (
+                  <span style={{ fontSize: 13, color: t.subColor }}>팀 목록을 불러오는 중…</span>
+                )}
+                {Object.entries(byDivision).map(([division, teams]) => (
+                  <div key={division}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: t.subColor, margin: "2px 0 6px" }}>{division}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {teams.map((tm) => (
+                        <span key={tm} onClick={() => !busy && toggleTeam(tm)} style={chipStyle(reqTeams.includes(tm))}>{tm}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {err && <div style={{ fontSize: 13, color: "#ff8e84", fontWeight: 600, whiteSpace: "pre-line" }}>{err}</div>}
+
+              <button type="submit" disabled={busy} style={{ border: "none", borderRadius: 10, padding: 13, fontSize: 16, fontWeight: 700, color: t.btnColor, background: t.btnBg, marginTop: 4, opacity: busy ? 0.6 : 1, cursor: busy ? "default" : "pointer" }}>
+                {busy ? "요청 중…" : "승인 요청"}
+              </button>
+              <button type="button" onClick={() => { setDeviceStep(false); setErr(""); }} style={{ border: "none", background: "none", color: t.linkColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>취소</button>
+            </>
+          )}
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: t.pageBg, padding: "max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom))", transition: "background 0.2s" }}>

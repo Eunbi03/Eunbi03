@@ -27,6 +27,16 @@ async function logAttempt(data: {
   );
 }
 
+// GET /api/auth/teams — 승인요청 화면(로그인 전)에서 권한 팀 선택 목록을 제공한다.
+router.get('/teams', async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query(
+    `SELECT d.name AS division, t.name AS team
+       FROM teams t JOIN divisions d ON d.id = t.division_id
+      ORDER BY d.name, t.name`
+  );
+  res.json({ teams: rows });
+});
+
 // POST /api/auth/login
 router.post('/login',
   [
@@ -103,13 +113,30 @@ router.post('/login',
             [user.id, deviceId, deviceName || '첫 번째 기기', anyAuth.length === 0]
           );
         } else {
-          // 추가 기기: 승인 대기 등록
+          // 추가 기기: 승인요청 화면에서 관리자명/업무용 전화번호/권한범위를 입력받아 등록한다.
+          const managerName = (req.body.managerName ?? '').trim();
+          const phone = (req.body.phone ?? '').trim();
+          if (!managerName || !phone) {
+            // 아직 정보 미입력 → 클라이언트에 승인요청 폼을 띄우도록 지시
+            await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_FORM', req });
+            res.status(403).json({ error: '등록되지 않은 기기입니다. 관리자 정보를 입력해 승인을 요청하세요.', needDeviceRequest: true }); return;
+          }
+          // 중복 관리자명 체크: 이미 등록된 관리자명으로는 스스로 등록할 수 없다(최고 관리자에게 요청).
+          const { rows: dup } = await pool.query('SELECT 1 FROM admin_devices WHERE device_name=$1 LIMIT 1', [managerName]);
+          if (dup.length > 0) {
+            await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DUPLICATE_MANAGER', req });
+            res.status(409).json({ error: '이미 등록된 관리자입니다. 새로운 기기 등록을 원한다면 최고 관리자에게 요청해주세요.', duplicateManager: true }); return;
+          }
+          const canRead = req.body.canRead !== false;   // 기본 읽기 허용
+          const canWrite = req.body.canWrite === true;
+          const teams = Array.isArray(req.body.teams) && req.body.teams.length ? req.body.teams : ['전체'];
           await pool.query(
-            'INSERT INTO admin_devices (user_id, device_id, device_name, is_approved) VALUES ($1,$2,$3,FALSE) ON CONFLICT (user_id, device_id) DO NOTHING',
-            [user.id, deviceId, deviceName || '새 기기']
+            `INSERT INTO admin_devices (user_id, device_id, device_name, phone, is_approved, can_read, can_write, scope_teams)
+             VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7) ON CONFLICT (user_id, device_id) DO NOTHING`,
+            [user.id, deviceId, managerName, phone, canRead, canWrite, teams]
           );
           await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_PENDING', req });
-          res.status(403).json({ error: '새 기기 등록 요청이 전송되었습니다. 권한자의 승인 후 로그인할 수 있습니다.', pendingApproval: true }); return;
+          res.status(403).json({ error: '승인 요청이 전송되었습니다. 권한자의 승인 후 로그인할 수 있습니다.', pendingApproval: true }); return;
         }
       }
     } else {
