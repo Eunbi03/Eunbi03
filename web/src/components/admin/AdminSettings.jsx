@@ -299,9 +299,15 @@ function DivisionSection() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: "", teams: "" }); // teams: 쉼표 구분
   const [teamInput, setTeamInput] = useState({}); // divisionId -> 입력값
+  const [grantSel, setGrantSel] = useState({}); // divisionId -> 권한 부여 관리자명 배열
+  const [managers, setManagers] = useState([]); // 선택 가능한 관리자 목록
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
   const load = () => { setLoading(true); api.getDivisions().then((d) => setList(d.divisions || [])).catch(() => {}).finally(() => setLoading(false)); };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); api.getManagers().then((d) => setManagers(d.managers || [])).catch(() => {}); }, []);
+  const toggleGrant = (divId, name) => setGrantSel((g) => {
+    const cur = g[divId] || [];
+    return { ...g, [divId]: cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name] };
+  });
   const saveDivision = async () => {
     if (!form.name.trim()) { setMsg({ text: "본부명을 입력해주세요.", ok: false }); return; }
     const teams = form.teams.split(",").map((t) => t.trim()).filter(Boolean);
@@ -311,7 +317,15 @@ function DivisionSection() {
   };
   const addTeam = async (divId) => {
     const name = (teamInput[divId] || "").trim(); if (!name) return;
-    setBusy(true); try { await api.addTeam(divId, name); setTeamInput((t) => ({ ...t, [divId]: "" })); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+    const grantTo = grantSel[divId] || [];
+    setBusy(true);
+    try {
+      await api.addTeam(divId, name, grantTo);
+      setTeamInput((t) => ({ ...t, [divId]: "" }));
+      setGrantSel((g) => ({ ...g, [divId]: [] }));
+      setMsg({ text: grantTo.length ? `팀이 추가되고 ${grantTo.length}명에게 권한이 부여되었습니다.` : "팀이 추가되었습니다.", ok: true });
+      load();
+    } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
   };
   const delDivision = async (id) => { if (!window.confirm("이 본부와 소속 팀을 모두 삭제하시겠습니까?")) return; setBusy(true); try { await api.deleteDivision(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
   const delTeam = async (id) => { setBusy(true); try { await api.deleteTeam(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
@@ -358,6 +372,23 @@ function DivisionSection() {
               onKeyDown={(e) => { if (e.key === "Enter") addTeam(d.id); }} />
             <button style={{ ...S.subGhost, padding: "8px 16px" }} onClick={() => addTeam(d.id)} disabled={busy}>추가</button>
           </div>
+          {managers.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: COL.gray, marginBottom: 6 }}>이 팀 권한을 줄 관리자 선택 (선택 안 하면 권한 변경 없음)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {managers.map((m) => {
+                  const on = (grantSel[d.id] || []).includes(m.name);
+                  return (
+                    <span key={m.name} onClick={() => !busy && toggleGrant(d.id, m.name)}
+                      style={{ padding: "4px 11px", borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        border: `1px solid ${on ? COL.blue : C.lineAdmin}`, background: on ? COL.blue : "#fff", color: on ? "#fff" : COL.gray }}>
+                      {m.name}{m.is_authority ? " ★" : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>

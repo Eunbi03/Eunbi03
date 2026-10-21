@@ -162,7 +162,8 @@ export const deleteCorporation = (id) => request(`/admin/corporations/${id}`, { 
 export const getDivisions = () => request("/admin/divisions");
 export const createDivision = (name, teams) => request("/admin/divisions", { method: "POST", body: { name, teams } });
 export const deleteDivision = (id) => request(`/admin/divisions/${id}`, { method: "DELETE" });
-export const addTeam = (divisionId, name) => request(`/admin/divisions/${divisionId}/teams`, { method: "POST", body: { name } });
+export const addTeam = (divisionId, name, grantTo = []) => request(`/admin/divisions/${divisionId}/teams`, { method: "POST", body: { name, grantTo } });
+export const getManagers = () => request("/admin/managers");
 export const deleteTeam = (id) => request(`/admin/teams/${id}`, { method: "DELETE" });
 
 export const getPositions = () => request("/admin/positions");

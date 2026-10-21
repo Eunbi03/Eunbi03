@@ -1151,15 +1151,37 @@ router.delete('/divisions/:id', requireAdmin, async (req: Request, res: Response
   await pool.query('DELETE FROM divisions WHERE id=$1', [req.params.id]); // 팀은 CASCADE 삭제
   res.json({ success: true });
 });
-// 팀 단건 추가 (기존 본부에)
+// 권한 부여 대상 선택용 관리자 목록(승인된 기기의 관리자명, 중복 제거)
+router.get('/managers', async (_req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query(
+    `SELECT device_name AS name, bool_or(is_authority) AS is_authority
+       FROM admin_devices
+      WHERE device_name IS NOT NULL AND device_name <> '' AND is_approved = TRUE
+      GROUP BY device_name ORDER BY device_name`
+  );
+  res.json({ managers: rows });
+});
+
+// 팀 단건 추가 (기존 본부에) — grantTo로 지정한 관리자(들)의 권한 팀에 새 팀을 추가한다.
 router.post('/divisions/:id/teams', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { name } = req.body;
+  const grantTo: string[] = Array.isArray(req.body.grantTo) ? req.body.grantTo : [];
   if (!name) { res.status(400).json({ error: '팀명은 필수입니다.' }); return; }
+  const teamName = name.trim();
   try {
     const { rows } = await pool.query(
       'INSERT INTO teams (division_id, name) VALUES ($1,$2) RETURNING id, division_id, name',
-      [req.params.id, name.trim()]
+      [req.params.id, teamName]
     );
+    // 선택한 관리자들의 권한 팀에 새 팀 추가('전체' 보유자는 이미 전부 열람하므로 제외)
+    if (grantTo.length > 0) {
+      await pool.query(
+        `UPDATE admin_devices
+            SET scope_teams = ARRAY(SELECT DISTINCT unnest(scope_teams || ARRAY[$1]))
+          WHERE device_name = ANY($2) AND NOT ('전체' = ANY(scope_teams))`,
+        [teamName, grantTo]
+      );
+    }
     res.status(201).json({ team: rows[0] });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 팀명입니다.' });
