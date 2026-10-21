@@ -12,18 +12,33 @@ import { sendReportLink, sendAdminDeviceInvite } from '../services/reportSender'
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
-// 관리자 요청마다 '이 기기'가 아직 등록·승인돼 있는지 검사한다.
-// 삭제/승인취소된 기기는 접근토큰이 남아 있어도 즉시 차단되어 재로그인이 필요하다.
+// 관리자 요청마다 '이 기기'의 등록·승인 여부와 권한(권한자/읽기·쓰기/권한팀)을 한 번에 읽어 붙인다.
+// - 삭제/승인취소된 기기는 접근토큰이 남아 있어도 즉시 차단(재로그인 필요)
+// - 쓰기 작업은 권한자 또는 can_write가 있는 기기만 허용(비권한자+읽기전용은 조회만)
 router.use(async (req: Request, res: Response, next): Promise<void> => {
   // 구버전 토큰(기기정보 없음)은 통과 (재로그인하면 새 토큰 발급)
-  if (!req.user.deviceId) { next(); return; }
+  if (!req.user.deviceId) { (req as any).adminDevice = { isAuthority: true, canRead: true, canWrite: true, teams: null }; next(); return; }
   try {
     const { rows } = await pool.query(
-      'SELECT is_approved FROM admin_devices WHERE user_id=$1 AND device_id=$2',
+      'SELECT is_approved, is_authority, can_read, can_write, scope_teams FROM admin_devices WHERE user_id=$1 AND device_id=$2',
       [req.user.userId, req.user.deviceId]
     );
-    if (!rows[0] || !rows[0].is_approved) {
+    const d = rows[0];
+    if (!d || !d.is_approved) {
       res.status(401).json({ error: '기기 등록이 해제되었습니다. 다시 로그인해주세요.' });
+      return;
+    }
+    const teams: string[] = d.scope_teams || [];
+    (req as any).adminDevice = {
+      isAuthority: !!d.is_authority,
+      canRead: d.can_read !== false,
+      canWrite: !!d.can_write,
+      // null = 전체 열람(권한자 / 권한팀 '전체')
+      teams: (d.is_authority || teams.length === 0 || teams.includes('전체')) ? null : teams,
+    };
+    // 쓰기(조회 외) 작업은 권한자 또는 쓰기권한 기기만 허용
+    if (req.method !== 'GET' && !d.is_authority && d.can_write !== true) {
+      res.status(403).json({ error: '쓰기 권한이 없습니다. 권한자에게 문의하세요.' });
       return;
     }
     next();
@@ -32,28 +47,25 @@ router.use(async (req: Request, res: Response, next): Promise<void> => {
 
 // 이 요청을 보낸 기기가 '권한자'인지 DB로 확인한다.
 // (공용 계정을 공유하므로 role로는 권한자/일반 관리자를 구분할 수 없어 기기 기준으로 판단)
+// 미들웨어에서 붙인 기기 권한(req.adminDevice) 사용
 async function reqIsAuthority(req: Request): Promise<boolean> {
-  if (!req.user.deviceId) return false;
-  const { rows } = await pool.query(
-    'SELECT is_authority FROM admin_devices WHERE user_id=$1 AND device_id=$2 AND is_approved=TRUE',
-    [req.user.userId, req.user.deviceId]
-  );
-  return !!rows[0]?.is_authority;
+  return !!(req as any).adminDevice?.isAuthority;
 }
 
-// 로그인한 관리자 기기의 열람 범위(권한 팀)를 반환한다.
-// null = 전체 열람(권한자 / 권한팀 '전체'). 배열 = 해당 팀만 열람.
+// 로그인한 관리자 기기의 열람 범위(권한 팀). null = 전체 열람, 배열 = 해당 팀만.
 async function getReadScope(req: Request): Promise<string[] | null> {
-  if (!req.user.deviceId) return null;
-  const { rows } = await pool.query(
-    'SELECT is_authority, scope_teams FROM admin_devices WHERE user_id=$1 AND device_id=$2',
-    [req.user.userId, req.user.deviceId]
-  );
-  const d = rows[0];
-  if (!d || d.is_authority) return null;   // 권한자는 전체 열람
-  const teams: string[] = d.scope_teams || [];
-  if (teams.length === 0 || teams.includes('전체')) return null;
-  return teams;
+  return (req as any).adminDevice?.teams ?? null;
+}
+
+// 대상 직원이 권한 범위(권한 팀) 안인지 확인. 범위 밖이면 403 응답 후 false 반환.
+async function assertWorkerInScope(req: Request, res: Response, workerId: string): Promise<boolean> {
+  const scope = (req as any).adminDevice?.teams;
+  if (!scope) return true; // 권한자/전체 → 제한 없음
+  const { rows } = await pool.query('SELECT team FROM users WHERE id=$1', [workerId]);
+  if (!rows[0] || !scope.includes(rows[0].team)) {
+    res.status(403).json({ error: '권한 범위 밖 직원입니다.' }); return false;
+  }
+  return true;
 }
 
 // 직원 신규 등록/재활성화 시 당일 남은 랜덤 확인 슬롯을 생성한다(실패해도 등록은 진행).
@@ -304,6 +316,7 @@ router.post('/workers', async (req: Request, res: Response): Promise<void> => {
 
 router.put('/workers/:id', async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!(await assertWorkerInScope(req, res, req.params.id))) return;
     const { name, phone, email, position, corp, division, team, jobTitle, remark,
             scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
             noteExempt, irregularWorker } = req.body;
@@ -324,6 +337,7 @@ router.put('/workers/:id', async (req: Request, res: Response): Promise<void> =>
 });
 
 router.delete('/workers/:id', async (req: Request, res: Response): Promise<void> => {
+  if (!(await assertWorkerInScope(req, res, req.params.id))) return;
   // 소프트 삭제 + 삭제 시각 기록 (재등록 시 1년 보존 판단용)
   await pool.query('UPDATE users SET is_active=FALSE, deactivated_at=now() WHERE id=$1', [req.params.id]);
   res.json({ success: true });

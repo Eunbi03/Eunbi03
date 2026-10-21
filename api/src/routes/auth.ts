@@ -9,12 +9,18 @@ import { requireAuth } from '../middleware/auth';
 const router = Router();
 const MAX_FAILED = parseInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS || '5', 10);
 
-// 이 기기(admin_devices)가 권한자 기기인지
+// 이 기기(admin_devices)의 권한(권한자 여부·쓰기 권한)
 async function deviceIsAuthority(userId: string, deviceId: string): Promise<boolean> {
   const { rows } = await pool.query(
     'SELECT is_authority FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
   );
   return !!rows[0]?.is_authority;
+}
+async function deviceCanWrite(userId: string, deviceId: string): Promise<boolean> {
+  const { rows } = await pool.query(
+    'SELECT is_authority, can_write FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
+  );
+  return !!(rows[0]?.is_authority || rows[0]?.can_write);
 }
 
 async function logAttempt(data: {
@@ -192,8 +198,9 @@ router.post('/login',
       }
     }
 
-    // 권한자 여부는 '이 기기(admin_devices)' 기준으로 판단
+    // 권한자/쓰기권한은 '이 기기(admin_devices)' 기준으로 판단
     const isAuthority = isAdminUser ? await deviceIsAuthority(user.id, deviceId) : false;
+    const canWrite = isAdminUser ? await deviceCanWrite(user.id, deviceId) : false;
 
     const { plainToken, tokenHash } = generateRefreshToken();
     const refreshExpiry = getRefreshTokenExpiry();
@@ -221,6 +228,7 @@ router.post('/login',
         mustChangePassword: user.must_change_password,
         locationConsentGiven: user.location_consent_given,
         isAuthorityHolder: isAuthority,
+        canWrite,
       },
     });
   }
@@ -266,6 +274,7 @@ router.post('/auto-login',
     }
 
     const isAuthority = isAdminUser ? await deviceIsAuthority(user.id, deviceId) : false;
+    const canWrite = isAdminUser ? await deviceCanWrite(user.id, deviceId) : false;
     res.json({
       accessToken: generateAccessToken({ userId: user.id, role: user.role, deviceId, isAuthority }),
       user: {
@@ -273,6 +282,7 @@ router.post('/auto-login',
         mustChangePassword: user.must_change_password,
         locationConsentGiven: user.location_consent_given,
         isAuthorityHolder: isAuthority,
+        canWrite,
       },
     });
   }

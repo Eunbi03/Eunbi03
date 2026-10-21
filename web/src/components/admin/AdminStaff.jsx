@@ -229,15 +229,16 @@ const teamsText = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : 
 const rwText = (d) => [d.can_read ? "읽기" : null, d.can_write ? "쓰기" : null].filter(Boolean).join(" · ") || "권한 없음";
 
 // 등록 기기 행 — 관리자명·업무용 전화번호·읽기/쓰기·권한 팀 편집 + 상세
-function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo }) {
+function DeviceRow({ d, isHolder, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
   const [editing, setEditing] = useState(false);
   const [detail, setDetail] = useState(false);
   const [name, setName] = useState(d.device_name || "");
-  const [corp, setCorp] = useState(d.corp || "");
+  const [corpSel, setCorpSel] = useState(d.corp ? d.corp.split(/[,·]/).map((s) => s.trim()).filter(Boolean) : []);
   const [phone, setPhone] = useState(d.phone || "");
   const [canRead, setCanRead] = useState(d.can_read !== false);
   const [canWrite, setCanWrite] = useState(!!d.can_write);
-  const [teams, setTeams] = useState(teamsText(d.scope_teams));
+  const [teamSel, setTeamSel] = useState(Array.isArray(d.scope_teams) ? d.scope_teams.filter((t) => t !== "전체") : []);
+  const toggle = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const [saving, setSaving] = useState(false);
   const [mergeAsk, setMergeAsk] = useState("");  // 병합 확인 메시지(있으면 팝업)
 
@@ -260,9 +261,9 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
   };
 
   const buildPayload = (confirmMerge) => ({
-    deviceName: name.trim(), corp: corp.trim(), phone: phone.trim(),
+    deviceName: name.trim(), corp: corpSel.join(", "), phone: phone.trim(),
     canRead, canWrite,
-    teams: teams.split(",").map((x) => x.trim()).filter(Boolean),
+    teams: teamSel,
     ...(confirmMerge ? { confirmMerge: true } : {}),
   });
 
@@ -336,14 +337,22 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
           <input style={inp} placeholder="관리자명" value={name} onChange={(e) => setName(e.target.value)} />
-          <input style={inp} placeholder="담당 법인 (여러 개는 쉼표로)" value={corp} onChange={(e) => setCorp(e.target.value)} />
           <input style={inp} placeholder="업무용 전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>담당 법인 (복수 선택)</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {corpList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 법인 없음</span>}
+            {corpList.map((c) => <span key={c} style={chip(corpSel.includes(c))} onClick={() => setCorpSel(toggle(corpSel, c))}>{c}</span>)}
+          </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한</span>
             <span style={chip(canRead)} onClick={() => setCanRead((v) => !v)}>읽기</span>
             <span style={chip(canWrite)} onClick={() => setCanWrite((v) => !v)}>쓰기</span>
           </div>
-          <input style={inp} placeholder="권한 팀 (여러 개는 쉼표로)" value={teams} onChange={(e) => setTeams(e.target.value)} />
+          <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한 팀 (복수 선택, 미선택 시 전체)</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
+            {teamList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 팀 없음</span>}
+            {teamList.map((tm) => <span key={tm} style={chip(teamSel.includes(tm))} onClick={() => setTeamSel(toggle(teamSel, tm))}>{tm}</span>)}
+          </div>
           <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.ink, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1 }} onClick={() => save(false)} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
         </div>
       )}
@@ -390,7 +399,15 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   // 기기 추가(+버튼) — 권한자만
   const canInvite = !!currentUser?.isAuthorityHolder;
   const [showInvite, setShowInvite] = useState(false);
-  const [inv, setInv] = useState({ managerName: "", email: "", phone: "", corp: "", canRead: true, canWrite: false, teams: "" });
+  const [inv, setInv] = useState({ managerName: "", email: "", phone: "", corps: [], canRead: true, canWrite: false, teamSel: [] });
+  // 등록된 법인·팀 목록 (복수 선택용)
+  const [corpList, setCorpList] = useState([]);
+  const [teamList, setTeamList] = useState([]);
+  useEffect(() => {
+    api.getCorporations().then((d) => setCorpList((d.corporations || []).map((c) => c.name))).catch(() => {});
+    api.getDivisions().then((d) => setTeamList((d.divisions || []).flatMap((dv) => (dv.teams || []).map((t) => t.name)))).catch(() => {});
+  }, []);
+  const toggleInArr = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const [invMsg, setInvMsg] = useState({ text: "", ok: true });
   const [inviteAsk, setInviteAsk] = useState("");   // 중복 관리자명 확인 팝업
 
@@ -400,14 +417,14 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
     setBusy(true); setInvMsg({ text: "", ok: true });
     try {
       const r = await api.inviteAdminDevice({
-        managerName: inv.managerName.trim(), email: inv.email.trim(), phone: inv.phone.trim(), corp: inv.corp.trim(),
+        managerName: inv.managerName.trim(), email: inv.email.trim(), phone: inv.phone.trim(), corp: inv.corps.join(", "),
         canRead: inv.canRead, canWrite: inv.canWrite,
-        teams: inv.teams.split(",").map((x) => x.trim()).filter(Boolean),
+        teams: inv.teamSel,
         ...(confirmMerge ? { confirmMerge: true } : {}),
       });
       const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
       setInvMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
-      setInv({ managerName: "", email: "", phone: "", corp: "", canRead: true, canWrite: false, teams: "" });
+      setInv({ managerName: "", email: "", phone: "", corps: [], canRead: true, canWrite: false, teamSel: [] });
       setInviteAsk("");
     } catch (e) {
       if (e.payload?.needConfirm) { setInviteAsk(e.message); }   // 중복 관리자명 → 확인 팝업
@@ -538,8 +555,15 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="관리자명" value={inv.managerName} onChange={(e) => setInv({ ...inv, managerName: e.target.value })} />
               <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="이메일" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
               <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="전화번호" value={inv.phone} onChange={(e) => setInv({ ...inv, phone: e.target.value })} />
-              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="담당 법인 (여러 개는 쉼표로)" value={inv.corp} onChange={(e) => setInv({ ...inv, corp: e.target.value })} />
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>담당 법인 (복수 선택)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {corpList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 법인 없음</span>}
+                {corpList.map((c) => {
+                  const on = inv.corps.includes(c);
+                  return <span key={c} onClick={() => setInv({ ...inv, corps: toggleInArr(inv.corps, c) })} style={{ padding: "5px 11px", borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? C.blue : C.line}`, background: on ? C.blue : "#fff", color: on ? "#fff" : C.inkSoft }}>{c}</span>;
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
                 <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한</span>
                 {["canRead", "canWrite"].map((k) => (
                   <span key={k} onClick={() => setInv({ ...inv, [k]: !inv[k] })}
@@ -548,7 +572,14 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                   </span>
                 ))}
               </div>
-              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="권한 팀 (여러 개는 쉼표로, 미입력 시 전체)" value={inv.teams} onChange={(e) => setInv({ ...inv, teams: e.target.value })} />
+              <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>권한 팀 (복수 선택, 미선택 시 전체)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
+                {teamList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 팀 없음</span>}
+                {teamList.map((tm) => {
+                  const on = inv.teamSel.includes(tm);
+                  return <span key={tm} onClick={() => setInv({ ...inv, teamSel: toggleInArr(inv.teamSel, tm) })} style={{ padding: "5px 11px", borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? C.blue : C.line}`, background: on ? C.blue : "#fff", color: on ? "#fff" : C.inkSoft }}>{tm}</span>;
+                })}
+              </div>
               {invMsg.text && <div style={{ fontSize: 12, fontWeight: 600, color: invMsg.ok ? C.green : C.seal }}>{invMsg.text}</div>}
               <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.blue, color: "#fff", cursor: "pointer", opacity: busy ? 0.6 : 1 }} onClick={() => submitInvite(false)} disabled={busy}>{busy ? "발송 중…" : "등록 링크 보내기"}</button>
             </div>
@@ -575,7 +606,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {adminDevices.map((d) => (
-                <DeviceRow key={d.id} d={d} isHolder={isHolder}
+                <DeviceRow key={d.id} d={d} isHolder={isHolder} corpList={corpList} teamList={teamList}
                   onApprove={onApproveDevice} onRemove={onRemoveDevice} onTransfer={handleTransfer} onSaveInfo={onSaveDeviceInfo} />
               ))}
             </div>
@@ -643,6 +674,8 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const fileRef = useRef(null);
 
   const isHolder = !!currentUser?.isAuthorityHolder; // 권한자만 관리자 기기 관리(승인 대기 등)
+  // 쓰기 권한: 권한자이거나 기기에 쓰기 권한이 있을 때만 직원 수정/삭제 등 가능
+  const canWrite = !!currentUser?.isAuthorityHolder || !!currentUser?.canWrite;
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]; if (e.target) e.target.value = "";
@@ -877,10 +910,10 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         {status}
         <div style={{ display: "grid", gridTemplateColumns: "56px 84px", gap: 6 }}>
           <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
-          {isHR && <button style={{ ...base, ...pw }} onClick={() => resetPw(w)}>비번초기화</button>}
-          {isHR && <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>}
-          {isHR && <button style={{ ...base, ...dev }} onClick={() => resetDevice(w)}>기기변경</button>}
-          {w.is_locked && isHR && <button style={{ ...base, color: C.green, gridColumn: "1 / -1", width: "100%" }} onClick={() => unlock(w)}>잠금해제</button>}
+          {canWrite && <button style={{ ...base, ...pw }} onClick={() => resetPw(w)}>비번초기화</button>}
+          {canWrite && <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>}
+          {canWrite && <button style={{ ...base, ...dev }} onClick={() => resetDevice(w)}>기기변경</button>}
+          {w.is_locked && canWrite && <button style={{ ...base, color: C.green, gridColumn: "1 / -1", width: "100%" }} onClick={() => unlock(w)}>잠금해제</button>}
         </div>
       </div>
     );
@@ -912,7 +945,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
             ))}
           </div>
         </div>
-        {isHR && (
+        {canWrite && (
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
             <button style={{ ...S.toolbarBtn, background: "#fff", border: `1px solid ${C.blueSoft}`, color: C.blue }} disabled={uploading} onClick={() => fileRef.current?.click()}>
