@@ -507,18 +507,18 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
           <input style={{ ...S.input, color: C.inkSoft }} value={worker?.email || ""} disabled />
         </div>
 
-        {/* 비밀번호 초기화 */}
+        {/* 비밀번호 초기화 — 권한자만 노출 */}
+        {isHolder && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={S.fieldLabel}>비밀번호 초기화{!isHolder ? " (권한자만 가능)" : ""}</label>
+          <label style={S.fieldLabel}>비밀번호 초기화</label>
           <div style={{ display: "flex", gap: 6 }}>
             <div style={{ position: "relative", flex: 1 }}>
               <input
-                style={{ ...S.input, paddingRight: 44, opacity: isHolder ? 1 : 0.55 }}
+                style={{ ...S.input, paddingRight: 44 }}
                 type={showPw ? "text" : "password"}
-                placeholder={isHolder ? "새 비밀번호 입력 (4자 이상)" : "권한자만 변경 가능"}
+                placeholder="새 비밀번호 입력 (4자 이상)"
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
-                disabled={!isHolder}
               />
               <button
                 onClick={() => setShowPw((v) => !v)}
@@ -526,17 +526,17 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                 title={showPw ? "숨기기" : "보기"}
               >{showPw ? "🙈" : "👁️"}</button>
             </div>
-            {isHolder && (
-              <button
-                style={{ border: "none", borderRadius: 10, padding: "0 14px", fontSize: 13, fontWeight: 700, background: C.amber, color: "#fff", cursor: "pointer", flexShrink: 0 }}
-                onClick={handleResetPw}
-                disabled={busy}
-              >변경</button>
-            )}
+            <button
+              style={{ border: "none", borderRadius: 10, padding: "0 14px", fontSize: 13, fontWeight: 700, background: C.amber, color: "#fff", cursor: "pointer", flexShrink: 0 }}
+              onClick={handleResetPw}
+              disabled={busy}
+            >변경</button>
           </div>
         </div>
+        )}
 
-        {/* 등록된 기기 */}
+        {/* 등록된 기기 — 권한자만 노출 */}
+        {isHolder && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <label style={S.fieldLabel}>등록된 기기</label>
@@ -596,9 +596,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
             </div>
           )}
 
-          {!isHolder ? (
-            <div style={{ fontSize: 13, color: C.inkSoft }}>권한자만 기기를 관리할 수 있습니다.</div>
-          ) : loadingDevices ? (
+          {loadingDevices ? (
             <div style={{ fontSize: 13, color: C.inkSoft }}>불러오는 중…</div>
           ) : adminDevices.length === 0 ? (
             <div style={{ fontSize: 13, color: C.inkSoft }}>등록된 기기가 없습니다.</div>
@@ -613,10 +611,9 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               ))}
             </div>
           )}
-          {isHolder && (
-            <div style={{ fontSize: 11, color: C.inkSoft }}>권한자 기기는 삭제할 수 없고, 권한 이전 후 삭제할 수 있습니다.</div>
-          )}
+          <div style={{ fontSize: 11, color: C.inkSoft }}>권한자 기기는 삭제할 수 없고, 권한 이전 후 삭제할 수 있습니다.</div>
         </div>
+        )}
 
         <button style={{ ...S.subGhost, width: "100%" }} onClick={onClose}>닫기</button>
       </div>
