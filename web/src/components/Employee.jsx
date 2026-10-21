@@ -120,6 +120,18 @@ export default function Employee({ user }) {
     registerPushToken(); // 백그라운드 랜덤확인용 FCM 토큰 등록
   }, []);
 
+  // 앱이 백그라운드에서 포그라운드로 돌아오거나(알림 탭 등) 탭이 다시 보이면 오늘 근태를 다시 불러온다.
+  // (iOS는 복귀 시 웹뷰 상태를 유지해 날짜가 바뀌어도 어제 화면이 남는 문제를 방지)
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") load(true); };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
   useEffect(() => {
     if (isCheckedIn && !isCheckedOut) {
       // 출근 중: GPS 감지 시작. 퇴근을 누르지 않아도 기본 퇴근시간+2시간에 자동 종료.
