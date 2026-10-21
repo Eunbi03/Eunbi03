@@ -673,6 +673,9 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [uploading, setUploading] = useState(false);
   const [etcPopup, setEtcPopup] = useState(null);
   const fileRef = useRef(null);
+  const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState("problem"); // problem(문제계정) | all(전체인원)
+  const [accessMsg, setAccessMsg] = useState("");       // 권한 밖 인원 검색 안내
 
   const isHolder = !!currentUser?.isAuthorityHolder; // 권한자만 관리자 기기 관리(승인 대기 등)
   // 쓰기 권한: 권한자이거나 기기에 쓰기 권한이 있을 때만 직원 수정/삭제 등 가능
@@ -817,36 +820,48 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   };
 
   const isAdmin = (w) => w.role !== "worker";
-  // 기기 미등록·비번 미변경, 또는 필수 정보(전화/근무지/법인/본부/팀/직무) 누락자
-  const needsAttention = (w) => !isAdmin(w) && (
-    !w.device_id || w.must_change_password ||
-    !w.phone || !w.workplace_id || !w.corp || !w.division || !w.team || !w.job_title
-  );
+  // 문제 계정: 기기 미등록 / 비번 미변경 / 계정 잠김
+  const isProblem = (w) => !w.device_id || w.must_change_password || w.is_locked;
 
-  // 카테고리 필터
+  // 카테고리 필터 + 이름 검색
+  const term = search.trim().toLowerCase();
+  const matchName = (w) => !term || (w.name || "").toLowerCase().includes(term);
   const filtered = workers.filter((w) => {
     if (filters.corp     && w.corp     !== filters.corp)     return false;
     if (filters.division && w.division !== filters.division) return false;
     if (filters.team     && w.team     !== filters.team)     return false;
     if (filters.position && w.position !== filters.position) return false;
-    return true;
+    return matchName(w);
   });
 
-  // 게이팅: 관리자는 항상 노출. 근로자는 법인/본부/팀/직위 중 하나라도 필터가 있으면 전체 노출,
-  // 아무 필터도 없으면 기기 미등록/비번 미변경 등 확인 필요 근로자만 노출.
-  const hasAnyFilter = !!(filters.corp || filters.division || filters.team || filters.position);
-  const visible = filtered.filter((w) => isAdmin(w) || hasAnyFilter || needsAttention(w));
-  const nonAdminVisible = visible.filter((w) => !isAdmin(w));
-  const showGuidance = !hasAnyFilter && nonAdminVisible.length === 0;
+  const admins = filtered.filter(isAdmin);
+  const workerRows = filtered.filter((w) => !isAdmin(w));
+  // 토글: 문제계정 / 전체
+  const shownWorkers = viewMode === "problem" ? workerRows.filter(isProblem) : workerRows;
+  const shownAdmins = viewMode === "problem" ? admins.filter((a) => a.is_locked || a.must_change_password) : admins;
 
-  const sorted = [...visible].sort((a, b) => {
-    if (isAdmin(a) !== isAdmin(b)) return isAdmin(a) ? -1 : 1; // 관리자 먼저
-    return (a.name || "").localeCompare(b.name || "", "ko");   // 이름 오름차순
-  });
+  // 본부 > 팀 그룹핑 (개별 리포트/전체현황과 동일한 방식)
+  const groupByTeam = (list) => {
+    const m = {};
+    for (const w of list) {
+      const key = [w.corp, w.division, w.team].filter(Boolean).join(" > ") || "(미지정)";
+      (m[key] ||= { label: key, members: [] }).members.push(w);
+    }
+    return Object.values(m).sort((a, b) => a.label.localeCompare(b.label, "ko"))
+      .map((g) => ({ ...g, members: g.members.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ko")) }));
+  };
+  const workerGroups = groupByTeam(shownWorkers);
+  const totalShown = shownAdmins.length + shownWorkers.length;
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
-  const pageSafe = Math.min(page, totalPages);
-  const pageRows = sorted.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
+  // 검색했는데 결과가 없으면, 권한 밖에 존재하는 인원인지 확인해 안내
+  useEffect(() => {
+    if (!term || totalShown > 0) { setAccessMsg(""); return; }
+    let cancelled = false;
+    api.checkWorkerAccess(search.trim())
+      .then((d) => { if (!cancelled) setAccessMsg(d.blocked?.length ? `${d.blocked[0]}에 대한 열람 권한이 없습니다. 인적자원팀에 문의하세요.` : ""); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [term, totalShown]);
 
   // 법인별 인원 집계 (마스터 순서 → 기타는 맨 뒤)
   const corpBreakdown = (() => {
@@ -920,6 +935,55 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     );
   };
 
+  const groupHeaderStyle = { fontSize: isMobile ? 13 : 14, fontWeight: 800, color: C.blue, padding: "4px 2px", borderBottom: `2px solid ${C.blueSoft}` };
+
+  // 직원/관리자 카드 1개
+  const workerCard = (w) => {
+    const isAdminRole = w.role !== "worker";
+    const flags = [w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(", ");
+    const fsMain = isMobile ? 14 : 16;
+    const fsSub = isMobile ? 13 : 15;
+    const fsBody = isMobile ? 12 : 14;
+    return (
+      <div key={w.id} style={{ ...S.hrRow, alignItems: "flex-start", padding: "12px 14px 8px", background: isAdminRole ? "#eef4f9" : "#fff", borderColor: isAdminRole ? C.blue : C.lineAdmin }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, color: C.ink, fontSize: fsMain, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+            {w.name}
+            {isAdminRole ? (
+              <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: fsSub - 2 }}>관리자</span>
+            ) : (
+              <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: fsBody }}>
+                {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
+              </span>
+            )}
+          </div>
+          {isMobile ? (
+            <>
+              {w.email && <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>{w.email}</div>}
+              {!isAdminRole && <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>{fmtPhone(w.phone)}</div>}
+            </>
+          ) : (
+            (w.email || (!isAdminRole && w.phone)) && (
+              <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>
+                {[w.email, !isAdminRole ? fmtPhone(w.phone) : null].filter(Boolean).join(" / ")}
+              </div>
+            )
+          )}
+          {!isAdminRole && (
+            <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>
+              근무지: {w.workplace_name || "미지정"} / {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
+              {flags && ` (${flags})`}
+            </div>
+          )}
+          <div style={{ fontSize: fsBody, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 700, lineHeight: 1.7 }}>
+            기기: {isAdminRole ? "다중 기기 관리" : (w.device_id ? "등록됨" : "미등록")}
+          </div>
+        </div>
+        {renderActions(w)}
+      </div>
+    );
+  };
+
   if (loading) return <div style={S.empty}>불러오는 중…</div>;
 
   return (
@@ -946,17 +1010,32 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
             ))}
           </div>
         </div>
-        {canWrite && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
-            <button style={{ ...S.toolbarBtn, background: "#fff", border: `1px solid ${C.blueSoft}`, color: C.blue }} disabled={uploading} onClick={() => fileRef.current?.click()}>
-              {uploading ? "업로드 중…" : "엑셀 업로드"}
-            </button>
-            <button style={{ ...S.toolbarBtn, border: "none", background: C.blue, color: "#fff" }} onClick={() => setEditTarget({})}>
-              + 직원 추가
-            </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)} placeholder="이름 검색"
+            style={{ ...S.input, padding: "7px 12px", fontSize: 13, width: isMobile ? 130 : 170 }}
+          />
+          {/* 문제계정 / 전체 토글 (엑셀업로드 왼쪽) */}
+          <div style={{ display: "flex", border: `1px solid ${C.blueSoft}`, borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
+            {[["problem", "문제계정"], ["all", "전체"]].map(([v, label]) => (
+              <button key={v} onClick={() => setViewMode(v)}
+                style={{ border: "none", padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", background: viewMode === v ? C.blue : "#fff", color: viewMode === v ? "#fff" : C.inkSoft }}>
+                {label}
+              </button>
+            ))}
           </div>
-        )}
+          {canWrite && (
+            <>
+              <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
+              <button style={{ ...S.toolbarBtn, background: "#fff", border: `1px solid ${C.blueSoft}`, color: C.blue }} disabled={uploading} onClick={() => fileRef.current?.click()}>
+                {uploading ? "업로드 중…" : "엑셀 업로드"}
+              </button>
+              <button style={{ ...S.toolbarBtn, border: "none", background: C.blue, color: "#fff" }} onClick={() => setEditTarget({})}>
+                + 직원 추가
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {etcPopup && (
@@ -997,75 +1076,35 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         </div>
       )}
 
-      {showGuidance && (
-        <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>법인·본부·팀·직위 중 하나를 선택하면 전체 직원이 표시됩니다.</div>
+      {accessMsg && (
+        <div style={{ ...S.empty, color: C.seal, fontWeight: 700, background: C.sealSoft, borderRadius: 10 }}>{accessMsg}</div>
       )}
 
-      {/* 직원 카드 목록 (데스크톱·모바일 공통 반응형) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {pageRows.map((w) => {
-          const isAdminRole = w.role !== "worker";
-          const flags = [w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(", ");
-          const fsMain = isMobile ? 14 : 16;
-          const fsSub = isMobile ? 13 : 15;
-          const fsBody = isMobile ? 12 : 14;
-          return (
-            <div key={w.id} style={{
-              ...S.hrRow,
-              alignItems: "flex-start",
-              padding: "12px 14px 8px", // 하단 줄 line-height 여분 상쇄 → 위 여백과 균형
-              background: isAdminRole ? "#eef4f9" : "#fff",
-              borderColor: isAdminRole ? C.blue : C.lineAdmin,
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, color: C.ink, fontSize: fsMain, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                  {w.name}
-                  {isAdminRole ? (
-                    <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: fsSub - 2 }}>관리자</span>
-                  ) : (
-                    <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: fsBody }}>
-                      {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
-                    </span>
-                  )}
-                </div>
-                {isMobile ? (
-                  <>
-                    {w.email && <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>{w.email}</div>}
-                    {!isAdminRole && <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>{fmtPhone(w.phone)}</div>}
-                  </>
-                ) : (
-                  (w.email || (!isAdminRole && w.phone)) && (
-                    <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>
-                      {[w.email, !isAdminRole ? fmtPhone(w.phone) : null].filter(Boolean).join(" / ")}
-                    </div>
-                  )
-                )}
-                {!isAdminRole && (
-                  <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>
-                    근무지: {w.workplace_name || "미지정"} / {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
-                    {flags && ` (${flags})`}
-                  </div>
-                )}
-                <div style={{ fontSize: fsBody, color: isAdminRole ? C.blue : (w.device_id ? C.green : C.amber), fontWeight: 700, lineHeight: 1.7 }}>
-                  기기: {isAdminRole ? "다중 기기 관리" : (w.device_id ? "등록됨" : "미등록")}
-                </div>
-              </div>
-              {renderActions(w)}
-            </div>
-          );
-        })}
-      </div>
-
-      {totalPages > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 16 }}>
-          <button style={{ ...S.miniBtn, color: C.inkSoft }} disabled={pageSafe <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-            <button key={n} onClick={() => setPage(n)}
-              style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 15, fontWeight: n === pageSafe ? 800 : 400, color: n === pageSafe ? C.blue : C.inkSoft, minWidth: 24 }}>{n}</button>
-          ))}
-          <button style={{ ...S.miniBtn, color: C.inkSoft }} disabled={pageSafe >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>›</button>
+      {!accessMsg && totalShown === 0 && (
+        <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>
+          {term ? "검색 결과가 없습니다." : viewMode === "problem" ? "문제가 발생한 계정이 없습니다." : "표시할 직원이 없습니다."}
         </div>
       )}
+
+      {/* 관리자 그룹 */}
+      {shownAdmins.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={groupHeaderStyle}>관리자 <span style={{ fontWeight: 400, color: C.inkSoft }}>({shownAdmins.length})</span></div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            {shownAdmins.map(workerCard)}
+          </div>
+        </div>
+      )}
+
+      {/* 본부 > 팀 그룹 */}
+      {workerGroups.map((g) => (
+        <div key={g.label} style={{ marginBottom: 14 }}>
+          <div style={groupHeaderStyle}>{g.label} <span style={{ fontWeight: 400, color: C.inkSoft }}>({g.members.length})</span></div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            {g.members.map(workerCard)}
+          </div>
+        </div>
+      ))}
 
       {editTarget !== null && (
         <WorkerModal

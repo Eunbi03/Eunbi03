@@ -1405,6 +1405,22 @@ router.get('/worker-search', async (req: Request, res: Response): Promise<void> 
   res.json({ workers: rows });
 });
 
+// 권한 범위 밖 인원 검색 감지: 이름으로 검색했을 때, 존재하지만 내 권한 팀 밖이라 볼 수 없는 직원명을 반환.
+// (어느 화면이든 '열람 권한이 없습니다' 안내를 띄우기 위함)
+router.get('/worker-access-check', async (req: Request, res: Response): Promise<void> => {
+  const name = ((req.query.name as string) || '').trim();
+  if (!name) { res.json({ blocked: [] }); return; }
+  const scope = await getReadScope(req);
+  if (!scope) { res.json({ blocked: [] }); return; }   // 권한자/전체는 제한 없음
+  const { rows } = await pool.query(
+    `SELECT DISTINCT u.name FROM users u
+      WHERE u.is_active=TRUE AND u.role='worker' AND u.name ILIKE $1
+        AND (u.team IS NULL OR NOT (u.team = ANY($2)))`,
+    [`%${name}%`, scope]
+  );
+  res.json({ blocked: rows.map((r: any) => r.name) });
+});
+
 // ── 전체현황: 월간 근태대장 ───────────────────────────────────────────────────
 router.get('/monthly-overview', async (req: Request, res: Response): Promise<void> => {
   const now = new Date();
