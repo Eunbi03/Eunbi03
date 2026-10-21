@@ -1028,6 +1028,18 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
   const canWrite = req.body.canWrite === true;
   const teams = normalizeTeams(req.body.teams);
 
+  // 이미 존재하는 관리자명이면 확인 필요(등록 시 기존 권한을 상속 → 입력한 권한범위는 무시됨)
+  if (req.body.confirmMerge !== true) {
+    const { rows: dup } = await pool.query('SELECT 1 FROM admin_devices WHERE device_name=$1 LIMIT 1', [managerName]);
+    if (dup.length > 0) {
+      res.status(409).json({
+        needConfirm: true,
+        error: '해당 관리자명은 이미 존재하여, 계속 진행할 경우 권한 범위가 변경됩니다. 계속 진행하시겠습니까?',
+      });
+      return;
+    }
+  }
+
   const token = jwt.sign(
     { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, corp, canRead, canWrite, teams },
     process.env.JWT_SECRET as string, { expiresIn: '7d' }

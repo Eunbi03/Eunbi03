@@ -251,7 +251,7 @@ function DeviceRow({ d, isHolder, onApprove, onRemove, onTransfer, onSaveInfo })
     if (!addForm.email.trim() && !addForm.phone.trim()) { setAddMsg({ text: "이메일 또는 전화번호를 입력해주세요.", ok: false }); return; }
     setAddBusy(true); setAddMsg({ text: "", ok: true });
     try {
-      const r = await api.inviteAdminDevice({ managerName: addForm.name.trim(), email: addForm.email.trim(), phone: addForm.phone.trim() });
+      const r = await api.inviteAdminDevice({ managerName: addForm.name.trim(), email: addForm.email.trim(), phone: addForm.phone.trim(), confirmMerge: true });
       const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
       setAddMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
       setAddForm({ name: d.device_name || "", email: "", phone: "" });
@@ -391,8 +391,9 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   const [showInvite, setShowInvite] = useState(false);
   const [inv, setInv] = useState({ managerName: "", email: "", phone: "", corp: "", canRead: true, canWrite: false, teams: "" });
   const [invMsg, setInvMsg] = useState({ text: "", ok: true });
+  const [inviteAsk, setInviteAsk] = useState("");   // 중복 관리자명 확인 팝업
 
-  const submitInvite = async () => {
+  const submitInvite = async (confirmMerge = false) => {
     if (!inv.managerName.trim()) { setInvMsg({ text: "관리자명을 입력해주세요.", ok: false }); return; }
     if (!inv.email.trim() && !inv.phone.trim()) { setInvMsg({ text: "이메일 또는 전화번호를 입력해주세요.", ok: false }); return; }
     setBusy(true); setInvMsg({ text: "", ok: true });
@@ -401,11 +402,16 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
         managerName: inv.managerName.trim(), email: inv.email.trim(), phone: inv.phone.trim(), corp: inv.corp.trim(),
         canRead: inv.canRead, canWrite: inv.canWrite,
         teams: inv.teams.split(",").map((x) => x.trim()).filter(Boolean),
+        ...(confirmMerge ? { confirmMerge: true } : {}),
       });
       const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
       setInvMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
       setInv({ managerName: "", email: "", phone: "", corp: "", canRead: true, canWrite: false, teams: "" });
-    } catch (e) { setInvMsg({ text: e.message, ok: false }); }
+      setInviteAsk("");
+    } catch (e) {
+      if (e.payload?.needConfirm) { setInviteAsk(e.message); }   // 중복 관리자명 → 확인 팝업
+      else setInvMsg({ text: e.message, ok: false });
+    }
     finally { setBusy(false); }
   };
 
@@ -543,7 +549,19 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               </div>
               <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="권한 팀 (여러 개는 쉼표로, 미입력 시 전체)" value={inv.teams} onChange={(e) => setInv({ ...inv, teams: e.target.value })} />
               {invMsg.text && <div style={{ fontSize: 12, fontWeight: 600, color: invMsg.ok ? C.green : C.seal }}>{invMsg.text}</div>}
-              <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.blue, color: "#fff", cursor: "pointer", opacity: busy ? 0.6 : 1 }} onClick={submitInvite} disabled={busy}>{busy ? "발송 중…" : "등록 링크 보내기"}</button>
+              <button style={{ border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, background: C.blue, color: "#fff", cursor: "pointer", opacity: busy ? 0.6 : 1 }} onClick={() => submitInvite(false)} disabled={busy}>{busy ? "발송 중…" : "등록 링크 보내기"}</button>
+            </div>
+          )}
+
+          {inviteAsk && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
+              <div style={{ background: "#fff", borderRadius: 14, padding: "20px 18px", maxWidth: 340, width: "100%", display: "flex", flexDirection: "column", gap: 14 }}>
+                <p style={{ fontSize: 14, color: C.ink, fontWeight: 600, margin: 0, lineHeight: 1.6 }}>{inviteAsk}</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={{ flex: 1, border: `1px solid ${C.line}`, background: "#fff", borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 700, color: C.inkSoft, cursor: "pointer" }} onClick={() => setInviteAsk("")} disabled={busy}>취소</button>
+                  <button style={{ flex: 1, border: "none", background: C.blue, borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 700, color: "#fff", cursor: "pointer", opacity: busy ? 0.6 : 1 }} onClick={() => submitInvite(true)} disabled={busy}>추가</button>
+                </div>
+              </div>
             </div>
           )}
 
