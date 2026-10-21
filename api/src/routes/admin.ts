@@ -12,6 +12,24 @@ import { sendReportLink, sendAdminDeviceInvite } from '../services/reportSender'
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
+// 관리자 요청마다 '이 기기'가 아직 등록·승인돼 있는지 검사한다.
+// 삭제/승인취소된 기기는 접근토큰이 남아 있어도 즉시 차단되어 재로그인이 필요하다.
+router.use(async (req: Request, res: Response, next): Promise<void> => {
+  // 구버전 토큰(기기정보 없음)은 통과 (재로그인하면 새 토큰 발급)
+  if (!req.user.deviceId) { next(); return; }
+  try {
+    const { rows } = await pool.query(
+      'SELECT is_approved FROM admin_devices WHERE user_id=$1 AND device_id=$2',
+      [req.user.userId, req.user.deviceId]
+    );
+    if (!rows[0] || !rows[0].is_approved) {
+      res.status(401).json({ error: '기기 등록이 해제되었습니다. 다시 로그인해주세요.' });
+      return;
+    }
+    next();
+  } catch (e) { next(e as any); }
+});
+
 // 로그인한 관리자 기기의 열람 범위(권한 팀)를 반환한다.
 // null = 전체 열람(권한자 / 최고관리자 / 권한팀 '전체'). 배열 = 해당 팀만 열람.
 async function getReadScope(req: Request): Promise<string[] | null> {

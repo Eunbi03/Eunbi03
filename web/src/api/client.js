@@ -37,9 +37,12 @@ async function request(path, { method = "GET", body, auth = true, retry = true }
   try { data = await res.json(); } catch { /* 204 */ }
   if (!res.ok) {
     // 토큰 만료 → 자동 재발급 후 원 요청 1회 재시도
-    if (res.status === 401 && auth && retry && getStoredRefreshToken()) {
-      const ok = await refreshAccessToken();
+    if (res.status === 401 && auth && retry) {
+      const ok = getStoredRefreshToken() ? await refreshAccessToken() : false;
       if (ok) return request(path, { method, body, auth, retry: false });
+      // 재발급 실패(세션 만료·기기 등록 해제 등) → 토큰 정리 후 로그인 화면으로
+      setAccessToken(null); setStoredRefreshToken(null); setStoredUserId(null);
+      if (typeof window !== "undefined") window.location.reload();
     }
     const message = data?.error || data?.errors?.[0]?.msg || "요청 처리 중 오류가 발생했습니다.";
     const err = new Error(message);
