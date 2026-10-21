@@ -9,18 +9,13 @@ import { requireAuth } from '../middleware/auth';
 const router = Router();
 const MAX_FAILED = parseInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS || '5', 10);
 
-// 이 기기(admin_devices)의 권한(권한자 여부·쓰기 권한)
-async function deviceIsAuthority(userId: string, deviceId: string): Promise<boolean> {
-  const { rows } = await pool.query(
-    'SELECT is_authority FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
-  );
-  return !!rows[0]?.is_authority;
-}
-async function deviceCanWrite(userId: string, deviceId: string): Promise<boolean> {
+// 이 기기(admin_devices)의 권한(권한자 여부·쓰기 권한)을 한 번에 조회
+async function getDevicePerms(userId: string, deviceId: string): Promise<{ isAuthority: boolean; canWrite: boolean }> {
   const { rows } = await pool.query(
     'SELECT is_authority, can_write FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
   );
-  return !!(rows[0]?.is_authority || rows[0]?.can_write);
+  const r = rows[0];
+  return { isAuthority: !!r?.is_authority, canWrite: !!(r?.is_authority || r?.can_write) };
 }
 
 async function logAttempt(data: {
@@ -83,7 +78,8 @@ router.post('/register-device-link',
     let isAuthority = authRows.length > 0;   // 권한자 그룹이면 새 기기도 권한자
     if (grp[0]) {
       canRead = grp[0].can_read; canWrite = grp[0].can_write;
-      teams = grp[0].scope_teams || teams; corp = grp[0].corp || corp; phone = grp[0].phone || phone;
+      teams = (Array.isArray(grp[0].scope_teams) && grp[0].scope_teams.length) ? grp[0].scope_teams : teams;
+      corp = grp[0].corp || corp; phone = grp[0].phone || phone;
     }
     await pool.query(
       `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, can_read, can_write, scope_teams, is_authority)
@@ -211,8 +207,9 @@ router.post('/login',
     }
 
     // 권한자/쓰기권한은 '이 기기(admin_devices)' 기준으로 판단
-    const isAuthority = isAdminUser ? await deviceIsAuthority(user.id, deviceId) : false;
-    const canWrite = isAdminUser ? await deviceCanWrite(user.id, deviceId) : false;
+    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, canWrite: false };
+    const isAuthority = perms.isAuthority;
+    const canWrite = perms.canWrite;
 
     const { plainToken, tokenHash } = generateRefreshToken();
     const refreshExpiry = getRefreshTokenExpiry();
@@ -285,8 +282,9 @@ router.post('/auto-login',
       res.status(403).json({ error: '로그인 세션이 만료되었습니다.' }); return;
     }
 
-    const isAuthority = isAdminUser ? await deviceIsAuthority(user.id, deviceId) : false;
-    const canWrite = isAdminUser ? await deviceCanWrite(user.id, deviceId) : false;
+    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, canWrite: false };
+    const isAuthority = perms.isAuthority;
+    const canWrite = perms.canWrite;
     res.json({
       accessToken: generateAccessToken({ userId: user.id, role: user.role, deviceId, isAuthority }),
       user: {

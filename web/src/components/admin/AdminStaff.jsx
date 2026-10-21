@@ -453,7 +453,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   };
 
   const handleTransfer = async (device) => {
-    if (!confirm(`이 기기(${device.device_name || "기기"})로 권한자를 이전하시겠습니까?\n이전 후 현재 권한자는 일반 관리자가 됩니다.`)) return;
+    if (!confirm(`이 기기(${device.device_name || "기기"})를 권한자로 지정합니다.\n지금 로그인한 기기의 권한자 권한은 해제됩니다. 계속하시겠습니까?`)) return;
     setBusy(true);
     try {
       await onTransfer(device.id);

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import { pool } from '../db/pool';
-import { requireAuth, requireAdmin, requireHR } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import { workdaysBetween, refreshHolidayCache } from '../utils/holidays';
 import { classifyDay, leaveCountsAsCheckIn, leaveCountsAsCheckOut, leaveCountsAsNote } from '../utils/attendanceKpi';
 import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
@@ -17,8 +17,8 @@ router.use(requireAuth, requireAdmin);
 // - 삭제/승인취소된 기기는 접근토큰이 남아 있어도 즉시 차단(재로그인 필요)
 // - 쓰기 작업은 권한자 또는 can_write가 있는 기기만 허용(비권한자+읽기전용은 조회만)
 router.use(async (req: Request, res: Response, next): Promise<void> => {
-  // 구버전 토큰(기기정보 없음)은 통과 (재로그인하면 새 토큰 발급)
-  if (!req.user.deviceId) { (req as any).adminDevice = { isAuthority: true, canRead: true, canWrite: true, teams: null }; next(); return; }
+  // 구버전 토큰(기기정보 없음)은 권한자/쓰기 없이 읽기전용으로 제한(권한 상승 방지). 재로그인 시 정상 권한.
+  if (!req.user.deviceId) { (req as any).adminDevice = { isAuthority: false, canRead: true, canWrite: false, teams: null }; next(); return; }
   try {
     const { rows } = await pool.query(
       'SELECT is_approved, is_authority, can_read, can_write, scope_teams FROM admin_devices WHERE user_id=$1 AND device_id=$2',
@@ -352,6 +352,8 @@ router.put('/workers/:id/reset-password', requireAdmin, async (req: Request, res
   if ((users[0].role === 'admin' || users[0].role === 'hr') && !(await reqIsAuthority(req))) {
     res.status(403).json({ error: '관리자 계정의 비밀번호는 권한자만 변경할 수 있습니다.' }); return;
   }
+  // 권한 범위 밖 직원은 초기화 불가
+  if (!(await assertWorkerInScope(req, res, req.params.id))) return;
 
   let plain: string;
   if (newPassword) {
@@ -370,6 +372,7 @@ router.put('/workers/:id/reset-password', requireAdmin, async (req: Request, res
 });
 
 router.post('/workers/:id/reset-device', requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  if (!(await assertWorkerInScope(req, res, req.params.id))) return;
   const { rows } = await pool.query(
     `UPDATE users SET device_id=NULL, device_registered_at=NULL,
        is_locked=FALSE, failed_login_attempts=0
@@ -600,8 +603,11 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
   const workdays = workdaysBetween(from as string, to as string);
   const workdaySet = new Set(workdays);
 
+  const scope = await getReadScope(req);
   const { rows: users } = await pool.query(
-    `SELECT id, note_exempt, irregular_worker FROM users WHERE role='worker' AND is_active=TRUE`
+    `SELECT id, note_exempt, irregular_worker FROM users WHERE role='worker' AND is_active=TRUE
+       ${scope ? 'AND team = ANY($1)' : ''}`,
+    scope ? [scope] : []
   );
   const ids = users.map((u: any) => u.id);
   const noteExemptById: Record<string, boolean> = {};
@@ -655,7 +661,8 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
 });
 
 // POST /api/admin/send-report — 지정 인원에게 기간 리포트 링크를 수동 발송 (이메일 우선, 없으면 문자)
-router.post('/send-report', requireHR, async (req: Request, res: Response): Promise<void> => {
+router.post('/send-report', async (req: Request, res: Response): Promise<void> => {
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '리포트 발송은 권한자만 가능합니다.' }); return; }
   const { userIds, from, to } = req.body;
   if (!Array.isArray(userIds) || !userIds.length || !from || !to) { res.status(400).json({ error: '발송 대상과 기간이 필요합니다.' }); return; }
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -754,9 +761,9 @@ router.get('/attendance', async (req: Request, res: Response): Promise<void> => 
 
 router.post('/attendance/:recordId/set-leave', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { leaveType } = req.body; // '연차'|'출근'|'출퇴근'|'노트' 등|null
-  // 연차 인정·해제는 모든 관리자 가능, 출근/퇴근/노트 인정은 최고관리자(HR)만
-  if (leaveType && leaveType !== '연차' && req.user.role !== 'hr') {
-    res.status(403).json({ error: '출근/퇴근/노트 인정은 최고관리자(인사팀)만 가능합니다.' }); return;
+  // 연차 인정·해제는 모든 관리자 가능, 출근/퇴근/노트 인정은 권한자만
+  if (leaveType && leaveType !== '연차' && !(await reqIsAuthority(req))) {
+    res.status(403).json({ error: '출근/퇴근/노트 인정은 권한자만 가능합니다.' }); return;
   }
   const { rows } = await pool.query(
     'UPDATE attendance_records SET leave_type=$1 WHERE id=$2 RETURNING id',
@@ -779,9 +786,9 @@ router.post('/attendance/:recordId/set-leave', requireAdmin, async (req: Request
 router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { userId, date, leaveType } = req.body;
   if (!userId || !date) { res.status(400).json({ error: 'userId, date가 필요합니다.' }); return; }
-  // 연차 인정·해제는 모든 관리자 가능, 출근/퇴근/노트 인정은 최고관리자(HR)만
-  if (leaveType && leaveType !== '연차' && req.user.role !== 'hr') {
-    res.status(403).json({ error: '출근/퇴근/노트 인정은 최고관리자(인사팀)만 가능합니다.' }); return;
+  // 연차 인정·해제는 모든 관리자 가능, 출근/퇴근/노트 인정은 권한자만
+  if (leaveType && leaveType !== '연차' && !(await reqIsAuthority(req))) {
+    res.status(403).json({ error: '출근/퇴근/노트 인정은 권한자만 가능합니다.' }); return;
   }
 
   // 출근/출퇴근 인정 시 예정 근무시간 계산
@@ -861,6 +868,7 @@ router.post('/device-change-requests/:id/reject', requireAdmin, async (req: Requ
 // ── 계정 잠금 해제 ────────────────────────────────────────────
 
 router.post('/users/:id/unlock', requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  if (!(await assertWorkerInScope(req, res, req.params.id))) return;
   await pool.query('UPDATE users SET is_locked=FALSE, locked_reason=NULL, failed_login_attempts=0 WHERE id=$1', [req.params.id]);
   res.json({ success: true });
 });
