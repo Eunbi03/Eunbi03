@@ -234,7 +234,7 @@ const permText = (perms) => {
 function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
   const rep = devices[0] || {};                       // 공통 정보 대표 기기(권한은 그룹 동기화됨)
   const anyAuthority = devices.some((d) => d.is_authority);
-  // 권한자(그룹) 최소 2명 유지: 이 그룹의 마지막 권한자 기기이고 권한자 그룹이 2개 이하면 삭제 불가
+  // 권한자(그룹) 최소 3명 유지: 이 그룹의 마지막 권한자 기기이고 권한자 그룹이 3개 이하면 삭제 불가
   const lastInGroup = devices.length <= 1;
   const [editing, setEditing] = useState(false);
   const [detail, setDetail] = useState(false);
@@ -320,7 +320,7 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
               <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                 {!d.is_approved && <button style={smallBtn(C.green)} onClick={() => onApprove(d.id)}>승인</button>}
                 {d.is_approved && !d.is_authority && <button style={smallBtn("#b9820f")} onClick={() => onTransfer(d)}>권한자 변경</button>}
-                {!(d.is_authority && lastInGroup && authorityGroupCount <= 2) && <button style={{ ...smallBtn(C.seal, "#fef5f5"), border: "none" }} onClick={() => onRemove(d.id)}>삭제</button>}
+                {!(d.is_authority && lastInGroup && authorityGroupCount <= 3) && <button style={{ ...smallBtn(C.seal, "#fef5f5"), border: "none" }} onClick={() => onRemove(d.id)}>삭제</button>}
               </div>
             )}
           </div>
@@ -614,7 +614,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               ))}
             </div>
           )}
-          <div style={{ fontSize: 11, color: C.inkSoft }}>권한자는 최소 2명을 유지합니다. 권한자가 2명뿐이면 그 마지막 기기는 삭제할 수 없고, 먼저 다른 관리자에게 권한자를 이전해야 합니다.</div>
+          <div style={{ fontSize: 11, color: C.inkSoft }}>권한자는 최소 3명을 유지합니다. 권한자가 3명뿐이면 그 마지막 기기는 삭제할 수 없고, 먼저 다른 관리자에게 권한자를 이전해야 합니다.</div>
         </div>
         )}
 

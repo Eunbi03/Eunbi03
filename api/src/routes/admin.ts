@@ -14,6 +14,9 @@ import { VALID_PERMS, normalizePerms } from '../utils/permissions';
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
+// 유지해야 하는 최소 권한자 그룹(관리자명) 수
+const MIN_AUTHORITY_GROUPS = 3;
+
 // 관리자 요청마다 '이 기기'의 등록·승인 여부와 권한(권한자/권한키/권한팀)을 한 번에 읽어 붙인다.
 // - 삭제/승인취소된 기기는 접근토큰이 남아 있어도 즉시 차단(재로그인 필요)
 // - 세부 쓰기 권한(permissions)은 엔드포인트별로 requirePerm으로 확인한다.
@@ -938,7 +941,7 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
   const { rows } = await pool.query('SELECT is_authority, device_name FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
-  // 권한자는 '기기 그룹(같은 관리자명)' 단위이며, 최소 2명(2그룹)을 유지한다.
+  // 권한자는 '기기 그룹(같은 관리자명)' 단위이며, 최소 3명(3그룹)을 유지한다.
   // 이 기기가 권한자 그룹의 '마지막 기기'라면 삭제 시 권한자 1명이 사라지므로,
   // 권한자 그룹이 2개 이하인 상황에서는 삭제를 막는다(먼저 다른 관리자에게 권한자 이전 필요).
   if (rows[0].is_authority) {
@@ -950,8 +953,8 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
     if (siblings[0].c === 0) {
       // 이 기기가 그룹의 마지막 → 삭제하면 권한자 그룹 1개 감소
       const { rows: grp } = await pool.query('SELECT COUNT(DISTINCT device_name)::int AS c FROM admin_devices WHERE is_authority=TRUE');
-      if (grp[0].c <= 2) {
-        res.status(400).json({ error: '권한자는 최소 2명을 유지해야 합니다. 먼저 다른 관리자에게 권한자를 이전한 뒤 삭제하세요.' });
+      if (grp[0].c <= MIN_AUTHORITY_GROUPS) {
+        res.status(400).json({ error: `권한자는 최소 ${MIN_AUTHORITY_GROUPS}명을 유지해야 합니다. 먼저 다른 관리자에게 권한자를 이전한 뒤 삭제하세요.` });
         return;
       }
     }
@@ -1023,7 +1026,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   }
 
   // 권한자 그룹(이름)을 '기존의 다른 관리자 이름'으로 변경(병합)하는 것은 금지.
-  // 그대로 두면 권한자 1명이 사라져 최소 2명 정책이 깨짐.
+  // 그대로 두면 권한자 1명이 사라져 최소 인원 정책이 깨짐.
   // (반대로 일반 관리자를 권한자 이름으로 합치는 것 C→A 은 허용 — 그쪽이 권한자가 됨)
   if (collision) {
     const { rows: oa } = await pool.query('SELECT bool_or(is_authority) AS auth FROM admin_devices WHERE device_name=$1', [oldName]);
@@ -1179,10 +1182,10 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
     if (myName) await client.query('UPDATE admin_devices SET is_authority=FALSE WHERE device_name=$1', [myName]);
     // 대상 그룹(같은 관리자명)의 승인된 기기 전부에 권한 부여
     await client.query('UPDATE admin_devices SET is_authority=TRUE WHERE device_name=$1 AND is_approved=TRUE', [targetName]);
-    // 권한자(그룹) 최소 2명 유지: 이전 결과 권한자 그룹이 2개 미만이면 되돌린다
+    // 권한자(그룹) 최소 인원 유지: 이전 결과 권한자 그룹이 기준 미만이면 되돌린다
     // (대상이 이미 권한자 그룹이면 내 그룹만 사라져 수가 줄 수 있음)
     const { rows: grp } = await client.query('SELECT COUNT(DISTINCT device_name)::int AS c FROM admin_devices WHERE is_authority=TRUE');
-    if (grp[0].c < 2) { belowMin = true; await client.query('ROLLBACK'); }
+    if (grp[0].c < MIN_AUTHORITY_GROUPS) { belowMin = true; await client.query('ROLLBACK'); }
     else { await client.query('COMMIT'); }
   } catch (e) {
     await client.query('ROLLBACK');
@@ -1190,7 +1193,7 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
   } finally {
     client.release();
   }
-  if (belowMin) { res.status(400).json({ error: '권한자는 최소 2명을 유지해야 합니다. 이미 권한자인 관리자에게는 이전할 수 없습니다(권한자 수가 줄어듦).' }); return; }
+  if (belowMin) { res.status(400).json({ error: `권한자는 최소 ${MIN_AUTHORITY_GROUPS}명을 유지해야 합니다. 이미 권한자인 관리자에게는 이전할 수 없습니다(권한자 수가 줄어듦).` }); return; }
   const { rows: tn } = await pool.query('SELECT device_name FROM admin_devices WHERE id=$1', [targetDeviceId]);
   await logAudit(req, '권한자변경', '관리자', tn[0]?.device_name);
   res.json({ success: true });
