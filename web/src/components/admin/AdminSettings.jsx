@@ -77,7 +77,7 @@ function CardRow({ children }) {
 
 /* ── 근무지 관리 (카카오 주소검색 → 좌표 자동) ─────────────────────────────── */
 const emptyWp = { name: "", radius_m: 500, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
-function WorkplaceSection() {
+function WorkplaceSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false); const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyWp);
@@ -137,7 +137,7 @@ function WorkplaceSection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>근무지 관리</p>
-        {!adding && !editing && (
+        {canEdit && !adding && !editing && (
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
             <button onClick={() => fileRef.current?.click()} disabled={busy}
@@ -178,8 +178,8 @@ function WorkplaceSection() {
             <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{wp.name} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {wp.radius_m || 500}m</span></p>
             <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
           </div>
-          <EditButton onClick={() => { setForm({ name: wp.name || "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setEditing(wp.id); setAdding(false); setMsg(null); setDup({ name: false, address: false }); }} />
-          <DeleteButton onClick={() => del(wp.id)} disabled={busy} />
+          {canEdit && <EditButton onClick={() => { setForm({ name: wp.name || "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setEditing(wp.id); setAdding(false); setMsg(null); setDup({ name: false, address: false }); }} />}
+          {canEdit && <DeleteButton onClick={() => del(wp.id)} disabled={busy} />}
         </CardRow>
       ))}
     </div>
@@ -187,7 +187,7 @@ function WorkplaceSection() {
 }
 
 /* ── 근무시간(직무) 관리 ─────────────────────────────────────────────────── */
-function JobScheduleSection() {
+function JobScheduleSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false); const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: "", workStart: "09:00", workEnd: "18:00", breakStart: "12:00", breakEnd: "13:00" });
@@ -212,7 +212,7 @@ function JobScheduleSection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>근무시간 관리</p>
-        {!adding && !editing && <AddButton onClick={() => { reset(); setAdding(true); setMsg(null); }}>+ 근무시간 추가</AddButton>}
+        {canEdit && !adding && !editing && <AddButton onClick={() => { reset(); setAdding(true); setMsg(null); }}>+ 근무시간 추가</AddButton>}
       </div>
       <Msg msg={msg} />
       {(adding || editing) && (
@@ -236,8 +236,8 @@ function JobScheduleSection() {
             <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{j.name}</p>
             <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>근무시간: {j.workStart}~{j.workEnd} / 휴게시간: {j.breakStart}~{j.breakEnd}</p>
           </div>
-          <EditButton onClick={() => { setForm({ name: j.name, workStart: j.workStart, workEnd: j.workEnd, breakStart: j.breakStart, breakEnd: j.breakEnd }); setEditing(j.id); setAdding(false); setMsg(null); }} />
-          <DeleteButton onClick={() => del(j.id)} disabled={busy} />
+          {canEdit && <EditButton onClick={() => { setForm({ name: j.name, workStart: j.workStart, workEnd: j.workEnd, breakStart: j.breakStart, breakEnd: j.breakEnd }); setEditing(j.id); setAdding(false); setMsg(null); }} />}
+          {canEdit && <DeleteButton onClick={() => del(j.id)} disabled={busy} />}
         </CardRow>
       ))}
     </div>
@@ -245,7 +245,7 @@ function JobScheduleSection() {
 }
 
 /* ── 법인 관리 ────────────────────────────────────────────────────────────── */
-function CorporationSection() {
+function CorporationSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: "", address: "" });
@@ -264,7 +264,7 @@ function CorporationSection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>법인 관리</p>
-        {!adding && <AddButton onClick={() => { setForm({ name: "", address: "" }); setAdding(true); setMsg(null); }}>+ 법인 추가</AddButton>}
+        {canEdit && !adding && <AddButton onClick={() => { setForm({ name: "", address: "" }); setAdding(true); setMsg(null); }}>+ 법인 추가</AddButton>}
       </div>
       <Msg msg={msg} />
       {adding && (
@@ -286,7 +286,7 @@ function CorporationSection() {
             <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{c.name}</p>
             <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{c.address || "주소 없음"}</p>
           </div>
-          <DeleteButton onClick={() => del(c.id)} disabled={busy} />
+          {canEdit && <DeleteButton onClick={() => del(c.id)} disabled={busy} />}
         </CardRow>
       ))}
     </div>
@@ -294,7 +294,7 @@ function CorporationSection() {
 }
 
 /* ── 본부 및 팀 관리 ──────────────────────────────────────────────────────── */
-function DivisionSection() {
+function DivisionSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: "", teams: "" }); // teams: 쉼표 구분
@@ -334,7 +334,7 @@ function DivisionSection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>본부 및 팀 관리</p>
-        {!adding && <AddButton onClick={() => { setForm({ name: "", teams: "" }); setAdding(true); setMsg(null); }}>+ 본부 추가</AddButton>}
+        {canEdit && !adding && <AddButton onClick={() => { setForm({ name: "", teams: "" }); setAdding(true); setMsg(null); }}>+ 본부 추가</AddButton>}
       </div>
       <Msg msg={msg} />
       {adding && (
@@ -354,25 +354,27 @@ function DivisionSection() {
         <div key={d.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, padding: "14px 18px", marginBottom: 10, background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <p style={{ flex: 1, fontWeight: 800, fontSize: 15, color: COL.blue, margin: 0 }}>{d.name}</p>
-            <DeleteButton onClick={() => delDivision(d.id)} disabled={busy} />
+            {canEdit && <DeleteButton onClick={() => delDivision(d.id)} disabled={busy} />}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
             {d.teams.length === 0 && <span style={{ fontSize: 13, color: COL.gray }}>등록된 팀 없음</span>}
             {d.teams.map((t) => (
               <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: COL.lgray, borderRadius: 999, padding: "5px 10px 5px 12px", fontSize: 13, color: COL.black }}>
                 {t.name}
-                <button onClick={() => delTeam(t.id)} disabled={busy} aria-label="팀 삭제"
-                  style={{ border: "none", background: "transparent", color: COL.gray, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0 }}>×</button>
+                {canEdit && <button onClick={() => delTeam(t.id)} disabled={busy} aria-label="팀 삭제"
+                  style={{ border: "none", background: "transparent", color: COL.gray, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0 }}>×</button>}
               </span>
             ))}
           </div>
+          {canEdit && (
           <div style={{ display: "flex", gap: 8 }}>
             <FInput placeholder="팀 추가" value={teamInput[d.id] || ""} style={{ flex: 1 }}
               onChange={(e) => setTeamInput((t) => ({ ...t, [d.id]: e.target.value }))}
               onKeyDown={(e) => { if (e.key === "Enter") addTeam(d.id); }} />
             <button style={{ ...S.subGhost, padding: "8px 16px" }} onClick={() => addTeam(d.id)} disabled={busy}>추가</button>
           </div>
-          {managers.length > 0 && (
+          )}
+          {canEdit && managers.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 11, color: COL.gray, marginBottom: 6 }}>이 팀 권한을 줄 관리자 선택 (선택 안 하면 권한 변경 없음)</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -396,7 +398,7 @@ function DivisionSection() {
 }
 
 /* ── 직책 관리 (여러 개 동시 추가) ────────────────────────────────────────── */
-function PositionSection() {
+function PositionSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState(""); // 쉼표/줄바꿈 구분
@@ -416,7 +418,7 @@ function PositionSection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>직책 관리</p>
-        {!adding && <AddButton onClick={() => { setText(""); setAdding(true); setMsg(null); }}>+ 직책 추가</AddButton>}
+        {canEdit && !adding && <AddButton onClick={() => { setText(""); setAdding(true); setMsg(null); }}>+ 직책 추가</AddButton>}
       </div>
       <Msg msg={msg} />
       {adding && (
@@ -437,7 +439,7 @@ function PositionSection() {
           {list.map((p) => (
             <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 999, padding: "7px 12px 7px 14px", fontSize: 14, color: C.ink, fontWeight: 700 }}>
               {p.name}
-              <button onClick={() => del(p.id)} disabled={busy} aria-label="직책 삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+              {canEdit && <button onClick={() => del(p.id)} disabled={busy} aria-label="직책 삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>}
             </span>
           ))}
         </div>
@@ -447,7 +449,7 @@ function PositionSection() {
 }
 
 /* ── 공휴일 관리 (연도 이동) ──────────────────────────────────────────────── */
-function HolidaySection() {
+function HolidaySection({ canEdit }) {
   const [all, setAll] = useState([]); const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
   const [adding, setAdding] = useState(false);
@@ -488,7 +490,7 @@ function HolidaySection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>공휴일 관리</p>
-        {!adding && (
+        {canEdit && !adding && (
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
             <button onClick={() => fileRef.current?.click()} disabled={busy}
@@ -538,7 +540,7 @@ function HolidaySection() {
                             <div style={{ fontWeight: 700 }}>{h.date.slice(5)}</div>
                             <div style={{ color: COL.gray }}>{h.name}</div>
                           </div>
-                          <button onClick={() => del(h.id)} disabled={busy} aria-label="삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+                          {canEdit && <button onClick={() => del(h.id)} disabled={busy} aria-label="삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>}
                         </div>
                       ))}
                     </td>
@@ -560,7 +562,7 @@ function HolidaySection() {
 }
 
 /* ── 발송 메시지 관리 (문자/이메일/푸시 제목·내용) ─────────────────────────── */
-function MessageTemplateSection() {
+function MessageTemplateSection({ canEdit }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({});
@@ -588,19 +590,25 @@ function MessageTemplateSection() {
   return (
     <div>
       <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: "0 0 6px" }}>발송 메시지 관리</p>
-      <p style={{ fontSize: 13, color: C.inkSoft, margin: "0 0 14px" }}>문자·이메일·푸시 알림의 제목과 내용을 수정할 수 있습니다. {"{ }"} 안의 치환자는 발송 시 실제 값으로 바뀝니다.</p>
+      <p style={{ fontSize: 13, color: C.inkSoft, margin: "0 0 14px" }}>문자·이메일·푸시 알림의 제목과 내용{canEdit ? "을 수정할 수 있습니다. {} 안의 치환자는 발송 시 실제 값으로 바뀝니다." : "입니다."}</p>
       <Msg msg={msg} />
       {list.map((t) => (
         <div key={t.key} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, padding: "14px 18px", marginBottom: 12, background: "#fff" }}>
           <p style={{ fontWeight: 800, fontSize: 15, color: COL.blue, margin: "0 0 10px" }}>{t.label}</p>
           <label style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft }}>제목</label>
-          <input style={{ ...S.input, margin: "4px 0 10px" }} value={draft[t.key]?.subject || ""} onChange={(e) => set(t.key, "subject", e.target.value)} />
+          {canEdit
+            ? <input style={{ ...S.input, margin: "4px 0 10px" }} value={draft[t.key]?.subject || ""} onChange={(e) => set(t.key, "subject", e.target.value)} />
+            : <p style={{ margin: "4px 0 10px", fontSize: 14, color: C.ink }}>{draft[t.key]?.subject || "-"}</p>}
           <label style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft }}>내용</label>
-          <textarea style={{ ...ta, margin: "4px 0 8px" }} value={draft[t.key]?.body || ""} onChange={(e) => set(t.key, "body", e.target.value)} />
-          {t.placeholders && <div style={{ fontSize: 11, color: COL.gray, marginBottom: 10 }}>치환자: {t.placeholders}</div>}
-          <button style={{ ...S.subPrimary, background: COL.blue, opacity: busy === t.key ? 0.6 : 1 }} onClick={() => save(t.key)} disabled={busy === t.key}>
-            {busy === t.key ? "저장 중…" : "저장"}
-          </button>
+          {canEdit
+            ? <textarea style={{ ...ta, margin: "4px 0 8px" }} value={draft[t.key]?.body || ""} onChange={(e) => set(t.key, "body", e.target.value)} />
+            : <p style={{ margin: "4px 0 8px", fontSize: 14, color: C.ink, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{draft[t.key]?.body || "-"}</p>}
+          {canEdit && t.placeholders && <div style={{ fontSize: 11, color: COL.gray, marginBottom: 10 }}>치환자: {t.placeholders}</div>}
+          {canEdit && (
+            <button style={{ ...S.subPrimary, background: COL.blue, opacity: busy === t.key ? 0.6 : 1 }} onClick={() => save(t.key)} disabled={busy === t.key}>
+              {busy === t.key ? "저장 중…" : "저장"}
+            </button>
+          )}
         </div>
       ))}
     </div>
@@ -624,11 +632,6 @@ export default function AdminSettings({ currentUser }) {
   const canEdit = !!currentUser?.isAuthorityHolder || (currentUser?.permissions || []).includes("settings");
   return (
     <div>
-      {!canEdit && (
-        <div style={{ background: C.amberSoft, border: `1px solid ${C.amber}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: C.amber, fontWeight: 700 }}>
-          읽기 전용입니다. 설정 추가·수정 권한이 없어 변경 시도는 적용되지 않습니다. (권한자에게 문의)
-        </div>
-      )}
       {/* 상단 공통 필터와 동일한 높이·테두리·포커스(#0e6ca5) */}
       <select value={cat} onChange={(e) => setCat(e.target.value)}
         onFocus={() => setCatFocus(true)} onBlur={() => setCatFocus(false)}
@@ -636,13 +639,13 @@ export default function AdminSettings({ currentUser }) {
           borderColor: catFocus ? "#0e6ca5" : C.lineAdmin, outline: "none", boxShadow: catFocus ? "inset 0 0 0 1px #0e6ca5" : "none" }}>
         {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
       </select>
-      {cat === "workplace" && <WorkplaceSection />}
-      {cat === "jobSchedule" && <JobScheduleSection />}
-      {cat === "corporation" && <CorporationSection />}
-      {cat === "division" && <DivisionSection />}
-      {cat === "position" && <PositionSection />}
-      {cat === "holiday" && <HolidaySection />}
-      {cat === "message" && <MessageTemplateSection />}
+      {cat === "workplace" && <WorkplaceSection canEdit={canEdit} />}
+      {cat === "jobSchedule" && <JobScheduleSection canEdit={canEdit} />}
+      {cat === "corporation" && <CorporationSection canEdit={canEdit} />}
+      {cat === "division" && <DivisionSection canEdit={canEdit} />}
+      {cat === "position" && <PositionSection canEdit={canEdit} />}
+      {cat === "holiday" && <HolidaySection canEdit={canEdit} />}
+      {cat === "message" && <MessageTemplateSection canEdit={canEdit} />}
     </div>
   );
 }
