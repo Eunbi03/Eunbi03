@@ -1022,6 +1022,17 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
     collision = ex.length > 0;
   }
 
+  // 권한자 그룹(이름)을 '기존의 다른 관리자 이름'으로 변경(병합)하는 것은 금지.
+  // 그대로 두면 권한자 1명이 사라져 최소 2명 정책이 깨짐.
+  // (반대로 일반 관리자를 권한자 이름으로 합치는 것 C→A 은 허용 — 그쪽이 권한자가 됨)
+  if (collision) {
+    const { rows: oa } = await pool.query('SELECT bool_or(is_authority) AS auth FROM admin_devices WHERE device_name=$1', [oldName]);
+    if (oa[0]?.auth) {
+      res.status(400).json({ error: '권한자 계정은 다른 관리자 이름으로 변경할 수 없습니다. 권한자를 넘기려면 "권한자 변경"을, 다른 관리자를 권한자로 만들려면 그 관리자의 이름을 권한자 이름으로 변경하세요.' });
+      return;
+    }
+  }
+
   if (collision && !confirmMerge) {
     res.status(409).json({
       needMerge: true,
