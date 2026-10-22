@@ -427,7 +427,9 @@ export default function AdminIndividual({ filters, currentUser }) {
     if (!confirm(`${ids.length}명에게 ${ym.month}월 근태 리포트를 발송하시겠습니까?`)) return;
     setSending(true); setMsg("");
     try {
-      const r = await api.sendMonthlyReport({ userIds: ids, from, to });
+      // 직접 선택이 아니면 팀/본부/법인 단위로 보낸 것으로 보고 라벨 기록
+      const label = selected.length ? "" : (filters.team || filters.division || filters.corp || "");
+      const r = await api.sendMonthlyReport({ userIds: ids, from, to, label });
       const fails = (r.results || []).filter((x) => !x.ok);
       let msg = `리포트 발송 완료: ${r.sent}/${r.total}명`;
       if (fails.length) {

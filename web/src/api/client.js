@@ -134,7 +134,7 @@ export const checkWorkerAccess = (name) => request(`/admin/worker-access-check?n
 export const getAuditLogs = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/logs${qs ? `?${qs}` : ""}`); };
 export const getMyPerms = () => request("/admin/me");
 export const getReportScores = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/report-scores${qs ? `?${qs}` : ""}`); };
-export const sendMonthlyReport = ({ userIds, from, to }) => request("/admin/send-report", { method: "POST", body: { userIds, from, to } });
+export const sendMonthlyReport = ({ userIds, from, to, label }) => request("/admin/send-report", { method: "POST", body: { userIds, from, to, label } });
 
 /* 관리자 — 연차 */
 export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day", { method: "POST", body: data });

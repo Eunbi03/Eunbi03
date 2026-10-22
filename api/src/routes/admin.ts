@@ -190,11 +190,19 @@ router.put('/workplaces/:id', requireAdmin, permSettings, async (req: Request, r
   const { name, lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
   const dup = await workplaceDupCheck(name, address, req.params.id);
   if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
+  const { rows: owp } = await pool.query('SELECT name, radius_m, address, detail_address FROM workplaces WHERE id=$1', [req.params.id]);
+  const ow = owp[0] || {};
   const { rows } = await pool.query(
     'UPDATE workplaces SET name=$1, lat=$2, lng=$3, radius_m=$4, address=$5, postal_code=$6, detail_address=$7 WHERE id=$8 RETURNING *',
     [name, lat, lng, radiusM || 500, address || null, postalCode || null, detailAddress || null, req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '근무지를 찾을 수 없습니다.' }); return; }
+  const wparts: string[] = [];
+  if ((ow.name || '') !== (name || '')) wparts.push(`(근무지명)${ow.name}->${name}`);
+  if (String(ow.radius_m ?? '') !== String(radiusM || 500)) wparts.push(`(참고 반경)${ow.radius_m}->${radiusM || 500}`);
+  if ((ow.address || '') !== (address || '')) wparts.push(`(주소)${ow.address || '-'}->${address || '-'}`);
+  if ((ow.detail_address || '') !== (detailAddress || '')) wparts.push(`(상세주소)${ow.detail_address || '-'}->${detailAddress || '-'}`);
+  await logAudit(req, '수정', '근무지', name, wparts.join(', ') || null);
   res.json({ workplace: rows[0] });
 });
 
@@ -339,7 +347,7 @@ router.post('/workers', permStaff, async (req: Request, res: Response): Promise<
        lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker]
     );
     await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, !!irregularWorker);
-    await logAudit(req, '추가', '직원', name);
+    await logAudit(req, '추가', '근로자', name);
     res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 정보입니다.' });
@@ -353,8 +361,20 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
     const { name, phone, email, position, corp, division, team, jobTitle, remark,
             scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
             noteExempt, irregularWorker } = req.body;
-    const { rows: prev } = await pool.query('SELECT name FROM users WHERE id=$1', [req.params.id]);
-    const oldWName = prev[0]?.name;
+    // 변경 전 전체 값(비고 상세 비교용)
+    const { rows: prevRows } = await pool.query(
+      `SELECT u.name, u.role, u.phone, u.email, u.position, u.corp, u.division, u.team, u.job_title, u.remark,
+              to_char(u.scheduled_start,'HH24:MI') ss, to_char(u.scheduled_end,'HH24:MI') se,
+              to_char(u.lunch_start,'HH24:MI') ls, to_char(u.lunch_end,'HH24:MI') le,
+              u.note_exempt, u.irregular_worker, u.workplace_id, w.name AS wp_name
+         FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [req.params.id]
+    );
+    const o = prevRows[0] || {};
+    let newWpName = o.wp_name;
+    if ((workplaceId || null) !== (o.workplace_id || null)) {
+      const { rows: wr } = await pool.query('SELECT name FROM workplaces WHERE id=$1', [workplaceId || null]);
+      newWpName = wr[0]?.name || null;
+    }
     const { rows } = await pool.query(
       `UPDATE users SET name=$1, phone=$2, email=$3, position=$4, corp=$5, division=$6, team=$7, job_title=$8,
          remark=$9, scheduled_start=$10, scheduled_end=$11, lunch_start=$12, lunch_end=$13, workplace_id=$14,
@@ -365,7 +385,37 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
        lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker, req.params.id]
     );
     if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
-    await logAudit(req, '수정', '직원', rows[0].name, (oldWName && oldWName !== rows[0].name) ? `(이름)${oldWName}->${rows[0].name}` : null);
+
+    // 관리자 계정은 이름(계정명)만 의미 있음
+    if (o.role === 'admin' || o.role === 'hr') {
+      await logAudit(req, '수정', '관리자', rows[0].name, (o.name && o.name !== name) ? `(관리자 계정명)${o.name}->${name}` : null);
+      res.json({ success: true, worker: rows[0] }); return;
+    }
+
+    // 필드별 변경 내역 → 비고 상세
+    const parts: string[] = [];
+    const chg = (label: string, oldV: any, newV: any) => {
+      const a = oldV ?? '', b = newV ?? '';
+      if (String(a) === String(b)) return;
+      if (!a) parts.push(`(${label})${b}`);           // 신규 입력(추가)
+      else parts.push(`(${label})${a}->${b}`);        // 수정
+    };
+    chg('이름', o.name, name);
+    chg('직책', o.position, position);
+    if (fmtPhoneLog(o.phone) !== fmtPhoneLog(phone)) chg('전화번호', fmtPhoneLog(o.phone), fmtPhoneLog(phone));
+    chg('이메일', o.email, email);
+    chg('근무지', o.wp_name, newWpName);
+    chg('비고', o.remark, remark);
+    chg('법인', o.corp, corp);
+    chg('본부', o.division, division);
+    chg('팀', o.team, team);
+    chg('직무', o.job_title, jobTitle);
+    if (`${o.ss}~${o.se}` !== `${hhmm(scheduledStart)}~${hhmm(scheduledEnd)}`) parts.push(`(출퇴근)${o.ss}~${o.se}->${hhmm(scheduledStart)}~${hhmm(scheduledEnd)}`);
+    if (`${o.ls}~${o.le}` !== `${hhmm(lunchStart)}~${hhmm(lunchEnd)}`) parts.push(`(휴게 시간)${o.ls}~${o.le}->${hhmm(lunchStart)}~${hhmm(lunchEnd)}`);
+    if (!!o.note_exempt !== !!noteExempt) parts.push(`(근무노트 제외)${noteExempt ? 'ON' : 'OFF'}`);
+    if (!!o.irregular_worker !== !!irregularWorker) parts.push(`(비정기적 근로자)${irregularWorker ? 'ON' : 'OFF'}`);
+
+    await logAudit(req, '수정', '근로자', rows[0].name, parts.join(', ') || null);
     res.json({ success: true, worker: rows[0] });
   } catch (e: any) {
     res.status(500).json({ error: e.message || '직원 정보 수정 중 오류가 발생했습니다.' });
@@ -376,13 +426,13 @@ router.delete('/workers/:id', permStaff, async (req: Request, res: Response): Pr
   if (!(await assertWorkerInScope(req, res, req.params.id))) return;
   // 소프트 삭제 + 삭제 시각 기록 (재등록 시 1년 보존 판단용)
   const { rows: delr } = await pool.query('UPDATE users SET is_active=FALSE, deactivated_at=now() WHERE id=$1 RETURNING name', [req.params.id]);
-  await logAudit(req, '삭제', '직원', delr[0]?.name);
+  await logAudit(req, '삭제', '근로자', delr[0]?.name);
   res.json({ success: true });
 });
 
 router.put('/workers/:id/reset-password', requireAdmin, permStaff, async (req: Request, res: Response): Promise<void> => {
   const { newPassword } = req.body;
-  const { rows: users } = await pool.query('SELECT id, name, phone, role FROM users WHERE id=$1 AND is_active=TRUE', [req.params.id]);
+  const { rows: users } = await pool.query('SELECT id, name, phone, role, is_locked FROM users WHERE id=$1 AND is_active=TRUE', [req.params.id]);
   if (!users[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
   // 관리자(admin/hr) 계정의 비밀번호 변경은 권한자만 가능
   if ((users[0].role === 'admin' || users[0].role === 'hr') && !(await reqIsAuthority(req))) {
@@ -404,7 +454,11 @@ router.put('/workers/:id/reset-password', requireAdmin, permStaff, async (req: R
 
   const passwordHash = await bcrypt.hash(plain, 12);
   await pool.query('UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2', [passwordHash, users[0].id]);
-  await logAudit(req, '비번초기화', '직원', users[0].name);
+  if (users[0].role === 'admin' || users[0].role === 'hr') {
+    await logAudit(req, '비번초기화', '관리자', users[0].name, '변경한 대상자에게 문의');
+  } else {
+    await logAudit(req, '비번초기화', '근로자', users[0].name, users[0].is_locked ? '(근로자 비번초기화)계정 잠김 해제' : '(근로자 비번초기화)비번 재설정');
+  }
   res.json({ success: true, initPassword: plain });
 });
 
@@ -417,7 +471,7 @@ router.post('/workers/:id/reset-device', requireAdmin, permStaff, async (req: Re
     [req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
-  await logAudit(req, '기기변경', '직원', rows[0].name);
+  await logAudit(req, '기기변경', '근로자', rows[0].name);
   res.json({ success: true });
 });
 
@@ -740,7 +794,11 @@ router.post('/send-report', async (req: Request, res: Response): Promise<void> =
     }
   }
   const sent = results.filter((r) => r.ok).length;
-  await logAudit(req, '발송', '리포트', `${sent}명`, `${from}~${to}`);
+  // 비고: 팀/본부/법인 단위로 보냈으면 그 이름, 아니면 받은 근로자명 나열
+  const label = (req.body.label || '').trim();
+  const names = results.filter((r) => r.ok && r.name).map((r) => r.name);
+  const who = label || names.join(', ');
+  await logAudit(req, '발송', '리포트', `${sent}명`, who ? `(리포트)${who}` : `${from}~${to}`);
   res.json({ sent, total: results.length, results });
 });
 
@@ -909,7 +967,7 @@ router.post('/device-change-requests/:id/reject', requireAdmin, permStaff, async
 router.post('/users/:id/unlock', requireAdmin, permStaff, async (req: Request, res: Response): Promise<void> => {
   if (!(await assertWorkerInScope(req, res, req.params.id))) return;
   const { rows: ul } = await pool.query('UPDATE users SET is_locked=FALSE, locked_reason=NULL, failed_login_attempts=0 WHERE id=$1 RETURNING name', [req.params.id]);
-  await logAudit(req, '잠금해제', '직원', ul[0]?.name);
+  await logAudit(req, '잠금해제', '근로자', ul[0]?.name);
   res.json({ success: true });
 });
 
@@ -1030,6 +1088,14 @@ function permLabel(perms: string[]): string {
 }
 // 'YYYY-MM-DD' → 'MM/DD'
 const mmdd = (d?: string) => (d ? d.slice(5).replace('-', '/') : '');
+// 전화번호 포맷(로그용)
+const fmtPhoneLog = (p?: string | null) => {
+  const d = (p || '').replace(/\D/g, '');
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return p || '';
+};
+const hhmm = (t?: string | null) => (t ? String(t).slice(0, 5) : '');
 
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 수정할 수 있습니다.' }); return; }
@@ -1040,10 +1106,13 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   const permissions = normalizePerms(req.body.permissions);
   const teams = normalizeTeams(req.body.teams);
 
-  const { rows: cur } = await pool.query('SELECT device_name, permissions FROM admin_devices WHERE id=$1', [req.params.id]);
+  const { rows: cur } = await pool.query('SELECT device_name, permissions, phone AS p, corp AS cp, scope_teams FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!cur[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
   const oldName: string = (cur[0].device_name ?? '').trim();
   const oldPerms: string[] = cur[0].permissions || [];
+  const oldPhone: string = cur[0].p || '';
+  const oldCorp: string = cur[0].cp || '';
+  const oldTeams: string[] = cur[0].scope_teams || [];
 
   // 이름이 바뀌었고, 바꾸려는 이름을 가진 '다른 그룹' 기기가 이미 있는지
   const isRename = newName !== oldName;
@@ -1064,6 +1133,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   }
 
   let appliedPerms: string[] = permissions;   // 로그 비고용(적용된 최종 권한)
+  let appliedTeams: string[] = teams;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1081,6 +1151,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
       const mergedPerms = VALID_PERMS.filter((k) => permSet.has(k));
       appliedPerms = mergedPerms;
       const mergedTeams = Array.from(teamSet);
+      appliedTeams = mergedTeams;
       const names = oldName ? [oldName, newName] : [newName];
       await client.query(
         `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, scope_teams=$5
@@ -1110,8 +1181,15 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   }
   const parts: string[] = [];
   if (oldName && newName !== oldName) parts.push(`(이름)${oldName}->${newName}`);
+  if (fmtPhoneLog(oldPhone) !== fmtPhoneLog(phone || '')) {
+    parts.push(oldPhone ? `(업무용 전화번호)${fmtPhoneLog(oldPhone)}->${fmtPhoneLog(phone || '')}` : `(업무용 전화번호)${fmtPhoneLog(phone || '')}`);
+  }
+  const newCorp = corp || '';
+  if (oldCorp !== newCorp) parts.push(oldCorp ? `(담당 법인)${oldCorp}->${newCorp}` : `(담당 법인)${newCorp}`);
   const oldPL = permLabel(oldPerms), newPL = permLabel(appliedPerms);
   if (oldPL !== newPL) parts.push(`(권한)${oldPL}->${newPL}`);
+  const oldTL = (oldTeams.length ? oldTeams.join(', ') : '전체'), newTL = (appliedTeams.length ? appliedTeams.join(', ') : '전체');
+  if (oldTL !== newTL) parts.push(`(권한 팀)${oldTL}->${newTL}`);
   await logAudit(req, '수정', '관리자', newName, parts.join(', ') || null);
   res.json({ success: true, merged: collision });
 });
@@ -1206,7 +1284,7 @@ router.put('/message-templates/:key', requireAdmin, permSettings, async (req: Re
   );
   if (!rows[0]) { res.status(404).json({ error: '템플릿을 찾을 수 없습니다.' }); return; }
   invalidateTemplateCache();
-  await logAudit(req, '수정', '메시지', rows[0]?.label);
+  await logAudit(req, '수정', '메시지', rows[0]?.label, rows[0]?.label ? `(${rows[0].label})` : null);
   res.json({ success: true, template: rows[0] });
 });
 
@@ -1398,7 +1476,7 @@ router.post('/job-schedules', requireAdmin, permSettings, async (req: Request, r
        VALUES ($1,$2,$3,$4,$5) RETURNING id, name`,
       [name, workStart || '09:00', workEnd || '18:00', breakStart || '12:00', breakEnd || '13:00']
     );
-    await logAudit(req, '추가', '근무시간', rows[0]?.name);
+    await logAudit(req, '추가', '근무시간 및 직무', rows[0]?.name);
     res.status(201).json({ jobSchedule: rows[0] });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 직무명입니다.' });
@@ -1407,16 +1485,47 @@ router.post('/job-schedules', requireAdmin, permSettings, async (req: Request, r
 });
 router.put('/job-schedules/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   const { name, workStart, workEnd, breakStart, breakEnd } = req.body;
+  // 변경 전 값
+  const { rows: ojr } = await pool.query(
+    `SELECT name, to_char(work_start,'HH24:MI') ws, to_char(work_end,'HH24:MI') we,
+            to_char(break_start,'HH24:MI') bs, to_char(break_end,'HH24:MI') be
+       FROM job_schedules WHERE id=$1`, [req.params.id]
+  );
+  const oj = ojr[0];
+  if (!oj) { res.status(404).json({ error: '직무를 찾을 수 없습니다.' }); return; }
   const { rows } = await pool.query(
     `UPDATE job_schedules SET name=$1, work_start=$2, work_end=$3, break_start=$4, break_end=$5
      WHERE id=$6 RETURNING id, name`,
     [name, workStart, workEnd, breakStart, breakEnd, req.params.id]
   );
-  if (!rows[0]) { res.status(404).json({ error: '직무를 찾을 수 없습니다.' }); return; }
+  // 일괄 적용: 이 직무를 쓰면서 '기존 직무 시간 그대로'인 근로자만 새 시간으로 변경(개별 관리자는 제외).
+  if (`${oj.ws}~${oj.we}` !== `${hhmm(workStart)}~${hhmm(workEnd)}`) {
+    await pool.query(
+      `UPDATE users SET scheduled_start=$1, scheduled_end=$2
+        WHERE job_title=$3 AND to_char(scheduled_start,'HH24:MI')=$4 AND to_char(scheduled_end,'HH24:MI')=$5`,
+      [workStart, workEnd, oj.name, oj.ws, oj.we]
+    );
+  }
+  if (`${oj.bs}~${oj.be}` !== `${hhmm(breakStart)}~${hhmm(breakEnd)}`) {
+    await pool.query(
+      `UPDATE users SET lunch_start=$1, lunch_end=$2
+        WHERE job_title=$3 AND to_char(lunch_start,'HH24:MI')=$4 AND to_char(lunch_end,'HH24:MI')=$5`,
+      [breakStart, breakEnd, oj.name, oj.bs, oj.be]
+    );
+  }
+  // 직무명 변경 시 해당 직무 근로자 전원의 직무명도 변경(별도 관리 없음 → 무조건 적용)
+  if (oj.name !== name) {
+    await pool.query('UPDATE users SET job_title=$1 WHERE job_title=$2', [name, oj.name]);
+  }
+  const jparts: string[] = [];
+  if (oj.name !== name) jparts.push(`(직무명)${oj.name}->${name}`);
+  if (`${oj.ws}~${oj.we}` !== `${hhmm(workStart)}~${hhmm(workEnd)}`) jparts.push(`(직무 근무시간)${oj.ws}~${oj.we}->${hhmm(workStart)}~${hhmm(workEnd)}`);
+  if (`${oj.bs}~${oj.be}` !== `${hhmm(breakStart)}~${hhmm(breakEnd)}`) jparts.push(`(직무 휴게시간)${oj.bs}~${oj.be}->${hhmm(breakStart)}~${hhmm(breakEnd)}`);
+  await logAudit(req, '수정', '근무시간 및 직무', name, jparts.join(', ') || null);
   res.json({ jobSchedule: rows[0] });
 });
 router.delete('/job-schedules/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  { const { rows: r } = await pool.query('DELETE FROM job_schedules WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '근무시간', r[0]?.name); }
+  { const { rows: r } = await pool.query('DELETE FROM job_schedules WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '근무시간 및 직무', r[0]?.name); }
   res.json({ success: true });
 });
 
