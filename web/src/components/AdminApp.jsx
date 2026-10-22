@@ -47,6 +47,12 @@ export default function AdminApp({ user }) {
   // 로그 페이지는 권한자만
   const TABS = isAuthority ? [...BASE_TABS, { key: "log", label: "로그" }] : BASE_TABS;
   const [tab, setTab] = useState("overall");
+  // 같은 탭을 다시 누르면 해당 페이지를 리마운트(초기화)하기 위한 카운터
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const clickTab = (key) => {
+    if (key === tab) { setReloadNonce((n) => n + 1); }   // 같은 탭 → 첫 화면으로 새로고침
+    else { setTab(key); }
+  };
 
   // 공통 필터: 설정의 조직 마스터 데이터 기반 (법인/본부·팀/직위)
   const [corps, setCorps] = useState([]);          // [name]
@@ -88,7 +94,7 @@ export default function AdminApp({ user }) {
           <button key={t.key}
             style={{ flexShrink: 0, border: "none", borderRadius: 8, padding: isMobile ? "7px 16px" : "8px 20px", fontSize: isMobile ? 13 : 15, fontWeight: tab === t.key ? 800 : 400,
               background: tab === t.key ? "#2f6d8f" : "transparent", color: tab === t.key ? "#fff" : C.inkSoft, cursor: "pointer" }}
-            onClick={() => setTab(t.key)}
+            onClick={() => clickTab(t.key)}
           >{t.label}</button>
         ))}
         {/* 설명서: 탭이 아니라 외부 링크(새 탭) */}
@@ -129,11 +135,11 @@ export default function AdminApp({ user }) {
         </div>
       )}
 
-      {tab === "overall"    && <AdminOverall    filters={filters} onDirectActive={setDirectActive} />}
-      {tab === "staff"      && <AdminStaff      filters={filters} currentUser={effUser} />}
-      {tab === "individual" && <AdminIndividual filters={filters} currentUser={effUser} />}
-      {tab === "settings"   && <AdminSettings currentUser={effUser} />}
-      {tab === "log"        && <AdminLog />}
+      {tab === "overall"    && <AdminOverall    key={`overall-${reloadNonce}`}    filters={filters} onDirectActive={setDirectActive} />}
+      {tab === "staff"      && <AdminStaff      key={`staff-${reloadNonce}`}      filters={filters} currentUser={effUser} />}
+      {tab === "individual" && <AdminIndividual key={`individual-${reloadNonce}`} filters={filters} currentUser={effUser} />}
+      {tab === "settings"   && <AdminSettings   key={`settings-${reloadNonce}`}   currentUser={effUser} />}
+      {tab === "log"        && <AdminLog        key={`log-${reloadNonce}`} />}
     </div>
   );
 }
