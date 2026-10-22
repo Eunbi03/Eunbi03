@@ -1505,6 +1505,12 @@ router.get('/worker-access-check', async (req: Request, res: Response): Promise<
   res.json({ blocked: rows.map((r: any) => r.name) });
 });
 
+// 현재 로그인 기기의 최신 권한(권한자/세부권한) — 재로그인 없이 새로고침으로 반영하기 위함
+router.get('/me', async (req: Request, res: Response): Promise<void> => {
+  const ad = (req as any).adminDevice || {};
+  res.json({ isAuthorityHolder: !!ad.isAuthority, permissions: ad.permissions || [] });
+});
+
 // ── 작업 기록(감사 로그) 조회 — 권한자만 ───────────────────────────────────────
 router.get('/logs', async (req: Request, res: Response): Promise<void> => {
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 조회할 수 있습니다.' }); return; }

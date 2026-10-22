@@ -930,7 +930,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
         {status}
         <div style={{ display: "grid", gridTemplateColumns: "56px 84px", gap: 6 }}>
-          <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>
+          {canWrite && <button style={{ ...base, ...mod }} onClick={() => setEditTarget(w)}>수정</button>}
           {canWrite && <button style={{ ...base, ...pw }} onClick={() => resetPw(w)}>비번초기화</button>}
           {canWrite && <button style={{ ...base, ...del }} onClick={() => deleteWorker(w)}>삭제</button>}
           {canWrite && <button style={{ ...base, ...dev }} onClick={() => resetDevice(w)}>기기변경</button>}

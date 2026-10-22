@@ -132,6 +132,7 @@ export const getMonthlyOverview = (params = {}) => { const qs = new URLSearchPar
 export const searchWorkers = (name) => request(`/admin/worker-search?name=${encodeURIComponent(name)}`);
 export const checkWorkerAccess = (name) => request(`/admin/worker-access-check?name=${encodeURIComponent(name)}`);
 export const getAuditLogs = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/logs${qs ? `?${qs}` : ""}`); };
+export const getMyPerms = () => request("/admin/me");
 export const getReportScores = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/report-scores${qs ? `?${qs}` : ""}`); };
 export const sendMonthlyReport = ({ userIds, from, to }) => request("/admin/send-report", { method: "POST", body: { userIds, from, to } });
 

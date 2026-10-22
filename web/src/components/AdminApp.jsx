@@ -48,7 +48,13 @@ export default function AdminApp({ user }) {
   const isMobile = useIsMobile();
   // HR 전용 작업(비밀번호/기기 초기화, 근무지·연차·공휴일 관리 등)은 hr 역할만 노출 — 백엔드 requireHR과 일치
   const isHR = user?.role === "hr";
-  const isAuthority = !!user?.isAuthorityHolder;
+  // 최신 권한을 서버에서 받아 반영(재로그인 없이 새로고침만으로 권한 변경 적용)
+  const [perm, setPerm] = useState({ isAuthorityHolder: !!user?.isAuthorityHolder, permissions: user?.permissions || [] });
+  useEffect(() => {
+    api.getMyPerms().then((d) => setPerm({ isAuthorityHolder: !!d.isAuthorityHolder, permissions: d.permissions || [] })).catch(() => {});
+  }, []);
+  const effUser = { ...user, isAuthorityHolder: perm.isAuthorityHolder, permissions: perm.permissions };
+  const isAuthority = perm.isAuthorityHolder;
   // 로그 페이지는 권한자만
   const TABS = isAuthority ? [...BASE_TABS, { key: "log", label: "로그" }] : BASE_TABS;
   const [tab, setTab] = useState("overall");
@@ -128,9 +134,9 @@ export default function AdminApp({ user }) {
       )}
 
       {tab === "overall"    && <AdminOverall    filters={filters} onDirectActive={setDirectActive} />}
-      {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={user} onRefreshFilters={() => {}} />}
-      {tab === "individual" && <AdminIndividual filters={filters} currentUser={user} />}
-      {tab === "settings"   && <AdminSettings currentUser={user} />}
+      {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={effUser} onRefreshFilters={() => {}} />}
+      {tab === "individual" && <AdminIndividual filters={filters} currentUser={effUser} />}
+      {tab === "settings"   && <AdminSettings currentUser={effUser} />}
       {tab === "log"        && <AdminLog />}
     </div>
   );
