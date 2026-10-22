@@ -91,6 +91,13 @@ export default function AdminApp({ user }) {
             onClick={() => setTab(t.key)}
           >{t.label}</button>
         ))}
+        {/* 설명서: 탭이 아니라 외부 링크(새 탭) */}
+        <a href="https://timecard-neon.vercel.app/" target="_blank" rel="noopener noreferrer"
+          style={{ flexShrink: 0, marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4,
+            border: `1px solid ${C.lineAdmin}`, borderRadius: 8, padding: isMobile ? "7px 14px" : "8px 18px",
+            fontSize: isMobile ? 13 : 15, fontWeight: 700, color: C.inkSoft, background: "transparent",
+            cursor: "pointer", textDecoration: "none", whiteSpace: "nowrap" }}
+        >📘 설명서</a>
       </div>
 
       {/* 필터: 법인 / 본부 / 팀 / 직위 */}
