@@ -391,7 +391,7 @@ export default function AdminIndividual({ filters, currentUser }) {
     try {
       const d = await api.searchWorkers(name);
       const found = d.workers || []; // 서버가 이미 worker만 반환
-      if (!found.length) { alert("해당 이름의 직원을 찾을 수 없습니다."); return; }
+      if (!found.length) { alert("해당 이름의 근로자을 찾을 수 없습니다."); return; }
       setSelected((s) => { const add = found.filter((f) => !s.some((x) => x.id === f.id)); return [...s, ...add]; });
       setNameInput("");
     } catch (e) { alert(e.message); }
@@ -589,7 +589,7 @@ export default function AdminIndividual({ filters, currentUser }) {
         </div>
       ))}
 
-      {visibleWorkers.length === 0 && <div style={S.empty}>해당 조건의 직원이 없습니다.</div>}
+      {visibleWorkers.length === 0 && <div style={S.empty}>해당 조건의 근로자이 없습니다.</div>}
     </div>
   );
 }

@@ -19,7 +19,7 @@ import * as api from "../api/client.js";
 
 const BASE_TABS = [
   { key: "overall",    label: "전체 현황" },
-  { key: "staff",      label: "직원 관리" },
+  { key: "staff",      label: "근로자 관리" },
   { key: "individual", label: "개별 리포트" },
   { key: "settings",   label: "설정" },
 ];

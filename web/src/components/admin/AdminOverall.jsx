@@ -123,7 +123,7 @@ export default function AdminOverall({ filters, onDirectActive }) {
     try {
       const d = await api.searchWorkers(name);
       const found = d.workers || [];
-      if (found.length === 0) { alert("해당 이름의 직원을 찾을 수 없습니다."); return; }
+      if (found.length === 0) { alert("해당 이름의 근로자을 찾을 수 없습니다."); return; }
       if (found.length === 1) { addSelected(found[0]); setNameInput(""); return; }
       setPopup(found);
     } catch (e) { alert(e.message); }
@@ -139,7 +139,7 @@ export default function AdminOverall({ filters, onDirectActive }) {
       if (selected.length) params.userIds = selected.map((s) => s.id).join(",");
       else { if (filters.corp) params.corp = filters.corp; if (filters.division) params.division = filters.division; if (filters.team) params.team = filters.team; if (filters.position) params.position = filters.position; }
       const d = await api.getMonthlyOverview(params);
-      if (!d?.workers?.length) { alert("다운로드할 직원이 없습니다."); return; }
+      if (!d?.workers?.length) { alert("다운로드할 근로자이 없습니다."); return; }
       await downloadAttendanceRegister(d);
     } catch (e) { alert("다운로드 실패: " + e.message); }
     finally { setDownloading(false); }
@@ -193,7 +193,7 @@ export default function AdminOverall({ filters, onDirectActive }) {
         <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }} onClick={() => setPopup(null)}>
           <div style={{ ...S.loginCard, maxWidth: 420, width: "100%", margin: 0 }} onClick={(e) => e.stopPropagation()}>
             <p style={S.h1}>동명이인 선택</p>
-            <p style={{ fontSize: 13, color: C.inkSoft }}>같은 이름의 직원이 여러 명입니다. 선택해주세요.</p>
+            <p style={{ fontSize: 13, color: C.inkSoft }}>같은 이름의 근로자이 여러 명입니다. 선택해주세요.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {popup.map((w) => (
                 <button key={w.id} onClick={() => addSelected(w)}
@@ -210,7 +210,7 @@ export default function AdminOverall({ filters, onDirectActive }) {
 
       {/* 그리드 */}
       {loading ? <div style={S.empty}>불러오는 중…</div>
-        : !data || data.workers.length === 0 ? <div style={S.empty}>조회된 직원이 없습니다.</div>
+        : !data || data.workers.length === 0 ? <div style={S.empty}>조회된 근로자이 없습니다.</div>
         : (
           <>
             <div style={{ overflowX: "auto", border: `1px solid ${BORDER}`, borderRadius: 0 }}>

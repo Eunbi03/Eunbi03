@@ -8,7 +8,7 @@ const DEFAULTS: Record<string, Template> = {
   monthly_report: {
     subject: '[{month}월 근태관리 리포트 안내]',
     body:
-      '안녕하세요, {name}님.\n{corp} 인사팀입니다.\n\n{month}월 근태관리 리포트를 보내드립니다.\n' +
+      '안녕하세요, {name}님.\n{corp} 인적자원팀입니다.\n\n{month}월 근태관리 리포트를 보내드립니다.\n' +
       '{reprimand}근태 현황에 대한 자세한 내용은 TimeCard 개인 애플리케이션에서 확인하실 수 있습니다.\n' +
       '문의사항이 있으시면 아래 연락처로 문의해 주시기 바랍니다.\n리포트: {link}\n\n감사합니다.\n{managers}',
   },

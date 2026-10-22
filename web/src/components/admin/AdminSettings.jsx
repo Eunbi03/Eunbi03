@@ -211,13 +211,13 @@ function JobScheduleSection({ canEdit }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>근무시간 관리</p>
-        {canEdit && !adding && !editing && <AddButton onClick={() => { reset(); setAdding(true); setMsg(null); }}>+ 근무시간 추가</AddButton>}
+        <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>근무시간 및 직무 관리</p>
+        {canEdit && !adding && !editing && <AddButton onClick={() => { reset(); setAdding(true); setMsg(null); }}>+ 근무시간 및 직무 추가</AddButton>}
       </div>
       <Msg msg={msg} />
       {(adding || editing) && (
         <div style={formCardStyle}>
-          <p style={formTitleStyle}>{editing ? "근무시간 수정" : "새 근무시간 추가"}</p>
+          <p style={formTitleStyle}>{editing ? "근무시간 및 직무 수정" : "새 근무시간 및 직무 추가"}</p>
           <label style={labelStyle}>직무명 *</label>
           <FInput value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
@@ -618,7 +618,7 @@ function MessageTemplateSection({ canEdit }) {
 /* ── 설정 페이지 (단일 카테고리 드롭다운) ─────────────────────────────────── */
 const CATEGORIES = [
   { key: "workplace", label: "근무지 관리" },
-  { key: "jobSchedule", label: "근무시간 관리" },
+  { key: "jobSchedule", label: "근무시간 및 직무 관리" },
   { key: "corporation", label: "법인 관리" },
   { key: "division", label: "본부 및 팀 관리" },
   { key: "position", label: "직책 관리" },

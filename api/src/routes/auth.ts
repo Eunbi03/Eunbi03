@@ -207,7 +207,7 @@ router.post('/login',
         // 비밀번호는 맞았고 기기만 다른 경우 — 계정을 잠그지 않는다.
         // (폰 교체 등 정상 사용자가 잠기는 것을 방지. 기기 변경은 관리자가 초기화)
         await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DEVICE_MISMATCH', req });
-        res.status(403).json({ error: '등록되지 않은 기기입니다. 인사팀에 기기 변경을 요청하세요.' }); return;
+        res.status(403).json({ error: '등록되지 않은 기기입니다. 인적자원팀에 기기 변경을 요청하세요.' }); return;
       }
       if (!user.device_id) {
         await pool.query('UPDATE users SET device_id=$1, device_registered_at=now() WHERE id=$2', [deviceId, user.id]);

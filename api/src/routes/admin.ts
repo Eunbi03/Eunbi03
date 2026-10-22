@@ -93,7 +93,7 @@ async function assertWorkerInScope(req: Request, res: Response, workerId: string
   if (!scope) return true; // 권한자/전체 → 제한 없음
   const { rows } = await pool.query('SELECT team FROM users WHERE id=$1', [workerId]);
   if (!rows[0] || !scope.includes(rows[0].team)) {
-    res.status(403).json({ error: '권한 범위 밖 직원입니다.' }); return false;
+    res.status(403).json({ error: '권한 범위 밖 근로자입니다.' }); return false;
   }
   return true;
 }
@@ -351,7 +351,7 @@ router.post('/workers', permStaff, async (req: Request, res: Response): Promise<
     res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 정보입니다.' });
-    else res.status(500).json({ error: e.message || '직원 추가 중 오류가 발생했습니다.' });
+    else res.status(500).json({ error: e.message || '근로자 추가 중 오류가 발생했습니다.' });
   }
 });
 
@@ -418,7 +418,7 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
     await logAudit(req, '수정', '근로자', rows[0].name, parts.join(', ') || null);
     res.json({ success: true, worker: rows[0] });
   } catch (e: any) {
-    res.status(500).json({ error: e.message || '직원 정보 수정 중 오류가 발생했습니다.' });
+    res.status(500).json({ error: e.message || '근로자 정보 수정 중 오류가 발생했습니다.' });
   }
 });
 
@@ -576,11 +576,11 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`,
     [userId]
   );
-  if (!userRows[0]) { res.status(404).json({ error: '직원을 찾을 수 없습니다.' }); return; }
+  if (!userRows[0]) { res.status(404).json({ error: '근로자를 찾을 수 없습니다.' }); return; }
   const user = userRows[0];
   // 권한 범위 밖 직원 리포트 열람 차단
   const scope = await getReadScope(req);
-  if (scope && !scope.includes(user.team)) { res.status(403).json({ error: '열람 권한이 없는 직원입니다.' }); return; }
+  if (scope && !scope.includes(user.team)) { res.status(403).json({ error: '열람 권한이 없는 근로자입니다.' }); return; }
   const noteExempt = !!user.note_exempt;
   const irregular = !!user.irregular_worker;
 
@@ -1080,7 +1080,7 @@ function normalizePerms(input: any): string[] {
 }
 // 로그 비고용: 권한 키 배열 → 사람이 읽는 라벨
 const PERM_LABEL: Record<string, string> = {
-  staff: '직원 관리 쓰기', report_leave: '개별리포트(연차)', report_full: '개별리포트(전체)', settings: '설정 쓰기',
+  staff: '근로자 관리 쓰기', report_leave: '개별리포트(연차)', report_full: '개별리포트(전체)', settings: '설정 쓰기',
 };
 function permLabel(perms: string[]): string {
   const list = (perms || []).filter((k) => VALID_PERMS.includes(k)).map((k) => PERM_LABEL[k]);

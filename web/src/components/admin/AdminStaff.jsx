@@ -23,7 +23,7 @@ function Field({ label, children, half }) {
   );
 }
 
-// 일반 직원 추가/수정 모달
+// 일반 근로자 추가/수정 모달
 function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, corporations, onClose, onSaved }) {
   const isNew = !worker?.id;
 
@@ -118,8 +118,8 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
     return (
       <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
         <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 380, width: "100%", margin: 0 }}>
-          <p style={S.h1}>직원 추가 완료</p>
-          <p style={{ fontSize: 13, color: C.inkSoft }}>직원에게 아래 로그인 정보를 전달해주세요.</p>
+          <p style={S.h1}>근로자 추가 완료</p>
+          <p style={{ fontSize: 13, color: C.inkSoft }}>근로자에게 아래 로그인 정보를 전달해주세요.</p>
           <div style={{ background: C.paper, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
             <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 4 }}>아이디 · 초기 비밀번호 (전화번호)</div>
             <div style={{ fontWeight: 800, fontSize: 22, color: C.seal, letterSpacing: 2 }}>{initPw}</div>
@@ -136,7 +136,7 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
     <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, padding: 16, overflowY: "auto" }}>
       <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 620, width: "100%", margin: "20px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <p style={S.h1}>{isNew ? "새 직원 추가" : "직원 정보 수정"}</p>
+          <p style={S.h1}>{isNew ? "새 근로자 추가" : "근로자 정보 수정"}</p>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, color: C.inkSoft, cursor: "pointer" }}>✕</button>
         </div>
 
@@ -228,7 +228,7 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
 const teamsText = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "전체");
 // 세부 권한 옵션(중복 선택). 아무것도 없으면 읽기 전용.
 const PERM_OPTIONS = [
-  ["staff", "직원관리 쓰기"],
+  ["staff", "근로자관리 쓰기"],
   ["report_leave", "개별리포트(연차)"],
   ["report_full", "개별리포트(전체)"],
   ["settings", "설정 쓰기"],
@@ -391,7 +391,7 @@ function ManagerCard({ name, devices, isHolder, authorityCount = 0, corpList = [
   );
 }
 
-// 관리자/인사팀 계정 수정 모달
+// 관리자/인적자원팀 계정 수정 모달
 function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, onApproveDevice, onRemoveDevice, onTransfer, onResetPw, onNameSave, onSaveDeviceInfo, onClose }) {
   // 기기 관리·비밀번호 변경·권한자 변경은 '권한자'만. 이름은 모든 관리자 가능.
   // (공용 계정을 공유하므로 role이 아니라 권한자 여부로 구분)
@@ -682,7 +682,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [accessMsg, setAccessMsg] = useState("");       // 권한 밖 인원 검색 안내
 
   const isHolder = !!currentUser?.isAuthorityHolder; // 권한자만 관리자 기기 관리(승인 대기 등)
-  // 세부 권한: 직원관리 쓰기('staff')가 있어야 직원 수정/삭제/추가 등 가능
+  // 세부 권한: 근로자관리 쓰기('staff')가 있어야 근로자 수정/삭제/추가 등 가능
   const _perms = currentUser?.permissions || [];
   const canWrite = !!currentUser?.isAuthorityHolder || _perms.includes("staff");
 
@@ -942,7 +942,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
 
   const groupHeaderStyle = { fontSize: isMobile ? 13 : 14, fontWeight: 800, color: C.blue, padding: "4px 2px", borderBottom: `2px solid ${C.blueSoft}` };
 
-  // 직원/관리자 카드 1개
+  // 근로자/관리자 카드 1개
   const workerCard = (w) => {
     const isAdminRole = w.role !== "worker";
     const flags = [w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(", ");
@@ -1035,7 +1035,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
                 {uploading ? "업로드 중…" : "엑셀 업로드"}
               </button>
               <button style={{ ...S.toolbarBtn, border: "none", background: C.blue, color: "#fff" }} onClick={() => setEditTarget({})}>
-                + 직원 추가
+                + 근로자 추가
               </button>
             </>
           )}
@@ -1046,7 +1046,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
         <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 16 }} onClick={() => setEtcPopup(null)}>
           <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 420, width: "100%", margin: 0, maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
             <p style={S.h1}>법인 미지정 인원 ({etcPopup.length}명)</p>
-            <p style={{ fontSize: 13, color: C.inkSoft }}>법인 정보가 비어 있는 직원입니다.</p>
+            <p style={{ fontSize: 13, color: C.inkSoft }}>법인 정보가 비어 있는 근로자입니다.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {etcPopup.map((w) => (
                 <div key={w.id} style={{ fontSize: 13, color: C.ink, background: "#fff", borderRadius: 8, padding: "8px 10px" }}>
@@ -1063,7 +1063,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
       {uploadResult && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 16 }} onClick={() => setUploadResult(null)}>
           <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 460, width: "100%", margin: 0, maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-            <p style={S.h1}>직원 일괄 등록 결과</p>
+            <p style={S.h1}>근로자 일괄 등록 결과</p>
             <p style={{ fontSize: 14, color: C.ink }}>성공 <b style={{ color: C.green }}>{uploadResult.success}</b>건 · 실패 <b style={{ color: C.seal }}>{uploadResult.failed.length}</b>건</p>
             {uploadResult.failed.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
@@ -1086,7 +1086,7 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
 
       {!accessMsg && totalShown === 0 && (
         <div style={{ ...S.empty, color: C.inkSoft, opacity: 0.7 }}>
-          {term ? "검색 결과가 없습니다." : viewMode === "problem" ? "문제가 발생한 계정이 없습니다." : "표시할 직원이 없습니다."}
+          {term ? "검색 결과가 없습니다." : viewMode === "problem" ? "문제가 발생한 계정이 없습니다." : "표시할 근로자이 없습니다."}
         </div>
       )}
 

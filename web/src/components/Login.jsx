@@ -44,7 +44,7 @@ const THEMES = {
     titleColor: "#fff",
     subColor: "#8b94a8",
     icon: "",
-    badge: { text: "관리자·인사팀 전용", bg: "#2d4a7a", color: "#cfe0f5" },
+    badge: { text: "관리자·인적자원팀 전용", bg: "#2d4a7a", color: "#cfe0f5" },
     titleSize: 28,               // 크게
     labelSize: 14,               // 크게
     inputSize: 16,               // 크게
@@ -188,7 +188,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
 
               <label style={labelStyle}>권한 (복수 선택, 미선택 시 읽기 전용)</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {[["staff","직원관리 쓰기"],["report_leave","개별리포트(연차)"],["report_full","개별리포트(전체)"],["settings","설정 쓰기"]].map(([k,label]) => (
+                {[["staff","근로자관리 쓰기"],["report_leave","개별리포트(연차)"],["report_full","개별리포트(전체)"],["settings","설정 쓰기"]].map(([k,label]) => (
                   <span key={k} onClick={() => !busy && setReqPerms((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k])} style={chipStyle(reqPerms.includes(k))}>{label}</span>
                 ))}
               </div>
@@ -318,7 +318,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
             : serverNote
             ? serverNote
             : failCount >= 5
-            ? "로그인에 실패했습니다.\n인사팀에 문의해주세요."
+            ? "로그인에 실패했습니다.\n인적자원팀에 문의해주세요."
             : failCount >= 1
             ? "로그인에 실패했습니다."
             : "로그인을 해주세요."}
