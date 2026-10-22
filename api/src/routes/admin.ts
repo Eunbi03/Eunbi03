@@ -1248,16 +1248,24 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
   const { targetDeviceId } = req.body; // admin_devices.id
   if (!targetDeviceId) { res.status(400).json({ error: 'targetDeviceId가 필요합니다.' }); return; }
   const { rows: target } = await pool.query(
-    'SELECT id FROM admin_devices WHERE id=$1 AND is_approved=TRUE', [targetDeviceId]
+    'SELECT device_name FROM admin_devices WHERE id=$1 AND is_approved=TRUE', [targetDeviceId]
   );
   if (!target[0]) { res.status(400).json({ error: '승인된 대상 기기를 찾을 수 없습니다.' }); return; }
-  // '변경'을 누른 본인 기기의 권한자만 대상 기기로 넘긴다(다른 권한자는 그대로 유지 → 권한자 수 보존).
+  const targetName: string = (target[0].device_name ?? '').trim();
+  // '변경'을 누른 본인 기기가 속한 그룹(device_name)의 권한을 대상 그룹으로 넘긴다.
+  // 권한은 '기기 그룹(같은 관리자명)' 단위 → 대상 그룹의 승인된 기기 전부가 권한자가 된다.
+  // (다른 이름의 권한자 그룹은 그대로 유지 → 권한자 수 보존)
+  const { rows: meRows } = await pool.query(
+    'SELECT device_name FROM admin_devices WHERE user_id=$1 AND device_id=$2', [req.user.userId, req.user.deviceId]
+  );
+  const myName: string = (meRows[0]?.device_name ?? '').trim();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE admin_devices SET is_authority=FALSE WHERE user_id=$1 AND device_id=$2',
-      [req.user.userId, req.user.deviceId]);
-    await client.query('UPDATE admin_devices SET is_authority=TRUE WHERE id=$1', [targetDeviceId]);
+    // 내 그룹(같은 관리자명) 전체에서 권한 회수
+    if (myName) await client.query('UPDATE admin_devices SET is_authority=FALSE WHERE device_name=$1', [myName]);
+    // 대상 그룹(같은 관리자명)의 승인된 기기 전부에 권한 부여
+    await client.query('UPDATE admin_devices SET is_authority=TRUE WHERE device_name=$1 AND is_approved=TRUE', [targetName]);
     await client.query('COMMIT');
   } catch (e) {
     await client.query('ROLLBACK');
