@@ -1,15 +1,6 @@
 import { useState, useEffect } from "react";
 import { C, S } from "../styles.js";
-
-function useIsMobile(breakpoint = 640) {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
-  useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener('resize', h);
-    return () => window.removeEventListener('resize', h);
-  }, [breakpoint]);
-  return isMobile;
-}
+import { useIsMobile } from "../utils/useIsMobile.js";
 import AdminOverall from "./admin/AdminOverall.jsx";
 import AdminStaff from "./admin/AdminStaff.jsx";
 import AdminIndividual from "./admin/AdminIndividual.jsx";
@@ -46,8 +37,6 @@ function FilterSelect({ disabled, value, onChange, isMobile, children }) {
 
 export default function AdminApp({ user }) {
   const isMobile = useIsMobile();
-  // HR 전용 작업(비밀번호/기기 초기화, 근무지·연차·공휴일 관리 등)은 hr 역할만 노출 — 백엔드 requireHR과 일치
-  const isHR = user?.role === "hr";
   // 최신 권한을 서버에서 받아 반영(재로그인 없이 새로고침만으로 권한 변경 적용)
   const [perm, setPerm] = useState({ isAuthorityHolder: !!user?.isAuthorityHolder, permissions: user?.permissions || [] });
   useEffect(() => {
@@ -134,7 +123,7 @@ export default function AdminApp({ user }) {
       )}
 
       {tab === "overall"    && <AdminOverall    filters={filters} onDirectActive={setDirectActive} />}
-      {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={effUser} onRefreshFilters={() => {}} />}
+      {tab === "staff"      && <AdminStaff      filters={filters} currentUser={effUser} />}
       {tab === "individual" && <AdminIndividual filters={filters} currentUser={effUser} />}
       {tab === "settings"   && <AdminSettings currentUser={effUser} />}
       {tab === "log"        && <AdminLog />}

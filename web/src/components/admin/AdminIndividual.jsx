@@ -1,22 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
+import { useIsMobile } from "../../utils/useIsMobile.js";
 
 const COL = {
   black: "#3a3a3a", gray: "#787878", lgray: "#eeeeee",
   blue: "#2f6d8f", red: "#cb6156", lred: "#fef5f5", white: "#ffffff",
   amber: "#b9820f", green: "#3E7C5A", detailBg: "#f5f6f8",
 };
-
-function useIsMobile(breakpoint = 760) {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
-  useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener("resize", h);
-    return () => window.removeEventListener("resize", h);
-  }, [breakpoint]);
-  return isMobile;
-}
 
 function todayStr() { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); }
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -352,7 +343,7 @@ function Kpi({ label, v, color }) {
 }
 
 export default function AdminIndividual({ filters, currentUser }) {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(760);
   // 개별리포트 세부 권한: 발송·연차 인정 = report_leave|report_full|권한자, 출퇴근·노트 인정 = report_full|권한자
   const _perms = currentUser?.permissions || [];
   const _auth = !!currentUser?.isAuthorityHolder;

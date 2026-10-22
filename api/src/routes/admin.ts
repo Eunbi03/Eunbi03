@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import { buildIndividualReport } from '../services/reportBuilder';
 import { sendReportLink, sendAdminDeviceInvite } from '../services/reportSender';
 import { invalidateTemplateCache } from '../services/messageTemplates';
+import { VALID_PERMS, normalizePerms } from '../utils/permissions';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -275,11 +276,11 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
             u.workplace_id, w.name AS workplace_name, w.lat AS wp_lat, w.lng AS wp_lng,
             u.scheduled_start, u.scheduled_end, u.lunch_start, u.lunch_end,
             u.remark, u.note_exempt, u.irregular_worker,
-            u.email, u.device_id, u.is_locked, u.must_change_password, u.role, u.is_authority_holder, u.created_at
+            u.email, u.device_id, u.is_locked, u.must_change_password, u.role, u.created_at
      FROM users u LEFT JOIN workplaces w ON u.workplace_id = w.id
      ${where}
      ORDER BY (u.role='worker' AND (u.device_id IS NULL OR u.must_change_password=TRUE)) DESC,
-              u.is_authority_holder DESC NULLS LAST, u.role DESC,
+              u.role DESC,
               u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST, u.name
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
@@ -373,6 +374,10 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
          FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [req.params.id]
     );
     const o = prevRows[0] || {};
+    // 관리자(admin/hr) 계정 정보(이름 등) 수정은 권한자만 가능
+    if ((o.role === 'admin' || o.role === 'hr') && !(await reqIsAuthority(req))) {
+      res.status(403).json({ error: '관리자 정보 수정은 권한자만 가능합니다.' }); return;
+    }
     let newWpName = o.wp_name;
     if ((workplaceId || null) !== (o.workplace_id || null)) {
       const { rows: wr } = await pool.query('SELECT name FROM workplaces WHERE id=$1', [workplaceId || null]);
@@ -805,82 +810,7 @@ router.post('/send-report', async (req: Request, res: Response): Promise<void> =
   res.json({ sent, total: results.length, results });
 });
 
-// ── 출퇴근 기록 조회 ───────────────────────────────────────────
-
-router.get('/attendance', async (req: Request, res: Response): Promise<void> => {
-  const { corp, team, date, from, to, page = '1', limit = '50' } = req.query;
-  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-  const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
-  const offset = (pageNum - 1) * limitNum;
-  const targetDate = (date as string) || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
-
-  const conditions: string[] = ["u.role='worker'"];
-  const params: unknown[] = [];
-  if (from) { params.push(from); conditions.push(`ar.date>=$${params.length}`); }
-  else { params.push(targetDate); conditions.push(`ar.date=$${params.length}`); }
-  if (to) { params.push(to); conditions.push(`ar.date<=$${params.length}`); }
-  if (corp) { params.push(corp); conditions.push(`u.corp=$${params.length}`); }
-  if (team) { params.push(team); conditions.push(`u.team=$${params.length}`); }
-
-  const base = `FROM users u JOIN attendance_records ar ON ar.user_id=u.id WHERE ${conditions.join(' AND ')}`;
-  const { rows: countRows } = await pool.query(`SELECT COUNT(*) as count ${base}`, params);
-  params.push(limitNum, offset);
-
-  const { rows } = await pool.query(
-    `SELECT u.id AS user_id, u.name, u.corp, u.division, u.team, u.job_title,
-            ar.id AS record_id, ar.date, ar.check_in_time, ar.check_in_lat, ar.check_in_lng, ar.check_in_distance_m,
-            ar.check_out_time, ar.check_out_lat, ar.check_out_lng, ar.check_out_distance_m, ar.check_out_is_field,
-            ar.status, ar.work_minutes, ar.work_note_today, ar.daily_report, ar.leave_type,
-            ar.temp_time_change_status, ar.temp_time_change_requested_end, ar.temp_time_change_reason
-     ${base} ORDER BY u.corp, u.team, u.name LIMIT $${params.length-1} OFFSET $${params.length}`,
-    params
-  );
-
-  const recordIds = rows.map((r: any) => r.record_id);
-  const outings = recordIds.length ? (await pool.query(
-    `SELECT attendance_record_id, destination, start_time, end_time FROM outing_records WHERE attendance_record_id=ANY($1)`,
-    [recordIds]
-  )).rows : [];
-
-  const result = rows.map((r: any) => ({
-    userId: r.user_id, name: r.name, corp: r.corp, division: r.division, team: r.team, jobTitle: r.job_title,
-    checkIn: { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: r.check_in_distance_m },
-    checkOut: r.check_out_time ? { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: r.check_out_distance_m, isField: r.check_out_is_field } : null,
-    status: r.status, workMinutes: r.work_minutes, leaveType: r.leave_type,
-    noteToday: r.work_note_today || r.daily_report,
-    isLate: r.status === '지각' || r.status === '지각조퇴',
-    timeChangeStatus: r.temp_time_change_status,
-    timeChangeRequestedEnd: r.temp_time_change_requested_end,
-    outings: outings.filter((o: any) => o.attendance_record_id === r.record_id),
-  }));
-
-  res.json({ date: targetDate, records: result, pagination: { total: parseInt(countRows[0].count, 10), page: pageNum, limit: limitNum } });
-});
-
 // ── 연차/반차 설정 ─────────────────────────────────────────────
-
-router.post('/attendance/:recordId/set-leave', requireAdmin, async (req: Request, res: Response): Promise<void> => {
-  const { leaveType } = req.body; // '연차'|'출근'|'출퇴근'|'노트' 등|null
-  // 연차 인정·해제 → report_leave, 출근/퇴근/노트 인정 → report_full
-  if (!requirePerm(req, res, (leaveType && leaveType !== '연차') ? 'report_full' : 'report_leave')) return;
-  const { rows } = await pool.query(
-    `UPDATE attendance_records ar SET leave_type=$1 FROM users u
-      WHERE ar.id=$2 AND u.id=ar.user_id RETURNING ar.id, u.name AS worker_name, ar.date::text AS d`,
-    [leaveType || null, req.params.recordId]
-  );
-  if (!rows[0]) { res.status(404).json({ error: '기록을 찾을 수 없습니다.' }); return; }
-  await logAudit(req, leaveType ? '인정' : '인정해제', '근태', rows[0].worker_name, leaveType ? `${leaveType} 인정(${mmdd(rows[0].d)})` : `인정 해제(${mmdd(rows[0].d)})`);
-  // 인정 해제 시, 실제 기록(출근/퇴근/노트)이 없는 빈 행이면 삭제 (재출근 가능하도록)
-  if (!leaveType) {
-    await pool.query(
-      `DELETE FROM attendance_records WHERE id=$1 AND leave_type IS NULL
-         AND check_in_time IS NULL AND check_out_time IS NULL
-         AND COALESCE(work_note_today,'')='' AND COALESCE(daily_report,'')=''`,
-      [req.params.recordId]
-    );
-  }
-  res.json({ success: true });
-});
 
 // POST: 날짜별 연차 생성 (기록 없을 때)
 router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res: Response): Promise<void> => {
@@ -888,6 +818,8 @@ router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res:
   if (!userId || !date) { res.status(400).json({ error: 'userId, date가 필요합니다.' }); return; }
   // 연차 인정·해제 → report_leave, 출근/퇴근/노트 인정 → report_full
   if (!requirePerm(req, res, (leaveType && leaveType !== '연차') ? 'report_full' : 'report_leave')) return;
+  // 권한 범위(권한 팀) 밖 근로자에 대한 인정/해제 차단
+  if (!(await assertWorkerInScope(req, res, userId))) return;
 
   // 출근/출퇴근 인정 시 예정 근무시간 계산
   let scheduledMinutes: number | null = null;
@@ -936,35 +868,6 @@ router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res:
   res.json({ success: true });
 });
 
-// ── 기기 변경 요청 관리 ────────────────────────────────────────
-
-router.get('/device-change-requests', async (req: Request, res: Response): Promise<void> => {
-  const status = req.query.status || 'pending';
-  const { rows } = await pool.query(
-    `SELECT dcr.id, dcr.reason, dcr.status, dcr.requested_at, u.name, u.email
-     FROM device_change_requests dcr JOIN users u ON u.id=dcr.user_id
-     WHERE dcr.status=$1 ORDER BY dcr.requested_at DESC`,
-    [status]
-  );
-  res.json({ requests: rows });
-});
-
-router.post('/device-change-requests/:id/approve', requireAdmin, permStaff, async (req: Request, res: Response): Promise<void> => {
-  const { rows } = await pool.query("SELECT * FROM device_change_requests WHERE id=$1 AND status='pending'", [req.params.id]);
-  if (!rows[0]) { res.status(404).json({ error: '요청을 찾을 수 없습니다.' }); return; }
-  await pool.query('UPDATE users SET device_id=$1, device_registered_at=now(), is_locked=FALSE, failed_login_attempts=0 WHERE id=$2',
-    [rows[0].new_device_id, rows[0].user_id]);
-  await pool.query("UPDATE device_change_requests SET status='approved', processed_at=now(), processed_by=$1 WHERE id=$2",
-    [req.user.userId, req.params.id]);
-  res.json({ success: true });
-});
-
-router.post('/device-change-requests/:id/reject', requireAdmin, permStaff, async (req: Request, res: Response): Promise<void> => {
-  await pool.query("UPDATE device_change_requests SET status='rejected', processed_at=now(), processed_by=$1 WHERE id=$2 AND status='pending'",
-    [req.user.userId, req.params.id]);
-  res.json({ success: true });
-});
-
 // ── 계정 잠금 해제 ────────────────────────────────────────────
 
 router.post('/users/:id/unlock', requireAdmin, permStaff, async (req: Request, res: Response): Promise<void> => {
@@ -986,22 +889,6 @@ router.post('/attendance/:recordId/approve-time-change', async (req: Request, re
   );
   if (!rows[0]) { res.status(404).json({ error: '대기 중인 요청을 찾을 수 없습니다.' }); return; }
   res.json({ success: true });
-});
-
-// ── 전체현황 대시보드 (기존 dashboard → overview로 통합) ────────
-
-router.get('/dashboard', async (req: Request, res: Response): Promise<void> => {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
-  const { rows: todayRows } = await pool.query(
-    `SELECT COUNT(*) FILTER (WHERE ar.check_in_time IS NOT NULL) AS checked_in,
-            COUNT(*) FILTER (WHERE ar.check_out_time IS NOT NULL) AS checked_out,
-            COUNT(*) FILTER (WHERE ar.status IN ('지각','지각조퇴')) AS late,
-            COUNT(*) AS total
-     FROM attendance_records ar JOIN users u ON ar.user_id=u.id
-     WHERE ar.date=$1 AND u.role='worker' AND u.is_active=TRUE`, [today]
-  );
-  const { rows: staffCount } = await pool.query("SELECT COUNT(*) as count FROM users WHERE role='worker' AND is_active=TRUE");
-  res.json({ today: todayRows[0], totalStaff: parseInt(staffCount[0].count, 10) });
 });
 
 // ── 관리자 기기 관리 ──────────────────────────────────────────
@@ -1088,12 +975,7 @@ function normalizeTeams(input: any): string[] {
   return out.length ? out : ['전체'];
 }
 
-// 권한 키 정규화(유효 키만, 중복 제거)
-const VALID_PERMS = ['staff', 'report_leave', 'report_full', 'settings'];
-function normalizePerms(input: any): string[] {
-  const arr = Array.isArray(input) ? input.map((x) => String(x)) : [];
-  return VALID_PERMS.filter((k) => arr.includes(k));
-}
+// 권한 키/정규화는 공용 모듈(utils/permissions) 사용 (admin·auth 간 드리프트 방지)
 // 로그 비고용: 권한 키 배열 → 사람이 읽는 라벨
 const PERM_LABEL: Record<string, string> = {
   staff: '근로자 관리 쓰기', report_leave: '개별리포트(연차)', report_full: '개별리포트(전체)', settings: '설정 쓰기',
@@ -1173,6 +1055,12 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
         `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, scope_teams=$5
          WHERE device_name = ANY($6) OR id=$7`,
         [newName, corp, phone || null, mergedPerms, mergedTeams, names, req.params.id]
+      );
+      // 병합된 그룹의 권한자 여부를 하나로 통일(둘 중 하나라도 권한자였으면 그룹 전체 권한자).
+      // 로그인한 기기에 따라 권한자 여부가 달라지는 불일치 방지.
+      await client.query(
+        `UPDATE admin_devices SET is_authority = (SELECT bool_or(is_authority) FROM admin_devices WHERE device_name=$1)
+         WHERE device_name=$1`, [newName]
       );
     } else if (oldName) {
       // 같은 관리자명 그룹 전체에 동기화 (이름 변경 포함)
@@ -1272,6 +1160,7 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
     'SELECT device_name FROM admin_devices WHERE user_id=$1 AND device_id=$2', [req.user.userId, req.user.deviceId]
   );
   const myName: string = (meRows[0]?.device_name ?? '').trim();
+  let belowMin = false;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1279,13 +1168,18 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
     if (myName) await client.query('UPDATE admin_devices SET is_authority=FALSE WHERE device_name=$1', [myName]);
     // 대상 그룹(같은 관리자명)의 승인된 기기 전부에 권한 부여
     await client.query('UPDATE admin_devices SET is_authority=TRUE WHERE device_name=$1 AND is_approved=TRUE', [targetName]);
-    await client.query('COMMIT');
+    // 권한자(그룹) 최소 2명 유지: 이전 결과 권한자 그룹이 2개 미만이면 되돌린다
+    // (대상이 이미 권한자 그룹이면 내 그룹만 사라져 수가 줄 수 있음)
+    const { rows: grp } = await client.query('SELECT COUNT(DISTINCT device_name)::int AS c FROM admin_devices WHERE is_authority=TRUE');
+    if (grp[0].c < 2) { belowMin = true; await client.query('ROLLBACK'); }
+    else { await client.query('COMMIT'); }
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
   } finally {
     client.release();
   }
+  if (belowMin) { res.status(400).json({ error: '권한자는 최소 2명을 유지해야 합니다. 이미 권한자인 관리자에게는 이전할 수 없습니다(권한자 수가 줄어듦).' }); return; }
   const { rows: tn } = await pool.query('SELECT device_name FROM admin_devices WHERE id=$1', [targetDeviceId]);
   await logAudit(req, '권한자변경', '관리자', tn[0]?.device_name);
   res.json({ success: true });
@@ -1637,12 +1531,17 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
 router.get('/worker-search', async (req: Request, res: Response): Promise<void> => {
   const name = ((req.query.name as string) || '').trim();
   if (!name) { res.json({ workers: [] }); return; }
+  // 권한 범위(권한 팀) 밖 근로자는 검색 결과에서 제외 (법인/본부/팀/근무지 노출 방지)
+  const scope = await getReadScope(req);
+  const params: unknown[] = [name];
+  let scopeClause = '';
+  if (scope) { params.push(scope); scopeClause = ` AND u.team = ANY($${params.length})`; }
   const { rows } = await pool.query(
     `SELECT u.id, u.name, u.corp, u.division, u.team, w.name AS workplace_name
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id
-     WHERE u.is_active=TRUE AND u.role='worker' AND u.name=$1
+     WHERE u.is_active=TRUE AND u.role='worker' AND u.name=$1${scopeClause}
      ORDER BY u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST`,
-    [name]
+    params
   );
   res.json({ workers: rows });
 });

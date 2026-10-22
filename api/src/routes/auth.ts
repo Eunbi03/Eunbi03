@@ -5,6 +5,7 @@ import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
 import { generateAccessToken, generateRefreshToken, hashToken, getRefreshTokenExpiry } from '../utils/authTokens';
 import { requireAuth } from '../middleware/auth';
+import { normalizePerms } from '../utils/permissions';
 
 const router = Router();
 const MAX_FAILED = parseInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS || '5', 10);
@@ -188,8 +189,7 @@ router.post('/login',
             await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DUPLICATE_MANAGER', req });
             res.status(409).json({ error: '이미 등록된 관리자입니다. 새로운 기기 등록을 원한다면 최고 관리자에게 요청해주세요.', duplicateManager: true }); return;
           }
-          const VALID_PERMS = ['staff', 'report_leave', 'report_full', 'settings'];
-          const permissions = VALID_PERMS.filter((k) => Array.isArray(req.body.permissions) && req.body.permissions.includes(k));
+          const permissions = normalizePerms(req.body.permissions);
           const teams = Array.isArray(req.body.teams) && req.body.teams.length ? req.body.teams : ['전체'];
           await pool.query(
             `INSERT INTO admin_devices (user_id, device_id, device_name, phone, is_approved, permissions, scope_teams)
@@ -350,21 +350,5 @@ router.post('/location-consent', requireAuth, async (req: Request, res: Response
   await pool.query('UPDATE users SET location_consent_given=TRUE, location_consent_at=now() WHERE id=$1', [req.user.userId]);
   res.json({ success: true });
 });
-
-// POST /api/auth/device-change-request
-router.post('/device-change-request', requireAuth,
-  [body('newDeviceId').notEmpty(), body('reason').notEmpty()],
-  async (req: Request, res: Response): Promise<void> => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
-    const { newDeviceId, reason } = req.body;
-    const { rows } = await pool.query('SELECT device_id FROM users WHERE id=$1', [req.user.userId]);
-    await pool.query(
-      'INSERT INTO device_change_requests (user_id, old_device_id, new_device_id, reason) VALUES ($1,$2,$3,$4)',
-      [req.user.userId, rows[0]?.device_id || null, newDeviceId, reason]
-    );
-    res.status(201).json({ success: true });
-  }
-);
 
 export default router;

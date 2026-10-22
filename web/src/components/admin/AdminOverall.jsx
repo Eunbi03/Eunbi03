@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 import { downloadAttendanceRegister } from "../../utils/excelReport.js";
+import { useIsMobile } from "../../utils/useIsMobile.js";
 
 const COL = {
   black: "#3a3a3a", gray: "#787878", lgray: "#eeeeee",
@@ -23,11 +24,6 @@ function WarnIcon() {
   );
 }
 
-function useIsMobile(breakpoint = 640) {
-  const [m, setM] = useState(() => window.innerWidth < breakpoint);
-  useEffect(() => { const h = () => setM(window.innerWidth < breakpoint); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, [breakpoint]);
-  return m;
-}
 
 const pad = (n) => String(n).padStart(2, "0");
 

@@ -126,7 +126,6 @@ export const resetWorkerDevice = (id) => request(`/admin/workers/${id}/reset-dev
 export const unlockUser = (id) => request(`/admin/users/${id}/unlock`, { method: "POST" });
 
 /* 관리자 — 현황/리포트 */
-export const getOverview = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/overview${qs ? `?${qs}` : ""}`); };
 export const getIndividualReport = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/individual-report${qs ? `?${qs}` : ""}`); };
 export const getMonthlyOverview = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/monthly-overview${qs ? `?${qs}` : ""}`); };
 export const searchWorkers = (name) => request(`/admin/worker-search?name=${encodeURIComponent(name)}`);
@@ -148,10 +147,6 @@ export const transferAuthority = (targetDeviceId) => request("/admin/authority/t
 export const updateDeviceInfo = (deviceRowId, data) => request(`/admin/devices/${deviceRowId}/info`, { method: "PUT", body: data });
 export const inviteAdminDevice = (data) => request("/admin/devices/invite", { method: "POST", body: data });
 export const registerDeviceLink = (t, deviceId) => request("/auth/register-device-link", { method: "POST", body: { t, deviceId }, auth: false });
-
-/* 관리자 — 설정 */
-export const getCompanySettings = () => request("/admin/company-settings");
-export const saveCompanySettings = (data) => request("/admin/company-settings", { method: "POST", body: data });
 
 /* 관리자 — 공휴일 관리 */
 export const getHolidays = () => request("/admin/holidays");

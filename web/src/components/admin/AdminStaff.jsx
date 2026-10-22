@@ -3,16 +3,7 @@ import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 import { readWorkerSheet } from "../../utils/excelUpload.js";
 import { fmtPhone } from "../../utils/format.js";
-
-function useIsMobile(breakpoint = 640) {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
-  useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener('resize', h);
-    return () => window.removeEventListener('resize', h);
-  }, [breakpoint]);
-  return isMobile;
-}
+import { useIsMobile } from "../../utils/useIsMobile.js";
 
 function Field({ label, children, half }) {
   return (
@@ -240,7 +231,7 @@ const permText = (perms) => {
 };
 
 // 관리자 카드 — 관리자명당 1개. 공통 정보(권한/법인/전화)는 한 번만, 기기코드는 아래에 목록으로.
-function ManagerCard({ name, devices, isHolder, authorityCount = 0, authorityGroupCount = 0, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
+function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
   const rep = devices[0] || {};                       // 공통 정보 대표 기기(권한은 그룹 동기화됨)
   const anyAuthority = devices.some((d) => d.is_authority);
   // 권한자(그룹) 최소 2명 유지: 이 그룹의 마지막 권한자 기기이고 권한자 그룹이 2개 이하면 삭제 불가
@@ -395,9 +386,11 @@ function ManagerCard({ name, devices, isHolder, authorityCount = 0, authorityGro
 
 // 관리자/인적자원팀 계정 수정 모달
 function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, onApproveDevice, onRemoveDevice, onTransfer, onResetPw, onNameSave, onSaveDeviceInfo, onClose }) {
-  // 기기 관리·비밀번호 변경·권한자 변경은 '권한자'만. 이름은 모든 관리자 가능.
+  // 관리자 정보 수정(이름·기기·비밀번호·권한자 변경)은 모두 '권한자'만 가능.
   // (공용 계정을 공유하므로 role이 아니라 권한자 여부로 구분)
   const isHolder = !!currentUser?.isAuthorityHolder;
+  // 이 관리자(기기 그룹)가 권한자인지 — 등록 기기 중 하나라도 권한자면 권한자 그룹
+  const anyAuthority = (adminDevices || []).some((d) => d.is_authority);
 
   const [name, setName] = useState(worker?.name || "");
   const [pw, setPw] = useState("");
@@ -480,7 +473,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <p style={{ ...S.h1, margin: 0 }}>관리자 정보</p>
             <div style={{ display: "flex", gap: 4 }}>
-              {worker?.is_authority_holder
+              {anyAuthority
                 ? <span style={{ fontSize: 11, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "2px 8px", borderRadius: 20 }}>권한자</span>
                 : <span style={{ fontSize: 11, fontWeight: 700, color: "#468161", background: "#dcebe1", padding: "2px 8px", borderRadius: 20 }}>관리자</span>}
             </div>
@@ -615,7 +608,6 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                 (acc[k] ||= []).push(d); return acc;
               }, {})).map(([mName, devs]) => (
                 <ManagerCard key={mName} name={mName} devices={devs} isHolder={isHolder}
-                  authorityCount={adminDevices.filter((x) => x.is_authority).length}
                   authorityGroupCount={new Set(adminDevices.filter((x) => x.is_authority).map((x) => x.device_name)).size}
                   corpList={corpList} teamList={teamList}
                   onApprove={onApproveDevice} onRemove={onRemoveDevice} onTransfer={handleTransfer} onSaveInfo={onSaveDeviceInfo} />
@@ -632,36 +624,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   );
 }
 
-function ResetPasswordModal({ worker, onClose, onDone }) {
-  const [pw, setPw] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const submit = async () => {
-    if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(pw)) { setErr("비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다."); return; }
-    setBusy(true); setErr("");
-    try { await api.resetWorkerPassword(worker.id, pw); onDone(pw); }
-    catch (e) { setErr(e.message); } finally { setBusy(false); }
-  };
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(30,36,48,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-      <div style={{ ...S.loginCard, background: "#eef2f6", maxWidth: 400, width: "100%", margin: 0 }}>
-        <p style={S.h1}>비밀번호 초기화</p>
-        <p style={{ fontSize: 13, color: C.inkSoft }}><b style={{ color: C.ink }}>{worker.name}</b> ({worker.email})</p>
-        <label style={S.fieldLabel}>새 임시 비밀번호</label>
-        <input style={S.input} value={pw} placeholder="영문·숫자 포함 8자 이상" onChange={(e) => setPw(e.target.value)} />
-        {err && <div style={S.err}>{err}</div>}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button style={S.subGhost} onClick={onClose} disabled={busy}>취소</button>
-          <button style={{ ...S.subPrimary, background: C.amber, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={submit}>
-            {busy ? "처리 중…" : "초기화"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function AdminStaff({ filters, isHR, currentUser }) {
+export default function AdminStaff({ filters, currentUser }) {
   const isMobile = useIsMobile();
   const [workers, setWorkers] = useState([]);
   const [workplaces, setWorkplaces] = useState([]);
@@ -926,7 +889,8 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
     if (isAdminRole) return (
       <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
         {status}
-        <button style={{ ...base, ...mod, width: 56 }} onClick={() => openAdminProfile(w)}>수정</button>
+        {/* 관리자 정보 수정은 권한자만 (이름/기기/비번 모두 권한자 전용) */}
+        {isHolder && <button style={{ ...base, ...mod, width: 56 }} onClick={() => openAdminProfile(w)}>수정</button>}
       </div>
     );
     return (

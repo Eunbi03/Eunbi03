@@ -11,16 +11,6 @@ const COL = {
 };
 const HEADER_BG_H = "#d8e8f0"; // 공휴일 그리드 헤더 배경
 
-function useIsMobile(breakpoint = 640) {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
-  useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener("resize", h);
-    return () => window.removeEventListener("resize", h);
-  }, [breakpoint]);
-  return isMobile;
-}
-
 // 포커스 시 테두리 푸른색·굵게, 기본 검정, 오류 시 붉은색
 function FInput({ error, style, ...props }) {
   const [focus, setFocus] = useState(false);
@@ -328,7 +318,7 @@ function DivisionSection({ canEdit }) {
     } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
   };
   const delDivision = async (id) => { if (!window.confirm("이 본부와 소속 팀을 모두 삭제하시겠습니까?")) return; setBusy(true); try { await api.deleteDivision(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
-  const delTeam = async (id) => { setBusy(true); try { await api.deleteTeam(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+  const delTeam = async (id, name) => { if (!window.confirm(`'${name || "이 팀"}' 팀을 삭제하시겠습니까?`)) return; setBusy(true); try { await api.deleteTeam(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
 
   return (
     <div>
@@ -361,7 +351,7 @@ function DivisionSection({ canEdit }) {
             {d.teams.map((t) => (
               <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: COL.lgray, borderRadius: 999, padding: "5px 10px 5px 12px", fontSize: 13, color: COL.black }}>
                 {t.name}
-                {canEdit && <button onClick={() => delTeam(t.id)} disabled={busy} aria-label="팀 삭제"
+                {canEdit && <button onClick={() => delTeam(t.id, t.name)} disabled={busy} aria-label="팀 삭제"
                   style={{ border: "none", background: "transparent", color: COL.gray, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0 }}>×</button>}
               </span>
             ))}
