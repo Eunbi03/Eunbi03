@@ -353,6 +353,8 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
     const { name, phone, email, position, corp, division, team, jobTitle, remark,
             scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
             noteExempt, irregularWorker } = req.body;
+    const { rows: prev } = await pool.query('SELECT name FROM users WHERE id=$1', [req.params.id]);
+    const oldWName = prev[0]?.name;
     const { rows } = await pool.query(
       `UPDATE users SET name=$1, phone=$2, email=$3, position=$4, corp=$5, division=$6, team=$7, job_title=$8,
          remark=$9, scheduled_start=$10, scheduled_end=$11, lunch_start=$12, lunch_end=$13, workplace_id=$14,
@@ -363,7 +365,7 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
        lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker, req.params.id]
     );
     if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
-    await logAudit(req, '수정', '직원', rows[0].name);
+    await logAudit(req, '수정', '직원', rows[0].name, (oldWName && oldWName !== rows[0].name) ? `(이름)${oldWName}->${rows[0].name}` : null);
     res.json({ success: true, worker: rows[0] });
   } catch (e: any) {
     res.status(500).json({ error: e.message || '직원 정보 수정 중 오류가 발생했습니다.' });
@@ -806,7 +808,7 @@ router.post('/attendance/:recordId/set-leave', requireAdmin, async (req: Request
     [leaveType || null, req.params.recordId]
   );
   if (!rows[0]) { res.status(404).json({ error: '기록을 찾을 수 없습니다.' }); return; }
-  await logAudit(req, leaveType ? '인정' : '인정해제', '근태', rows[0].worker_name, `${rows[0].d} ${leaveType || ''}`.trim());
+  await logAudit(req, leaveType ? '인정' : '인정해제', '근태', rows[0].worker_name, leaveType ? `${leaveType} 인정(${mmdd(rows[0].d)})` : `인정 해제(${mmdd(rows[0].d)})`);
   // 인정 해제 시, 실제 기록(출근/퇴근/노트)이 없는 빈 행이면 삭제 (재출근 가능하도록)
   if (!leaveType) {
     await pool.query(
@@ -869,7 +871,7 @@ router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res:
     );
   }
   const { rows: wn } = await pool.query('SELECT name FROM users WHERE id=$1', [userId]);
-  await logAudit(req, leaveType ? '인정' : '인정해제', '근태', wn[0]?.name, `${date} ${leaveType || ''}`.trim());
+  await logAudit(req, leaveType ? '인정' : '인정해제', '근태', wn[0]?.name, leaveType ? `${leaveType} 인정(${mmdd(date)})` : `인정 해제(${mmdd(date)})`);
   res.json({ success: true });
 });
 
@@ -979,7 +981,7 @@ router.post('/devices/:id/approve', async (req: Request, res: Response): Promise
     [req.user.userId, req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '승인할 기기를 찾을 수 없습니다.' }); return; }
-  await logAudit(req, '승인', '기기', rows[0].device_name);
+  await logAudit(req, '승인', '관리자', rows[0].device_name);
   res.json({ success: true });
 });
 
@@ -993,7 +995,7 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
     const { rows: cnt } = await pool.query('SELECT COUNT(*)::int AS c FROM admin_devices WHERE is_authority=TRUE');
     if (cnt[0].c <= 1) { res.status(400).json({ error: '마지막 권한자 기기는 삭제할 수 없습니다.' }); return; }
   }
-  { const { rows: r } = await pool.query('DELETE FROM admin_devices WHERE id=$1 RETURNING device_name', [req.params.id]); await logAudit(req, '삭제', '기기', r[0]?.device_name); }
+  { const { rows: r } = await pool.query('DELETE FROM admin_devices WHERE id=$1 RETURNING device_name', [req.params.id]); await logAudit(req, '삭제', '관리자', r[0]?.device_name, '기기 삭제'); }
   res.json({ success: true });
 });
 
@@ -1018,6 +1020,16 @@ function normalizePerms(input: any): string[] {
   const arr = Array.isArray(input) ? input.map((x) => String(x)) : [];
   return VALID_PERMS.filter((k) => arr.includes(k));
 }
+// 로그 비고용: 권한 키 배열 → 사람이 읽는 라벨
+const PERM_LABEL: Record<string, string> = {
+  staff: '직원 관리 쓰기', report_leave: '개별리포트(연차)', report_full: '개별리포트(전체)', settings: '설정 쓰기',
+};
+function permLabel(perms: string[]): string {
+  const list = (perms || []).filter((k) => VALID_PERMS.includes(k)).map((k) => PERM_LABEL[k]);
+  return list.length ? '읽기+' + list.join('+') : '읽기 전용';
+}
+// 'YYYY-MM-DD' → 'MM/DD'
+const mmdd = (d?: string) => (d ? d.slice(5).replace('-', '/') : '');
 
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 수정할 수 있습니다.' }); return; }
@@ -1028,9 +1040,10 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   const permissions = normalizePerms(req.body.permissions);
   const teams = normalizeTeams(req.body.teams);
 
-  const { rows: cur } = await pool.query('SELECT device_name FROM admin_devices WHERE id=$1', [req.params.id]);
+  const { rows: cur } = await pool.query('SELECT device_name, permissions FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!cur[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
   const oldName: string = (cur[0].device_name ?? '').trim();
+  const oldPerms: string[] = cur[0].permissions || [];
 
   // 이름이 바뀌었고, 바꾸려는 이름을 가진 '다른 그룹' 기기가 이미 있는지
   const isRename = newName !== oldName;
@@ -1050,6 +1063,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
     return;
   }
 
+  let appliedPerms: string[] = permissions;   // 로그 비고용(적용된 최종 권한)
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1065,6 +1079,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
         for (const t of (o.scope_teams || [])) teamSet.add(t);
       }
       const mergedPerms = VALID_PERMS.filter((k) => permSet.has(k));
+      appliedPerms = mergedPerms;
       const mergedTeams = Array.from(teamSet);
       const names = oldName ? [oldName, newName] : [newName];
       await client.query(
@@ -1093,7 +1108,11 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   } finally {
     client.release();
   }
-  await logAudit(req, '수정', '기기', newName);
+  const parts: string[] = [];
+  if (oldName && newName !== oldName) parts.push(`(이름)${oldName}->${newName}`);
+  const oldPL = permLabel(oldPerms), newPL = permLabel(appliedPerms);
+  if (oldPL !== newPL) parts.push(`(권한)${oldPL}->${newPL}`);
+  await logAudit(req, '수정', '관리자', newName, parts.join(', ') || null);
   res.json({ success: true, merged: collision });
 });
 
@@ -1135,7 +1154,7 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
   try {
     const sent = await sendAdminDeviceInvite({ name: managerName, email, phone, link, senderPhone });
     if (!sent.email && !sent.sms) { res.status(502).json({ error: '이메일/문자 발송에 실패했습니다. 발송 설정을 확인하세요.' }); return; }
-    await logAudit(req, '초대', '기기', managerName);
+    await logAudit(req, '초대', '관리자', managerName, '기기 등록 링크 발송');
     res.json({ success: true, sent });
   } catch (e: any) {
     res.status(502).json({ error: `발송 실패: ${e.message}` });
@@ -1166,7 +1185,7 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
     client.release();
   }
   const { rows: tn } = await pool.query('SELECT device_name FROM admin_devices WHERE id=$1', [targetDeviceId]);
-  await logAudit(req, '권한자변경', '기기', tn[0]?.device_name);
+  await logAudit(req, '권한자변경', '관리자', tn[0]?.device_name);
   res.json({ success: true });
 });
 

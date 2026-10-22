@@ -85,6 +85,15 @@ router.post('/register-device-link',
        VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8) ON CONFLICT (user_id, device_id) DO NOTHING`,
       [p.uid, deviceId, p.managerName, corp, phone, permissions, teams, isAuthority]
     );
+    // 작업 기록: 해당 관리자의 등록 기기 수 변화
+    try {
+      const { rows: c } = await pool.query('SELECT COUNT(*)::int AS c FROM admin_devices WHERE device_name=$1', [p.managerName]);
+      const after = c[0].c;
+      await pool.query(
+        'INSERT INTO audit_logs (admin_name, device_id, action, entity, target_name, detail) VALUES ($1,$2,$3,$4,$5,$6)',
+        [p.managerName, deviceId, '추가', '관리자', p.managerName, `(관리자 기기)${Math.max(0, after - 1)}개->${after}개`]
+      );
+    } catch { /* 로그 실패는 등록에 영향 없음 */ }
     res.json({ success: true, managerName: p.managerName });
   }
 );
