@@ -78,8 +78,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const [teamsList, setTeamsList] = useState([]);
   const [reqName, setReqName] = useState("");
   const [reqPhone, setReqPhone] = useState("");
-  const [reqCanRead, setReqCanRead] = useState(true);
-  const [reqCanWrite, setReqCanWrite] = useState(false);
+  const [reqPerms, setReqPerms] = useState([]);   // 선택된 권한 키 배열
   const [reqTeams, setReqTeams] = useState([]);   // 선택된 팀명 배열
   const [reqDone, setReqDone] = useState("");      // 승인요청 완료 안내
 
@@ -126,7 +125,6 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const submitDeviceRequest = async (e) => {
     e.preventDefault();
     if (!reqName.trim() || !reqPhone.trim()) { setErr("관리자명과 업무용 전화번호를 입력해주세요."); return; }
-    if (!reqCanRead && !reqCanWrite) { setErr("읽기 또는 쓰기 권한을 선택해주세요."); return; }
     if (reqTeams.length === 0) { setErr("권한 팀을 1개 이상 선택해주세요."); return; }
     setBusy(true); setErr("");
     try {
@@ -135,7 +133,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
       await api.login({
         username, password, deviceId,
         managerName: reqName.trim(), phone: reqPhone.trim(),
-        canRead: reqCanRead, canWrite: reqCanWrite, teams: reqTeams,
+        permissions: reqPerms, teams: reqTeams,
       });
       // 정상 로그인으로 이어지지 않고 승인 대기 응답(403)이 오므로 아래 catch에서 처리됨
     } catch (e) {
@@ -188,10 +186,11 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
               <label style={labelStyle}>업무용 전화번호</label>
               <input style={inputStyle} type="tel" value={reqPhone} onChange={(e) => setReqPhone(e.target.value)} disabled={busy} placeholder="예: 01012345678" />
 
-              <label style={labelStyle}>권한 범위 (읽기/쓰기)</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <span onClick={() => !busy && setReqCanRead((v) => !v)} style={chipStyle(reqCanRead)}>읽기</span>
-                <span onClick={() => !busy && setReqCanWrite((v) => !v)} style={chipStyle(reqCanWrite)}>쓰기</span>
+              <label style={labelStyle}>권한 (복수 선택, 미선택 시 읽기 전용)</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {[["staff","직원관리 쓰기"],["report_leave","개별리포트(연차)"],["report_full","개별리포트(전체)"],["settings","설정 쓰기"]].map(([k,label]) => (
+                  <span key={k} onClick={() => !busy && setReqPerms((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k])} style={chipStyle(reqPerms.includes(k))}>{label}</span>
+                ))}
               </div>
 
               <label style={labelStyle}>권한 팀 (복수 선택)</label>

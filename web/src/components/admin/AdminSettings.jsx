@@ -618,11 +618,17 @@ const CATEGORIES = [
   { key: "message", label: "발송 메시지 관리" },
 ];
 
-export default function AdminSettings() {
+export default function AdminSettings({ currentUser }) {
   const [cat, setCat] = useState("workplace");
   const [catFocus, setCatFocus] = useState(false);
+  const canEdit = !!currentUser?.isAuthorityHolder || (currentUser?.permissions || []).includes("settings");
   return (
     <div>
+      {!canEdit && (
+        <div style={{ background: C.amberSoft, border: `1px solid ${C.amber}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: C.amber, fontWeight: 700 }}>
+          읽기 전용입니다. 설정 추가·수정 권한이 없어 변경 시도는 적용되지 않습니다. (권한자에게 문의)
+        </div>
+      )}
       {/* 상단 공통 필터와 동일한 높이·테두리·포커스(#0e6ca5) */}
       <select value={cat} onChange={(e) => setCat(e.target.value)}
         onFocus={() => setCatFocus(true)} onBlur={() => setCatFocus(false)}

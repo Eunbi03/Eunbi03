@@ -226,7 +226,18 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
 
 // 권한 팀 배열 → 표시 문자열
 const teamsText = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "전체");
-const rwText = (d) => [d.can_read ? "읽기" : null, d.can_write ? "쓰기" : null].filter(Boolean).join(" · ") || "권한 없음";
+// 세부 권한 옵션(중복 선택). 아무것도 없으면 읽기 전용.
+const PERM_OPTIONS = [
+  ["staff", "직원관리 쓰기"],
+  ["report_leave", "개별리포트(연차)"],
+  ["report_full", "개별리포트(전체)"],
+  ["settings", "설정 쓰기"],
+];
+const permText = (perms) => {
+  const p = perms || [];
+  if (!p.length) return "읽기 전용";
+  return PERM_OPTIONS.filter(([k]) => p.includes(k)).map(function (o) { return o[1]; }).join(" · ");
+};
 
 // 관리자 카드 — 관리자명당 1개. 공통 정보(권한/법인/전화)는 한 번만, 기기코드는 아래에 목록으로.
 function ManagerCard({ name, devices, isHolder, authorityCount = 0, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
@@ -237,8 +248,7 @@ function ManagerCard({ name, devices, isHolder, authorityCount = 0, corpList = [
   const [nm, setNm] = useState(name || "");
   const [corpSel, setCorpSel] = useState(rep.corp ? rep.corp.split(/[,·]/).map((s) => s.trim()).filter(Boolean) : []);
   const [phone, setPhone] = useState(rep.phone || "");
-  const [canRead, setCanRead] = useState(rep.can_read !== false);
-  const [canWrite, setCanWrite] = useState(!!rep.can_write);
+  const [permSel, setPermSel] = useState(Array.isArray(rep.permissions) ? rep.permissions : []);
   const [teamSel, setTeamSel] = useState(Array.isArray(rep.scope_teams) ? rep.scope_teams.filter((t) => t !== "전체") : []);
   const toggle = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const [saving, setSaving] = useState(false);
@@ -264,7 +274,7 @@ function ManagerCard({ name, devices, isHolder, authorityCount = 0, corpList = [
 
   const buildPayload = (confirmMerge) => ({
     deviceName: nm.trim(), corp: corpSel.join(", "), phone: phone.trim(),
-    canRead, canWrite, teams: teamSel,
+    permissions: permSel, teams: teamSel,
     ...(confirmMerge ? { confirmMerge: true } : {}),
   });
   const save = async (confirmMerge = false) => {
@@ -326,7 +336,7 @@ function ManagerCard({ name, devices, isHolder, authorityCount = 0, corpList = [
 
       {detail && (
         <div style={{ marginTop: 8, padding: "8px 10px", background: "#f6f8fa", borderRadius: 8, fontSize: 12, color: C.ink, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>읽기/쓰기 · </span>{rwText(rep)}</div>
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>권한 · </span>{permText(rep.permissions)}</div>
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>권한 팀 · </span>{teamsText(rep.scope_teams)}</div>
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 법인 · </span>{rep.corp || "-"}</div>
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>업무용 전화번호 · </span>{fmtPhone(rep.phone) || "-"}</div>
@@ -342,10 +352,9 @@ function ManagerCard({ name, devices, isHolder, authorityCount = 0, corpList = [
             {corpList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 법인 없음</span>}
             {corpList.map((c) => <span key={c} style={chip(corpSel.includes(c))} onClick={() => setCorpSel(toggle(corpSel, c))}>{c}</span>)}
           </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한</span>
-            <span style={chip(canRead)} onClick={() => setCanRead((v) => !v)}>읽기</span>
-            <span style={chip(canWrite)} onClick={() => setCanWrite((v) => !v)}>쓰기</span>
+          <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한 (복수 선택, 미선택 시 읽기 전용)</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {PERM_OPTIONS.map(([k, label]) => <span key={k} style={chip(permSel.includes(k))} onClick={() => setPermSel(toggle(permSel, k))}>{label}</span>)}
           </div>
           <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한 팀 (복수 선택, 미선택 시 전체)</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
@@ -397,7 +406,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   // 기기 추가(+버튼) — 권한자만
   const canInvite = !!currentUser?.isAuthorityHolder;
   const [showInvite, setShowInvite] = useState(false);
-  const [inv, setInv] = useState({ managerName: "", email: "", phone: "", corps: [], canRead: true, canWrite: false, teamSel: [] });
+  const [inv, setInv] = useState({ managerName: "", email: "", phone: "", corps: [], permSel: [], teamSel: [] });
   // 등록된 법인·팀 목록 (복수 선택용)
   const [corpList, setCorpList] = useState([]);
   const [teamList, setTeamList] = useState([]);
@@ -416,13 +425,13 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
     try {
       const r = await api.inviteAdminDevice({
         managerName: inv.managerName.trim(), email: inv.email.trim(), phone: inv.phone.trim(), corp: inv.corps.join(", "),
-        canRead: inv.canRead, canWrite: inv.canWrite,
+        permissions: inv.permSel,
         teams: inv.teamSel,
         ...(confirmMerge ? { confirmMerge: true } : {}),
       });
       const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
       setInvMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
-      setInv({ managerName: "", email: "", phone: "", corps: [], canRead: true, canWrite: false, teamSel: [] });
+      setInv({ managerName: "", email: "", phone: "", corps: [], permSel: [], teamSel: [] });
       setInviteAsk("");
     } catch (e) {
       if (e.payload?.needConfirm) { setInviteAsk(e.message); }   // 중복 관리자명 → 확인 팝업
@@ -561,14 +570,12 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                   return <span key={c} onClick={() => setInv({ ...inv, corps: toggleInArr(inv.corps, c) })} style={{ padding: "5px 11px", borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? C.blue : C.line}`, background: on ? C.blue : "#fff", color: on ? "#fff" : C.inkSoft }}>{c}</span>;
                 })}
               </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
-                <span style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>권한</span>
-                {["canRead", "canWrite"].map((k) => (
-                  <span key={k} onClick={() => setInv({ ...inv, [k]: !inv[k] })}
-                    style={{ padding: "6px 12px", borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${inv[k] ? C.blue : C.line}`, background: inv[k] ? C.blue : "#fff", color: inv[k] ? "#fff" : C.inkSoft }}>
-                    {k === "canRead" ? "읽기" : "쓰기"}
-                  </span>
-                ))}
+              <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>권한 (복수 선택, 미선택 시 읽기 전용)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {PERM_OPTIONS.map(([k, label]) => {
+                  const on = inv.permSel.includes(k);
+                  return <span key={k} onClick={() => setInv({ ...inv, permSel: toggleInArr(inv.permSel, k) })} style={{ padding: "5px 11px", borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? C.blue : C.line}`, background: on ? C.blue : "#fff", color: on ? "#fff" : C.inkSoft }}>{label}</span>;
+                })}
               </div>
               <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>권한 팀 (복수 선택, 미선택 시 전체)</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
@@ -675,8 +682,9 @@ export default function AdminStaff({ filters, isHR, currentUser }) {
   const [accessMsg, setAccessMsg] = useState("");       // 권한 밖 인원 검색 안내
 
   const isHolder = !!currentUser?.isAuthorityHolder; // 권한자만 관리자 기기 관리(승인 대기 등)
-  // 쓰기 권한: 권한자이거나 기기에 쓰기 권한이 있을 때만 직원 수정/삭제 등 가능
-  const canWrite = !!currentUser?.isAuthorityHolder || !!currentUser?.canWrite;
+  // 세부 권한: 직원관리 쓰기('staff')가 있어야 직원 수정/삭제/추가 등 가능
+  const _perms = currentUser?.permissions || [];
+  const canWrite = !!currentUser?.isAuthorityHolder || _perms.includes("staff");
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]; if (e.target) e.target.value = "";

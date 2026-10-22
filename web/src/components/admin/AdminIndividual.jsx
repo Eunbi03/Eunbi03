@@ -119,7 +119,7 @@ function RandomChecks({ checks }) {
   );
 }
 
-function DayRow({ day, workplaceName, isMobile, onLeaveChange, isHR }) {
+function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull }) {
   const [open, setOpen] = useState(false);
   const [leavePopup, setLeavePopup] = useState(false);
   const dow = dayOfWeek(day.date);
@@ -130,9 +130,10 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, isHR }) {
   const rowBg = isLeaveFull ? "#fff" : isAlert ? COL.lred : "#fff";
 
   const popup = leavePopup && onLeaveChange && (
-    <LeavePopup day={day} isHR={isHR} onSelect={(t) => onLeaveChange(day, t)} onClose={() => setLeavePopup(false)} />
+    <LeavePopup day={day} canFull={canFull} onSelect={(t) => onLeaveChange(day, t)} onClose={() => setLeavePopup(false)} />
   );
-  const leaveBtn = onLeaveChange && (
+  // 인정 버튼은 연차 권한(이상)이 있어야 노출
+  const leaveBtn = onLeaveChange && canLeave && (
     <button style={{ ...S.miniBtn, marginLeft: 0, fontSize: 11, flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); setLeavePopup(true); }}>인정 ▾</button>
   );
 
@@ -289,20 +290,20 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, isHR }) {
   );
 }
 
-function LeavePopup({ day, onSelect, onClose, isHR }) {
+function LeavePopup({ day, onSelect, onClose, canFull }) {
   const init = parseLt(day.leaveType);
   const [primary, setPrimary] = useState(init.primary);
   const [noteOn, setNoteOn] = useState(init.noteOn);
   useEffect(() => { const p = parseLt(day.leaveType); setPrimary(p.primary); setNoteOn(p.noteOn); }, [day.leaveType]);
 
-  // 일반 관리자(Admin)는 '연차'만, 출근/퇴근/노트 인정은 최고관리자(HR)만
+  // 연차만 가능(report_leave)이면 '연차'만, 전체(report_full)면 출퇴근/노트 인정까지
   const ALL_OPTIONS = [
     { key: "연차", label: "연차", sub: "하루 전체 인정" },
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
     { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
     { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
   ];
-  const OPTIONS = isHR ? ALL_OPTIONS : ALL_OPTIONS.filter((o) => o.key === "연차");
+  const OPTIONS = canFull ? ALL_OPTIONS : ALL_OPTIONS.filter((o) => o.key === "연차");
   const handlePrimary = (key) => {
     const next = primary === key ? null : key;
     setPrimary(next);
@@ -329,7 +330,7 @@ function LeavePopup({ day, onSelect, onClose, isHR }) {
               <span style={{ fontSize: 11, fontWeight: 400, color: primary === key ? COL.green : COL.gray }}>{sub}{primary === key ? " ✓" : ""}</span>
             </button>
           ))}
-          {isHR && (
+          {canFull && (
             <>
               <div style={{ borderTop: `1px solid ${C.lineAdmin}`, margin: "2px 0" }} />
               <button style={btnStyle(noteOn)} onClick={handleNote}>
@@ -350,8 +351,13 @@ function Kpi({ label, v, color }) {
   return <span style={{ color, fontWeight: 700, whiteSpace: "nowrap" }}>{label} {v}</span>;
 }
 
-export default function AdminIndividual({ filters, isHR }) {
+export default function AdminIndividual({ filters, currentUser }) {
   const isMobile = useIsMobile();
+  // 개별리포트 세부 권한: 발송·연차 인정 = report_leave|report_full|권한자, 출퇴근·노트 인정 = report_full|권한자
+  const _perms = currentUser?.permissions || [];
+  const _auth = !!currentUser?.isAuthorityHolder;
+  const canReportFull = _auth || _perms.includes("report_full");
+  const canReportLeave = canReportFull || _perms.includes("report_leave");
   const today = todayStr();
   const monthRef = useRef(null);
   const [ym, setYm] = useState(() => { const [y, m] = todayStr().split("-").map(Number); return { year: y, month: m }; });
@@ -509,8 +515,8 @@ export default function AdminIndividual({ filters, isHR }) {
         </div>
         ); })()}
 
-        {/* 리포트 발송 (현재 보이는 인원 대상) — 최고관리자(HR)만 */}
-        {isHR && (
+        {/* 리포트 발송 (현재 보이는 인원 대상) — 발송 권한자만 */}
+        {canReportLeave && (
           <button onClick={sendReports} disabled={sending}
             style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer", opacity: sending ? 0.6 : 1, whiteSpace: "nowrap" }}>
             {sending ? "발송 중…" : "리포트 발송"}
@@ -569,7 +575,7 @@ export default function AdminIndividual({ filters, isHR }) {
                               {report && report.days.length === 0 && <div style={S.empty}>이 기간에 근무일이 없습니다.</div>}
                               {report && report.days.map((day, i) => (
                                 <DayRow key={i} day={day} workplaceName={w.workplace_name} isMobile={isMobile}
-                                  isHR={isHR}
+                                  canLeave={canReportLeave} canFull={canReportFull}
                                   onLeaveChange={(d, t) => handleLeave(w, d, t)} />
                               ))}
                             </div>

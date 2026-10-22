@@ -10,12 +10,12 @@ const router = Router();
 const MAX_FAILED = parseInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS || '5', 10);
 
 // 이 기기(admin_devices)의 권한(권한자 여부·쓰기 권한)을 한 번에 조회
-async function getDevicePerms(userId: string, deviceId: string): Promise<{ isAuthority: boolean; canWrite: boolean }> {
+async function getDevicePerms(userId: string, deviceId: string): Promise<{ isAuthority: boolean; permissions: string[] }> {
   const { rows } = await pool.query(
-    'SELECT is_authority, can_write FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
+    'SELECT is_authority, permissions FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
   );
   const r = rows[0];
-  return { isAuthority: !!r?.is_authority, canWrite: !!(r?.is_authority || r?.can_write) };
+  return { isAuthority: !!r?.is_authority, permissions: r?.permissions || [] };
 }
 
 async function logAttempt(data: {
@@ -65,26 +65,25 @@ router.post('/register-device-link',
     }
     // 같은 관리자명이 이미 있으면 권한 공유(기존 그룹 권한 상속). 그룹이 권한자면 새 기기도 권한자.
     const { rows: grp } = await pool.query(
-      'SELECT can_read, can_write, scope_teams, corp, phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
+      'SELECT permissions, scope_teams, corp, phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
     );
     const { rows: authRows } = await pool.query(
       'SELECT 1 FROM admin_devices WHERE device_name=$1 AND is_authority=TRUE LIMIT 1', [p.managerName]
     );
-    let canRead = p.canRead !== false;
-    let canWrite = p.canWrite === true;
+    let permissions = Array.isArray(p.permissions) ? p.permissions : [];
     let teams = Array.isArray(p.teams) && p.teams.length ? p.teams : ['전체'];
     let corp = p.corp || null;
     let phone = p.phone || null;
     let isAuthority = authRows.length > 0;   // 권한자 그룹이면 새 기기도 권한자
     if (grp[0]) {
-      canRead = grp[0].can_read; canWrite = grp[0].can_write;
+      permissions = grp[0].permissions || permissions;
       teams = (Array.isArray(grp[0].scope_teams) && grp[0].scope_teams.length) ? grp[0].scope_teams : teams;
       corp = grp[0].corp || corp; phone = grp[0].phone || phone;
     }
     await pool.query(
-      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, can_read, can_write, scope_teams, is_authority)
-       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8,$9) ON CONFLICT (user_id, device_id) DO NOTHING`,
-      [p.uid, deviceId, p.managerName, corp, phone, canRead, canWrite, teams, isAuthority]
+      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, permissions, scope_teams, is_authority)
+       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8) ON CONFLICT (user_id, device_id) DO NOTHING`,
+      [p.uid, deviceId, p.managerName, corp, phone, permissions, teams, isAuthority]
     );
     res.json({ success: true, managerName: p.managerName });
   }
@@ -180,13 +179,13 @@ router.post('/login',
             await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DUPLICATE_MANAGER', req });
             res.status(409).json({ error: '이미 등록된 관리자입니다. 새로운 기기 등록을 원한다면 최고 관리자에게 요청해주세요.', duplicateManager: true }); return;
           }
-          const canRead = req.body.canRead !== false;   // 기본 읽기 허용
-          const canWrite = req.body.canWrite === true;
+          const VALID_PERMS = ['staff', 'report_leave', 'report_full', 'settings'];
+          const permissions = VALID_PERMS.filter((k) => Array.isArray(req.body.permissions) && req.body.permissions.includes(k));
           const teams = Array.isArray(req.body.teams) && req.body.teams.length ? req.body.teams : ['전체'];
           await pool.query(
-            `INSERT INTO admin_devices (user_id, device_id, device_name, phone, is_approved, can_read, can_write, scope_teams)
-             VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7) ON CONFLICT (user_id, device_id) DO NOTHING`,
-            [user.id, deviceId, managerName, phone, canRead, canWrite, teams]
+            `INSERT INTO admin_devices (user_id, device_id, device_name, phone, is_approved, permissions, scope_teams)
+             VALUES ($1,$2,$3,$4,FALSE,$5,$6) ON CONFLICT (user_id, device_id) DO NOTHING`,
+            [user.id, deviceId, managerName, phone, permissions, teams]
           );
           await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_PENDING', req });
           res.status(403).json({ error: '승인 요청이 전송되었습니다. 권한자의 승인 후 로그인할 수 있습니다.', pendingApproval: true }); return;
@@ -206,10 +205,10 @@ router.post('/login',
       }
     }
 
-    // 권한자/쓰기권한은 '이 기기(admin_devices)' 기준으로 판단
-    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, canWrite: false };
+    // 권한자/세부권한은 '이 기기(admin_devices)' 기준으로 판단
+    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, permissions: [] };
     const isAuthority = perms.isAuthority;
-    const canWrite = perms.canWrite;
+    const permissions = perms.permissions;
 
     const { plainToken, tokenHash } = generateRefreshToken();
     const refreshExpiry = getRefreshTokenExpiry();
@@ -237,7 +236,7 @@ router.post('/login',
         mustChangePassword: user.must_change_password,
         locationConsentGiven: user.location_consent_given,
         isAuthorityHolder: isAuthority,
-        canWrite,
+        permissions,
       },
     });
   }
@@ -282,9 +281,9 @@ router.post('/auto-login',
       res.status(403).json({ error: '로그인 세션이 만료되었습니다.' }); return;
     }
 
-    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, canWrite: false };
+    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, permissions: [] };
     const isAuthority = perms.isAuthority;
-    const canWrite = perms.canWrite;
+    const permissions = perms.permissions;
     res.json({
       accessToken: generateAccessToken({ userId: user.id, role: user.role, deviceId, isAuthority }),
       user: {
@@ -292,7 +291,7 @@ router.post('/auto-login',
         mustChangePassword: user.must_change_password,
         locationConsentGiven: user.location_consent_given,
         isAuthorityHolder: isAuthority,
-        canWrite,
+        permissions,
       },
     });
   }

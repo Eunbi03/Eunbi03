@@ -53,13 +53,13 @@ async function request(path, { method = "GET", body, auth = true, retry = true }
 }
 
 /* 인증 */
-export async function login({ username, password, deviceId, deviceName, managerName, phone, canRead, canWrite, teams }) {
+export async function login({ username, password, deviceId, deviceName, managerName, phone, permissions, teams }) {
   const body = { username, password, deviceId };
   if (deviceName) body.deviceName = deviceName;
   // 승인요청(미등록 기기) 추가 정보 — 전달 시 서버가 승인 대기 등록을 진행한다.
   if (managerName !== undefined) {
     body.managerName = managerName; body.phone = phone;
-    body.canRead = canRead; body.canWrite = canWrite; body.teams = teams;
+    body.permissions = permissions; body.teams = teams;
   }
   const data = await request("/auth/login", { method: "POST", body, auth: false });
   setAccessToken(data.accessToken); setStoredRefreshToken(data.refreshToken); setStoredUserId(data.user.id);

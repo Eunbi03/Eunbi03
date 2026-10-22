@@ -125,8 +125,8 @@ export default function AdminApp({ user }) {
 
       {tab === "overall"    && <AdminOverall    filters={filters} onDirectActive={setDirectActive} />}
       {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={user} onRefreshFilters={() => {}} />}
-      {tab === "individual" && <AdminIndividual filters={filters} isHR={isHR} />}
-      {tab === "settings"   && <AdminSettings />}
+      {tab === "individual" && <AdminIndividual filters={filters} currentUser={user} />}
+      {tab === "settings"   && <AdminSettings currentUser={user} />}
     </div>
   );
 }
