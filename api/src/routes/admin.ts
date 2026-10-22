@@ -236,6 +236,9 @@ router.post('/workplaces/bulk', requireAdmin, permSettings, async (req: Request,
       success++;
     } catch (e: any) { failed.push({ name, reason: e.message }); }
   }
+  if (success > 0) {
+    await logAudit(req, '추가', '근무지', `엑셀 일괄 ${success}개`, failed.length ? `(엑셀 일괄)성공 ${success}개 / 실패 ${failed.length}개` : `(엑셀 일괄)${success}개`);
+  }
   res.json({ success, failed });
 });
 
@@ -1543,6 +1546,9 @@ router.post('/holidays/bulk', requireAdmin, permSettings, async (req: Request, r
   }
   const all = await pool.query('SELECT date::text AS date FROM public_holidays');
   refreshHolidayCache(all.rows.map((x: any) => x.date));
+  if (success > 0) {
+    await logAudit(req, '추가', '공휴일', `엑셀 일괄 ${success}개`, failed.length ? `(엑셀 일괄)성공 ${success}개 / 실패 ${failed.length}개` : `(엑셀 일괄)${success}개`);
+  }
   res.json({ success, failed });
 });
 
@@ -1599,6 +1605,9 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
     } catch (e: any) {
       failed.push({ ...info, reason: e.code === '23505' ? '중복(전화번호/이메일)' : e.message });
     }
+  }
+  if (success > 0) {
+    await logAudit(req, '추가', '근로자', `엑셀 일괄 ${success}명`, failed.length ? `(엑셀 일괄)성공 ${success}명 / 실패 ${failed.length}명` : `(엑셀 일괄)${success}명`);
   }
   res.json({ success, failed });
 });
