@@ -21,7 +21,7 @@ router.use(async (req: Request, res: Response, next): Promise<void> => {
   if (!req.user.deviceId) { (req as any).adminDevice = { isAuthority: false, permissions: [], teams: null }; next(); return; }
   try {
     const { rows } = await pool.query(
-      'SELECT is_approved, is_authority, permissions, scope_teams FROM admin_devices WHERE user_id=$1 AND device_id=$2',
+      'SELECT is_approved, is_authority, permissions, scope_teams, device_name FROM admin_devices WHERE user_id=$1 AND device_id=$2',
       [req.user.userId, req.user.deviceId]
     );
     const d = rows[0];
@@ -33,12 +33,24 @@ router.use(async (req: Request, res: Response, next): Promise<void> => {
     (req as any).adminDevice = {
       isAuthority: !!d.is_authority,
       permissions: d.permissions || [],
+      deviceName: d.device_name || null,
       // null = 전체 열람(권한자 / 권한팀 '전체')
       teams: (d.is_authority || teams.length === 0 || teams.includes('전체')) ? null : teams,
     };
     next();
   } catch (e) { next(e as any); }
 });
+
+// 관리자 작업 기록(감사 로그). 실패해도 본 작업에는 영향 없음.
+async function logAudit(req: Request, action: string, entity: string, targetName?: string | null, detail?: string | null): Promise<void> {
+  try {
+    const ad = (req as any).adminDevice;
+    await pool.query(
+      'INSERT INTO audit_logs (admin_name, device_id, action, entity, target_name, detail) VALUES ($1,$2,$3,$4,$5,$6)',
+      [ad?.deviceName || null, req.user.deviceId || null, action, entity, targetName || null, detail || null]
+    );
+  } catch (e: any) { console.error('[audit]', e.message); }
+}
 
 // 이 요청을 보낸 기기가 '권한자'인지 (미들웨어에서 붙인 req.adminDevice 사용)
 async function reqIsAuthority(req: Request): Promise<boolean> {
@@ -170,6 +182,7 @@ router.post('/workplaces', requireAdmin, permSettings, async (req: Request, res:
     'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
     [name, lat, lng, radiusM || 500, address || null, postalCode || null, detailAddress || null]
   );
+  await logAudit(req, '추가', '근무지', rows[0]?.name);
   res.status(201).json({ workplace: rows[0] });
 });
 
@@ -186,7 +199,8 @@ router.put('/workplaces/:id', requireAdmin, permSettings, async (req: Request, r
 });
 
 router.delete('/workplaces/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  await pool.query('UPDATE workplaces SET is_active=FALSE WHERE id=$1', [req.params.id]);
+  const { rows: wpd } = await pool.query('UPDATE workplaces SET is_active=FALSE WHERE id=$1 RETURNING name', [req.params.id]);
+  await logAudit(req, '삭제', '근무지', wpd[0]?.name);
   res.json({ success: true });
 });
 
@@ -325,6 +339,7 @@ router.post('/workers', permStaff, async (req: Request, res: Response): Promise<
        lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker]
     );
     await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, !!irregularWorker);
+    await logAudit(req, '추가', '직원', name);
     res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 정보입니다.' });
@@ -348,6 +363,7 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
        lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker, req.params.id]
     );
     if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
+    await logAudit(req, '수정', '직원', rows[0].name);
     res.json({ success: true, worker: rows[0] });
   } catch (e: any) {
     res.status(500).json({ error: e.message || '직원 정보 수정 중 오류가 발생했습니다.' });
@@ -357,7 +373,8 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
 router.delete('/workers/:id', permStaff, async (req: Request, res: Response): Promise<void> => {
   if (!(await assertWorkerInScope(req, res, req.params.id))) return;
   // 소프트 삭제 + 삭제 시각 기록 (재등록 시 1년 보존 판단용)
-  await pool.query('UPDATE users SET is_active=FALSE, deactivated_at=now() WHERE id=$1', [req.params.id]);
+  const { rows: delr } = await pool.query('UPDATE users SET is_active=FALSE, deactivated_at=now() WHERE id=$1 RETURNING name', [req.params.id]);
+  await logAudit(req, '삭제', '직원', delr[0]?.name);
   res.json({ success: true });
 });
 
@@ -385,6 +402,7 @@ router.put('/workers/:id/reset-password', requireAdmin, permStaff, async (req: R
 
   const passwordHash = await bcrypt.hash(plain, 12);
   await pool.query('UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2', [passwordHash, users[0].id]);
+  await logAudit(req, '비번초기화', '직원', users[0].name);
   res.json({ success: true, initPassword: plain });
 });
 
@@ -397,6 +415,7 @@ router.post('/workers/:id/reset-device', requireAdmin, permStaff, async (req: Re
     [req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
+  await logAudit(req, '기기변경', '직원', rows[0].name);
   res.json({ success: true });
 });
 
@@ -719,6 +738,7 @@ router.post('/send-report', async (req: Request, res: Response): Promise<void> =
     }
   }
   const sent = results.filter((r) => r.ok).length;
+  await logAudit(req, '발송', '리포트', `${sent}명`, `${from}~${to}`);
   res.json({ sent, total: results.length, results });
 });
 
@@ -781,10 +801,12 @@ router.post('/attendance/:recordId/set-leave', requireAdmin, async (req: Request
   // 연차 인정·해제 → report_leave, 출근/퇴근/노트 인정 → report_full
   if (!requirePerm(req, res, (leaveType && leaveType !== '연차') ? 'report_full' : 'report_leave')) return;
   const { rows } = await pool.query(
-    'UPDATE attendance_records SET leave_type=$1 WHERE id=$2 RETURNING id',
+    `UPDATE attendance_records ar SET leave_type=$1 FROM users u
+      WHERE ar.id=$2 AND u.id=ar.user_id RETURNING ar.id, u.name AS worker_name, ar.date::text AS d`,
     [leaveType || null, req.params.recordId]
   );
   if (!rows[0]) { res.status(404).json({ error: '기록을 찾을 수 없습니다.' }); return; }
+  await logAudit(req, leaveType ? '인정' : '인정해제', '근태', rows[0].worker_name, `${rows[0].d} ${leaveType || ''}`.trim());
   // 인정 해제 시, 실제 기록(출근/퇴근/노트)이 없는 빈 행이면 삭제 (재출근 가능하도록)
   if (!leaveType) {
     await pool.query(
@@ -846,6 +868,8 @@ router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res:
       [userId, date, leaveType, scheduledMinutes]
     );
   }
+  const { rows: wn } = await pool.query('SELECT name FROM users WHERE id=$1', [userId]);
+  await logAudit(req, leaveType ? '인정' : '인정해제', '근태', wn[0]?.name, `${date} ${leaveType || ''}`.trim());
   res.json({ success: true });
 });
 
@@ -882,7 +906,8 @@ router.post('/device-change-requests/:id/reject', requireAdmin, permStaff, async
 
 router.post('/users/:id/unlock', requireAdmin, permStaff, async (req: Request, res: Response): Promise<void> => {
   if (!(await assertWorkerInScope(req, res, req.params.id))) return;
-  await pool.query('UPDATE users SET is_locked=FALSE, locked_reason=NULL, failed_login_attempts=0 WHERE id=$1', [req.params.id]);
+  const { rows: ul } = await pool.query('UPDATE users SET is_locked=FALSE, locked_reason=NULL, failed_login_attempts=0 WHERE id=$1 RETURNING name', [req.params.id]);
+  await logAudit(req, '잠금해제', '직원', ul[0]?.name);
   res.json({ success: true });
 });
 
@@ -950,10 +975,11 @@ router.get('/admin-devices/:userId', async (req: Request, res: Response): Promis
 router.post('/devices/:id/approve', async (req: Request, res: Response): Promise<void> => {
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 승인할 수 있습니다.' }); return; }
   const { rows } = await pool.query(
-    'UPDATE admin_devices SET is_approved=TRUE, approved_by=$1, approved_at=now() WHERE id=$2 AND is_approved=FALSE RETURNING id',
+    'UPDATE admin_devices SET is_approved=TRUE, approved_by=$1, approved_at=now() WHERE id=$2 AND is_approved=FALSE RETURNING device_name',
     [req.user.userId, req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '승인할 기기를 찾을 수 없습니다.' }); return; }
+  await logAudit(req, '승인', '기기', rows[0].device_name);
   res.json({ success: true });
 });
 
@@ -967,7 +993,7 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
     const { rows: cnt } = await pool.query('SELECT COUNT(*)::int AS c FROM admin_devices WHERE is_authority=TRUE');
     if (cnt[0].c <= 1) { res.status(400).json({ error: '마지막 권한자 기기는 삭제할 수 없습니다.' }); return; }
   }
-  await pool.query('DELETE FROM admin_devices WHERE id=$1', [req.params.id]);
+  { const { rows: r } = await pool.query('DELETE FROM admin_devices WHERE id=$1 RETURNING device_name', [req.params.id]); await logAudit(req, '삭제', '기기', r[0]?.device_name); }
   res.json({ success: true });
 });
 
@@ -1067,6 +1093,7 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   } finally {
     client.release();
   }
+  await logAudit(req, '수정', '기기', newName);
   res.json({ success: true, merged: collision });
 });
 
@@ -1108,6 +1135,7 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
   try {
     const sent = await sendAdminDeviceInvite({ name: managerName, email, phone, link, senderPhone });
     if (!sent.email && !sent.sms) { res.status(502).json({ error: '이메일/문자 발송에 실패했습니다. 발송 설정을 확인하세요.' }); return; }
+    await logAudit(req, '초대', '기기', managerName);
     res.json({ success: true, sent });
   } catch (e: any) {
     res.status(502).json({ error: `발송 실패: ${e.message}` });
@@ -1137,6 +1165,8 @@ router.put('/authority/transfer', async (req: Request, res: Response): Promise<v
   } finally {
     client.release();
   }
+  const { rows: tn } = await pool.query('SELECT device_name FROM admin_devices WHERE id=$1', [targetDeviceId]);
+  await logAudit(req, '권한자변경', '기기', tn[0]?.device_name);
   res.json({ success: true });
 });
 
@@ -1157,6 +1187,7 @@ router.put('/message-templates/:key', requireAdmin, permSettings, async (req: Re
   );
   if (!rows[0]) { res.status(404).json({ error: '템플릿을 찾을 수 없습니다.' }); return; }
   invalidateTemplateCache();
+  await logAudit(req, '수정', '메시지', rows[0]?.label);
   res.json({ success: true, template: rows[0] });
 });
 
@@ -1196,11 +1227,12 @@ router.post('/holidays', requireAdmin, permSettings, async (req: Request, res: R
   );
   const all = await pool.query('SELECT date::text AS date FROM public_holidays');
   refreshHolidayCache(all.rows.map((r: any) => r.date));
+  await logAudit(req, '추가', '공휴일', rows[0]?.name);
   res.status(201).json({ holiday: rows[0] });
 });
 
 router.delete('/holidays/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  await pool.query('DELETE FROM public_holidays WHERE id=$1', [req.params.id]);
+  { const { rows: r } = await pool.query('DELETE FROM public_holidays WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '공휴일', r[0]?.name); }
   const all = await pool.query('SELECT date::text AS date FROM public_holidays');
   refreshHolidayCache(all.rows.map((r: any) => r.date));
   res.json({ success: true });
@@ -1219,6 +1251,7 @@ router.post('/corporations', requireAdmin, permSettings, async (req: Request, re
       'INSERT INTO corporations (name, address) VALUES ($1,$2) RETURNING id, name, address',
       [name, address || null]
     );
+    await logAudit(req, '추가', '법인', rows[0]?.name);
     res.status(201).json({ corporation: rows[0] });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 법인명입니다.' });
@@ -1226,7 +1259,7 @@ router.post('/corporations', requireAdmin, permSettings, async (req: Request, re
   }
 });
 router.delete('/corporations/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  await pool.query('DELETE FROM corporations WHERE id=$1', [req.params.id]);
+  { const { rows: r } = await pool.query('DELETE FROM corporations WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '법인', r[0]?.name); }
   res.json({ success: true });
 });
 
@@ -1249,6 +1282,7 @@ router.post('/divisions', requireAdmin, permSettings, async (req: Request, res: 
     for (const tn of teamNames) {
       await pool.query('INSERT INTO teams (division_id, name) VALUES ($1,$2) ON CONFLICT (division_id, name) DO NOTHING', [div.id, tn.trim()]);
     }
+    await logAudit(req, '추가', '본부', div?.name);
     res.status(201).json({ division: div });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 본부명입니다.' });
@@ -1256,7 +1290,7 @@ router.post('/divisions', requireAdmin, permSettings, async (req: Request, res: 
   }
 });
 router.delete('/divisions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  await pool.query('DELETE FROM divisions WHERE id=$1', [req.params.id]); // 팀은 CASCADE 삭제
+  { const { rows: r } = await pool.query('DELETE FROM divisions WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '본부', r[0]?.name); } // 팀은 CASCADE 삭제
   res.json({ success: true });
 });
 // 권한 부여 대상 선택용 관리자 목록(승인된 기기의 관리자명, 중복 제거)
@@ -1290,6 +1324,7 @@ router.post('/divisions/:id/teams', requireAdmin, permSettings, async (req: Requ
         [teamName, grantTo]
       );
     }
+    await logAudit(req, '추가', '팀', rows[0]?.name);
     res.status(201).json({ team: rows[0] });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 팀명입니다.' });
@@ -1297,7 +1332,7 @@ router.post('/divisions/:id/teams', requireAdmin, permSettings, async (req: Requ
   }
 });
 router.delete('/teams/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  await pool.query('DELETE FROM teams WHERE id=$1', [req.params.id]);
+  { const { rows: r } = await pool.query('DELETE FROM teams WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '팀', r[0]?.name); }
   res.json({ success: true });
 });
 
@@ -1318,10 +1353,11 @@ router.post('/positions', requireAdmin, permSettings, async (req: Request, res: 
     );
     if (rows[0]) added.push(rows[0]);
   }
+  await logAudit(req, '추가', '직책', added.map((p: any) => p.name).join(', '));
   res.status(201).json({ positions: added });
 });
 router.delete('/positions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  await pool.query('DELETE FROM positions WHERE id=$1', [req.params.id]);
+  { const { rows: r } = await pool.query('DELETE FROM positions WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '직책', r[0]?.name); }
   res.json({ success: true });
 });
 
@@ -1343,6 +1379,7 @@ router.post('/job-schedules', requireAdmin, permSettings, async (req: Request, r
        VALUES ($1,$2,$3,$4,$5) RETURNING id, name`,
       [name, workStart || '09:00', workEnd || '18:00', breakStart || '12:00', breakEnd || '13:00']
     );
+    await logAudit(req, '추가', '근무시간', rows[0]?.name);
     res.status(201).json({ jobSchedule: rows[0] });
   } catch (e: any) {
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 직무명입니다.' });
@@ -1360,7 +1397,7 @@ router.put('/job-schedules/:id', requireAdmin, permSettings, async (req: Request
   res.json({ jobSchedule: rows[0] });
 });
 router.delete('/job-schedules/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  await pool.query('DELETE FROM job_schedules WHERE id=$1', [req.params.id]);
+  { const { rows: r } = await pool.query('DELETE FROM job_schedules WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '근무시간', r[0]?.name); }
   res.json({ success: true });
 });
 
@@ -1466,6 +1503,26 @@ router.get('/worker-access-check', async (req: Request, res: Response): Promise<
     [`%${name}%`, scope]
   );
   res.json({ blocked: rows.map((r: any) => r.name) });
+});
+
+// ── 작업 기록(감사 로그) 조회 — 권한자만 ───────────────────────────────────────
+router.get('/logs', async (req: Request, res: Response): Promise<void> => {
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 조회할 수 있습니다.' }); return; }
+  const { from, to, admin, worker } = req.query as Record<string, string>;
+  const conds: string[] = [];
+  const params: unknown[] = [];
+  if (from)   { params.push(from);         conds.push(`(created_at AT TIME ZONE 'Asia/Seoul')::date >= $${params.length}::date`); }
+  if (to)     { params.push(to);           conds.push(`(created_at AT TIME ZONE 'Asia/Seoul')::date <= $${params.length}::date`); }
+  if (admin)  { params.push(`%${admin}%`); conds.push(`admin_name ILIKE $${params.length}`); }
+  if (worker) { params.push(`%${worker}%`);conds.push(`target_name ILIKE $${params.length}`); }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const { rows } = await pool.query(
+    `SELECT to_char(created_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI') AS at,
+            admin_name, action, entity, target_name, detail
+       FROM audit_logs ${where} ORDER BY created_at DESC LIMIT 1000`,
+    params
+  );
+  res.json({ logs: rows });
 });
 
 // ── 전체현황: 월간 근태대장 ───────────────────────────────────────────────────

@@ -14,9 +14,10 @@ import AdminOverall from "./admin/AdminOverall.jsx";
 import AdminStaff from "./admin/AdminStaff.jsx";
 import AdminIndividual from "./admin/AdminIndividual.jsx";
 import AdminSettings from "./admin/AdminSettings.jsx";
+import AdminLog from "./admin/AdminLog.jsx";
 import * as api from "../api/client.js";
 
-const TABS = [
+const BASE_TABS = [
   { key: "overall",    label: "전체 현황" },
   { key: "staff",      label: "직원 관리" },
   { key: "individual", label: "개별 리포트" },
@@ -47,6 +48,9 @@ export default function AdminApp({ user }) {
   const isMobile = useIsMobile();
   // HR 전용 작업(비밀번호/기기 초기화, 근무지·연차·공휴일 관리 등)은 hr 역할만 노출 — 백엔드 requireHR과 일치
   const isHR = user?.role === "hr";
+  const isAuthority = !!user?.isAuthorityHolder;
+  // 로그 페이지는 권한자만
+  const TABS = isAuthority ? [...BASE_TABS, { key: "log", label: "로그" }] : BASE_TABS;
   const [tab, setTab] = useState("overall");
 
   // 공통 필터: 설정의 조직 마스터 데이터 기반 (법인/본부·팀/직위)
@@ -79,7 +83,7 @@ export default function AdminApp({ user }) {
     });
   };
 
-  const showFilter = tab !== "settings";
+  const showFilter = tab !== "settings" && tab !== "log";
 
   return (
     <div style={{ maxWidth: 1600, margin: "0 auto", padding: 0 }}>
@@ -127,6 +131,7 @@ export default function AdminApp({ user }) {
       {tab === "staff"      && <AdminStaff      filters={filters} isHR={isHR} currentUser={user} onRefreshFilters={() => {}} />}
       {tab === "individual" && <AdminIndividual filters={filters} currentUser={user} />}
       {tab === "settings"   && <AdminSettings currentUser={user} />}
+      {tab === "log"        && <AdminLog />}
     </div>
   );
 }

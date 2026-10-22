@@ -91,6 +91,14 @@ async function activateDueRandomChecks() {
 // - 무음 푸시/백그라운드 수집이 정상 동작해 이미 수집(submitted_time)되면 보내지 않는다.
 // - 알림은 슬롯 시각 +5분부터 +10분(수집 마감) 이내에 1회만 보낸다.
 // - 출근을 누르지 않은 경우(휴일 등)에는 보내지 않는다(attendance_records의 check_in_time 기준).
+// 1년 지난 작업 기록(감사 로그) 자동 삭제
+async function purgeOldAuditLogs() {
+  try {
+    const { rowCount } = await pool.query("DELETE FROM audit_logs WHERE created_at < now() - interval '1 year'");
+    if (rowCount) console.log(`[감사로그] 1년 경과 ${rowCount}건 삭제`);
+  } catch (e: any) { console.error('[감사로그 삭제 실패]', e.message); }
+}
+
 async function sendRandomCheckAlerts() {
   const { rows } = await pool.query(
     `SELECT rc.id, rc.user_id, u.fcm_token
@@ -220,5 +228,6 @@ export function startScheduler() {
   cron.schedule('* * * * *', sendRandomCheckAlerts, { timezone: 'Asia/Seoul' });
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', sendDailyReminders, { timezone: 'Asia/Seoul' });
+  cron.schedule('10 4 * * *', purgeOldAuditLogs, { timezone: 'Asia/Seoul' }); // 매일 04:10 1년 지난 작업기록 삭제
   console.log('[스케줄러] 모든 정기 작업 등록 완료');
 }
