@@ -216,7 +216,7 @@ router.delete('/workplaces/:id', requireAdmin, permSettings, async (req: Request
 router.post('/workplaces/bulk', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   if (!process.env.KAKAO_REST_KEY) { res.status(500).json({ error: '카카오 API 키가 설정되지 않았습니다.' }); return; }
   const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
-  let success = 0; const failed: any[] = [];
+  let success = 0; const failed: any[] = []; const okNames: string[] = [];
   for (const r of rows) {
     const name = (r.name || '').trim();
     const address = (r.address || '').trim();
@@ -233,11 +233,11 @@ router.post('/workplaces/bulk', requireAdmin, permSettings, async (req: Request,
         'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7)',
         [name, g.lat, g.lng, parseInt(r.radiusM, 10) || 500, g.road, g.zone || null, (r.detailAddress || '').trim() || null]
       );
-      success++;
+      success++; okNames.push(name);
     } catch (e: any) { failed.push({ name, reason: e.message }); }
   }
   if (success > 0) {
-    await logAudit(req, '추가', '근무지', `엑셀 일괄 ${success}개`, failed.length ? `(엑셀 일괄)성공 ${success}개 / 실패 ${failed.length}개` : `(엑셀 일괄)${success}개`);
+    await logAudit(req, '추가', '근무지', `엑셀 일괄 ${success}개`, `(근무지)${okNames.join(', ')} 총 ${success}개점`);
   }
   res.json({ success, failed });
 });
@@ -1535,19 +1535,19 @@ router.delete('/job-schedules/:id', requireAdmin, permSettings, async (req: Requ
 // ── 일괄 등록: 공휴일 ─────────────────────────────────────────────────────────
 router.post('/holidays/bulk', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
-  let success = 0; const failed: any[] = [];
+  let success = 0; const failed: any[] = []; const okDates: string[] = [];
   for (const r of rows) {
     const date = (r.date || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { failed.push({ date: r.date, name: r.name, reason: '날짜 형식 오류(YYYY-MM-DD)' }); continue; }
     try {
       await pool.query('INSERT INTO public_holidays (date, name) VALUES ($1,$2) ON CONFLICT (date) DO UPDATE SET name=EXCLUDED.name', [date, (r.name || '').trim()]);
-      success++;
+      success++; okDates.push(mmdd(date));
     } catch (e: any) { failed.push({ date: r.date, name: r.name, reason: e.message }); }
   }
   const all = await pool.query('SELECT date::text AS date FROM public_holidays');
   refreshHolidayCache(all.rows.map((x: any) => x.date));
   if (success > 0) {
-    await logAudit(req, '추가', '공휴일', `엑셀 일괄 ${success}개`, failed.length ? `(엑셀 일괄)성공 ${success}개 / 실패 ${failed.length}개` : `(엑셀 일괄)${success}개`);
+    await logAudit(req, '추가', '공휴일', `엑셀 일괄 ${success}개`, `(공휴일)${okDates.join(', ')} 총 ${success}일`);
   }
   res.json({ success, failed });
 });
@@ -1564,7 +1564,7 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
   );
   const jsByName: Record<string, any> = {}; for (const j of jss) jsByName[j.name] = j;
 
-  let success = 0; const failed: any[] = [];
+  let success = 0; const failed: any[] = []; const okNames: string[] = [];
   for (const r of rows) {
     const name = (r.name || '').trim();
     const phoneDigits = (r.phone || '').replace(/\D/g, '');
@@ -1601,13 +1601,13 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
            times.s, times.e, times.bs, times.be, workplaceId, noteExempt, irregular]
         );
       }
-      success++;
+      success++; okNames.push(name);
     } catch (e: any) {
       failed.push({ ...info, reason: e.code === '23505' ? '중복(전화번호/이메일)' : e.message });
     }
   }
   if (success > 0) {
-    await logAudit(req, '추가', '근로자', `엑셀 일괄 ${success}명`, failed.length ? `(엑셀 일괄)성공 ${success}명 / 실패 ${failed.length}명` : `(엑셀 일괄)${success}명`);
+    await logAudit(req, '추가', '근로자', `엑셀 일괄 ${success}명`, `(근로자)${okNames.join(', ')} 총 ${success}명`);
   }
   res.json({ success, failed });
 });
