@@ -109,12 +109,20 @@ function WorkplaceSection({ canEdit }) {
   const saveRow = async () => {
     const f = rowForm;
     if (f.kind !== "branch" && !f.clientName.trim()) { setMsg({ text: "거래처명을 입력해주세요.", ok: false }); return; }
-    if (f.kind === "branch" && !f.branchName.trim()) { setMsg({ text: "지점명을 입력해주세요.", ok: false }); return; }
+    if ((f.kind === "branch" || f.kind === "addBranch") && !f.branchName.trim()) { setMsg({ text: "지점명을 입력해주세요.", ok: false }); return; }
     if (f.lat === "" || f.lng === "") { setMsg({ text: "주소를 검색해 좌표를 채워주세요.", ok: false }); return; }
+    // '새 근무지 추가'인데 같은 거래처가 이미 있으면 → 지점으로 추가할지 확인
+    if (f.kind === "add") {
+      const exists = groups.some((g) => g.clientName === f.clientName.trim());
+      if (exists) {
+        if (!f.branchName.trim()) { setMsg({ text: "이미 있는 거래처입니다. 지점명을 입력해 지점으로 추가하세요.", ok: false }); return; }
+        if (!window.confirm("동일한 거래처가 존재합니다. 지점으로 추가하시겠습니까?")) return;
+      }
+    }
     setBusy(true); setMsg(null);
     const base = { lat: parseFloat(f.lat), lng: parseFloat(f.lng), address: f.address.trim(), postalCode: f.postalCode, detailAddress: f.detailAddress.trim() };
     try {
-      if (f.kind === "add") {
+      if (f.kind === "add" || f.kind === "addBranch") {
         await api.createWorkplace({ ...base, clientName: f.clientName.trim(), branchName: f.branchName.trim(), radiusM: parseInt(f.radius_m, 10) || 500 });
       } else if (f.kind === "single") {
         await api.updateWorkplace(f.id, { ...base, clientName: f.clientName.trim(), radiusM: parseInt(f.radius_m, 10) || 500 });
@@ -162,6 +170,7 @@ function WorkplaceSection({ canEdit }) {
   };
 
   const openRowAdd = () => { closeForms(); setRowForm({ ...emptyWp, kind: "add" }); setMsg(null); };
+  const openBranchAdd = (g) => { closeForms(); setRowForm({ ...emptyWp, kind: "addBranch", clientName: g.clientName, radius_m: g.radius_m }); setMsg(null); };
   const openSingleEdit = (wp) => { closeForms(); setRowForm({ kind: "single", id: wp.id, clientName: wp.client_name || wp.name, branchName: "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setMsg(null); };
   const openBranchEdit = (wp) => { closeForms(); setRowForm({ kind: "branch", id: wp.id, clientName: wp.client_name || "", branchName: wp.branch_name || "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setMsg(null); };
   const openClientEdit = (g) => { closeForms(); setClientForm({ oldClientName: g.clientName, clientName: g.clientName, radius_m: g.radius_m }); setMsg(null); };
@@ -184,18 +193,19 @@ function WorkplaceSection({ canEdit }) {
   // 근무지 행 추가/수정 폼 렌더
   const renderRowForm = () => {
     const f = rowForm; if (!f) return null;
-    const title = f.kind === "add" ? "새 근무지 추가" : f.kind === "single" ? "근무지 수정" : "지점 수정";
+    const title = f.kind === "add" ? "새 근무지 추가" : f.kind === "single" ? "근무지 수정" : f.kind === "addBranch" ? "지점 추가" : "지점 수정";
+    const fixedClient = f.kind === "branch" || f.kind === "addBranch"; // 거래처명 고정(지점 작업)
     return (
       <div style={formCardStyle}>
         <p style={formTitleStyle}>{title}</p>
-        {f.kind === "branch" && <div style={{ fontSize: 12, color: COL.gray, marginBottom: 8 }}>거래처: <b style={{ color: C.ink }}>{f.clientName}</b></div>}
-        {f.kind !== "branch" ? (
+        {fixedClient && <div style={{ fontSize: 12, color: COL.gray, marginBottom: 8 }}>거래처: <b style={{ color: C.ink }}>{f.clientName}</b> <span style={{ color: COL.gray }}>· 반경 {f.radius_m}m</span></div>}
+        {!fixedClient ? (
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
             <div><label style={labelStyle}>{f.kind === "add" ? "거래처명 *" : "근무지명 *"}</label><FInput placeholder="예: 이마트" value={f.clientName} onChange={(e) => setRF("clientName", e.target.value)} /></div>
             <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={f.radius_m} onChange={(e) => setRF("radius_m", e.target.value)} /></div>
           </div>
         ) : null}
-        {(f.kind === "add" || f.kind === "branch") && (
+        {(f.kind === "add" || f.kind === "branch" || f.kind === "addBranch") && (
           <div style={{ marginTop: 12 }}><label style={labelStyle}>지점명 {f.kind === "add" ? "(단일 근무지면 비워두세요)" : "*"}</label><FInput placeholder="예: 강릉점" value={f.branchName} onChange={(e) => setRF("branchName", e.target.value)} /></div>
         )}
         <label style={{ ...labelStyle, marginTop: 12 }}>주소 *</label>
@@ -257,6 +267,7 @@ function WorkplaceSection({ canEdit }) {
                 <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{g.clientName} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {g.radius_m}m</span></p>
                 <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
               </div>
+              {canEdit && <button style={miniBtn(COL.blue, COL.blueSoft || "#e3eef4")} onClick={() => openBranchAdd(g)}>추가</button>}
               {canEdit && <EditButton onClick={() => openSingleEdit(wp)} />}
               {canEdit && <DeleteButton onClick={() => delClient(g)} disabled={busy} />}
             </CardRow>
@@ -272,6 +283,7 @@ function WorkplaceSection({ canEdit }) {
                 <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: "0 0 2px" }}>{g.clientName} <span style={{ fontSize: 11, fontWeight: 800, color: COL.blue, background: COL.blueSoft || "#e3eef4", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>반경 {g.radius_m}m</span></p>
                 <p style={{ fontSize: 12.5, color: COL.gray, margin: 0 }}>{g.branches.length}개 점</p>
               </div>
+              {canEdit && <button style={miniBtn(COL.blue, COL.blueSoft || "#e3eef4")} onClick={(e) => { e.stopPropagation(); openBranchAdd(g); }}>추가</button>}
               {canEdit && <button style={miniBtn("#636a7a")} onClick={(e) => { e.stopPropagation(); openClientEdit(g); }}>수정</button>}
               {canEdit && <button style={miniBtn(COL.red, "#fff5f5")} onClick={(e) => { e.stopPropagation(); delClient(g); }}>삭제</button>}
             </div>
