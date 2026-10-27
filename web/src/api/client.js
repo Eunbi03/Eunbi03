@@ -109,7 +109,10 @@ export const submitRandomCheck = (checkId, location) => request(`/random-check/$
 export const getWorkplaces = () => request("/admin/workplaces");
 export const createWorkplace = (data) => request("/admin/workplaces", { method: "POST", body: data });
 export const updateWorkplace = (id, data) => request(`/admin/workplaces/${id}`, { method: "PUT", body: data });
+export const updateWorkplaceClient = (data) => request("/admin/workplaces/client", { method: "PUT", body: data });
 export const deleteWorkplace = (id) => request(`/admin/workplaces/${id}`, { method: "DELETE" });
+export const deleteWorkplaceClient = (clientName) => request("/admin/workplaces/client", { method: "DELETE", body: { clientName } });
+export const deleteWorkplaceBranches = (ids) => request("/admin/workplaces/delete-branches", { method: "POST", body: { ids } });
 export const geocodeAddress = (address) => request(`/admin/geocode?address=${encodeURIComponent(address)}`);
 export const bulkWorkplaces = (rows) => request("/admin/workplaces/bulk", { method: "POST", body: { rows } });
 

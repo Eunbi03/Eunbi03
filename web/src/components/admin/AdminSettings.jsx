@@ -65,46 +65,106 @@ function CardRow({ children }) {
   return <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, padding: "14px 18px", marginBottom: 8, background: "#fff", display: "flex", alignItems: "center", gap: 10 }}>{children}</div>;
 }
 
-/* ── 근무지 관리 (카카오 주소검색 → 좌표 자동) ─────────────────────────────── */
-const emptyWp = { name: "", radius_m: 500, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
+/* ── 근무지 관리: 거래처(client) > 지점(branch) 묶음 ───────────────────────── */
+const emptyWp = { clientName: "", branchName: "", radius_m: 500, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
 function WorkplaceSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false); const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(emptyWp);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
-  const [dup, setDup] = useState({ name: false, address: false });
   const [searching, setSearching] = useState(false);
   const fileRef = useRef(null);
+
+  // 근무지 행 추가/수정 폼 (주소 검색 포함). kind: 'add' | 'single' | 'branch'
+  const [rowForm, setRowForm] = useState(null); // { kind, id, ...emptyWp }
+  // 거래처 수정 폼 (거래처명 + 참고반경)
+  const [clientForm, setClientForm] = useState(null); // { oldClientName, clientName, radius_m }
+  const [openClient, setOpenClient] = useState(null); // 펼친 거래처명
+  const [delMode, setDelMode] = useState(null);  // 지점 삭제모드인 거래처명
+  const [sel, setSel] = useState({});            // 선택된 지점 id
+
   const load = () => { setLoading(true); api.getWorkplaces().then((d) => setList(d.workplaces || [])).catch(() => {}).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
-  const reset = () => { setForm(emptyWp); setAdding(false); setEditing(null); setDup({ name: false, address: false }); };
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const closeForms = () => { setRowForm(null); setClientForm(null); };
+  const setRF = (k, v) => setRowForm((f) => ({ ...f, [k]: v }));
+
+  // 거래처별 그룹핑 (list는 서버에서 client_name, branch 순으로 정렬됨)
+  const groups = [];
+  const byClient = {};
+  for (const wp of list) {
+    const c = wp.client_name || wp.name;
+    if (!byClient[c]) { byClient[c] = { clientName: c, radius_m: wp.radius_m || 500, branches: [] }; groups.push(byClient[c]); }
+    byClient[c].branches.push(wp);
+  }
+  const isSingle = (g) => g.branches.length === 1 && !g.branches[0].branch_name;
 
   const search = async () => {
-    if (!form.address.trim()) { setMsg({ text: "주소를 입력한 뒤 검색하세요.", ok: false }); return; }
+    if (!rowForm?.address.trim()) { setMsg({ text: "주소를 입력한 뒤 검색하세요.", ok: false }); return; }
     setSearching(true); setMsg(null);
     try {
-      const g = await api.geocodeAddress(form.address.trim());
-      setForm((f) => ({ ...f, address: g.road || f.address, postalCode: g.zone || "", lat: g.lat, lng: g.lng }));
-      setDup((d) => ({ ...d, address: false }));
+      const g = await api.geocodeAddress(rowForm.address.trim());
+      setRowForm((f) => ({ ...f, address: g.road || f.address, postalCode: g.zone || "", lat: g.lat, lng: g.lng }));
     } catch (e) { setMsg({ text: "주소 검색 실패: " + e.message, ok: false }); }
     finally { setSearching(false); }
   };
 
-  const save = async () => {
-    if (!form.name.trim()) { setMsg({ text: "근무지명을 입력해주세요.", ok: false }); return; }
-    if (form.lat === "" || form.lng === "") { setMsg({ text: "주소를 검색해 좌표를 채워주세요.", ok: false }); return; }
-    setBusy(true); setMsg(null); setDup({ name: false, address: false });
-    const body = { name: form.name.trim(), lat: parseFloat(form.lat), lng: parseFloat(form.lng), radiusM: parseInt(form.radius_m, 10) || 500, address: form.address.trim(), postalCode: form.postalCode, detailAddress: form.detailAddress.trim() };
+  const saveRow = async () => {
+    const f = rowForm;
+    if (f.kind !== "branch" && !f.clientName.trim()) { setMsg({ text: "거래처명을 입력해주세요.", ok: false }); return; }
+    if (f.kind === "branch" && !f.branchName.trim()) { setMsg({ text: "지점명을 입력해주세요.", ok: false }); return; }
+    if (f.lat === "" || f.lng === "") { setMsg({ text: "주소를 검색해 좌표를 채워주세요.", ok: false }); return; }
+    setBusy(true); setMsg(null);
+    const base = { lat: parseFloat(f.lat), lng: parseFloat(f.lng), address: f.address.trim(), postalCode: f.postalCode, detailAddress: f.detailAddress.trim() };
     try {
-      if (editing) await api.updateWorkplace(editing, body); else await api.createWorkplace(body);
-      reset(); setMsg({ text: "저장되었습니다.", ok: true }); load();
+      if (f.kind === "add") {
+        await api.createWorkplace({ ...base, clientName: f.clientName.trim(), branchName: f.branchName.trim(), radiusM: parseInt(f.radius_m, 10) || 500 });
+      } else if (f.kind === "single") {
+        await api.updateWorkplace(f.id, { ...base, clientName: f.clientName.trim(), radiusM: parseInt(f.radius_m, 10) || 500 });
+      } else { // branch
+        await api.updateWorkplace(f.id, { ...base, branchName: f.branchName.trim() });
+      }
+      closeForms(); setMsg({ text: "저장되었습니다.", ok: true }); load();
     } catch (e) {
-      if (e.status === 409 && e.payload?.dup) { setDup(e.payload.dup); setMsg({ text: "이미 등록된 근무지명 또는 주소입니다.", ok: false }); }
+      if (e.status === 409 && e.payload?.dup) setMsg({ text: "이미 등록된 근무지명 또는 주소입니다.", ok: false });
       else setMsg({ text: e.message, ok: false });
     } finally { setBusy(false); }
   };
-  const del = async (id) => { if (!window.confirm("이 근무지를 삭제하시겠습니까?")) return; setBusy(true); try { await api.deleteWorkplace(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+
+  const saveClient = async () => {
+    const f = clientForm;
+    if (!f.clientName.trim()) { setMsg({ text: "거래처명을 입력해주세요.", ok: false }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      await api.updateWorkplaceClient({ oldClientName: f.oldClientName, clientName: f.clientName.trim(), radiusM: parseInt(f.radius_m, 10) || 500 });
+      closeForms(); setMsg({ text: "저장되었습니다.", ok: true }); load();
+    } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+  };
+
+  const delClient = async (g) => {
+    const n = g.branches.length;
+    if (!window.confirm(`'${g.clientName}' 거래처${n > 1 ? ` (지점 ${n}개)` : ""}를 모두 삭제하시겠습니까?\n(과거 기록은 보존됩니다)`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      if (isSingle(g)) await api.deleteWorkplace(g.branches[0].id);
+      else await api.deleteWorkplaceClient(g.clientName);
+      load();
+    } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+  };
+
+  const toggleDel = async (clientName) => {
+    if (delMode === clientName) { // '확인' → 선택 삭제
+      const ids = Object.keys(sel).filter((id) => sel[id]);
+      if (ids.length) {
+        if (!window.confirm(`선택한 ${ids.length}개 지점을 삭제하시겠습니까?\n(과거 기록은 보존됩니다)`)) return;
+        setBusy(true);
+        try { await api.deleteWorkplaceBranches(ids); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+      }
+      setDelMode(null); setSel({});
+    } else { setDelMode(clientName); setSel({}); }
+  };
+
+  const openRowAdd = () => { closeForms(); setRowForm({ ...emptyWp, kind: "add" }); setMsg(null); };
+  const openSingleEdit = (wp) => { closeForms(); setRowForm({ kind: "single", id: wp.id, clientName: wp.client_name || wp.name, branchName: "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setMsg(null); };
+  const openBranchEdit = (wp) => { closeForms(); setRowForm({ kind: "branch", id: wp.id, clientName: wp.client_name || "", branchName: wp.branch_name || "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setMsg(null); };
+  const openClientEdit = (g) => { closeForms(); setClientForm({ oldClientName: g.clientName, clientName: g.clientName, radius_m: g.radius_m }); setMsg(null); };
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]; if (e.target) e.target.value = "";
@@ -121,57 +181,120 @@ function WorkplaceSection({ canEdit }) {
     finally { setBusy(false); }
   };
 
-  const dupBorder = (on) => (on ? { borderColor: COL.red } : {});
+  // 근무지 행 추가/수정 폼 렌더
+  const renderRowForm = () => {
+    const f = rowForm; if (!f) return null;
+    const title = f.kind === "add" ? "새 근무지 추가" : f.kind === "single" ? "근무지 수정" : "지점 수정";
+    return (
+      <div style={formCardStyle}>
+        <p style={formTitleStyle}>{title}</p>
+        {f.kind === "branch" && <div style={{ fontSize: 12, color: COL.gray, marginBottom: 8 }}>거래처: <b style={{ color: C.ink }}>{f.clientName}</b></div>}
+        {f.kind !== "branch" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+            <div><label style={labelStyle}>{f.kind === "add" ? "거래처명 *" : "근무지명 *"}</label><FInput placeholder="예: 이마트" value={f.clientName} onChange={(e) => setRF("clientName", e.target.value)} /></div>
+            <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={f.radius_m} onChange={(e) => setRF("radius_m", e.target.value)} /></div>
+          </div>
+        ) : null}
+        {(f.kind === "add" || f.kind === "branch") && (
+          <div style={{ marginTop: 12 }}><label style={labelStyle}>지점명 {f.kind === "add" ? "(단일 근무지면 비워두세요)" : "*"}</label><FInput placeholder="예: 강릉점" value={f.branchName} onChange={(e) => setRF("branchName", e.target.value)} /></div>
+        )}
+        <label style={{ ...labelStyle, marginTop: 12 }}>주소 *</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <FInput placeholder="주소 입력 후 검색" value={f.address} style={{ flex: 1 }}
+            onChange={(e) => { setRF("address", e.target.value); setRF("lat", ""); setRF("lng", ""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
+          <button onClick={search} disabled={searching} style={{ ...S.subGhost, padding: "8px 16px", whiteSpace: "nowrap" }}>{searching ? "검색 중…" : "검색"}</button>
+        </div>
+        <label style={{ ...labelStyle, marginTop: 12 }}>상세주소</label>
+        <FInput placeholder="상세주소 (동/호 등)" value={f.detailAddress} onChange={(e) => setRF("detailAddress", e.target.value)} />
+        <div style={{ fontSize: 12, color: COL.gray, marginTop: 8 }}>우편번호: {f.postalCode || "—"} &nbsp; 위도: {f.lat || "—"} &nbsp; 경도: {f.lng || "—"}</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          <button style={{ ...S.subGhost, flex: 1 }} onClick={closeForms} disabled={busy}>취소</button>
+          <button style={{ ...S.subPrimary, flex: 2, background: COL.blue, opacity: busy ? 0.6 : 1 }} onClick={saveRow} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
+        </div>
+      </div>
+    );
+  };
+
+  const miniBtn = (color, bg) => ({ border: `1px solid ${color}`, color, background: bg || "#fff", borderRadius: 7, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" });
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>근무지 관리</p>
-        {canEdit && !adding && !editing && (
+        {canEdit && !rowForm && !clientForm && (
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
             <button onClick={() => fileRef.current?.click()} disabled={busy}
               style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>엑셀 업로드</button>
-            <AddButton onClick={() => { setForm(emptyWp); setAdding(true); setMsg(null); }}>+ 근무지 추가</AddButton>
+            <AddButton onClick={openRowAdd}>+ 근무지 추가</AddButton>
           </div>
         )}
       </div>
       <Msg msg={msg} />
-      {(adding || editing) && (
+      {rowForm && renderRowForm()}
+      {clientForm && (
         <div style={formCardStyle}>
-          <p style={formTitleStyle}>{editing ? "근무지 수정" : "새 근무지 추가"}{(dup.name || dup.address) && <span style={{ color: COL.red, fontSize: 13, marginLeft: 8 }}>*중복*</span>}</p>
+          <p style={formTitleStyle}>거래처 수정</p>
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-            <div><label style={labelStyle}>근무지명 *</label><FInput placeholder="예: 새말센터" error={dup.name} value={form.name} onChange={(e) => { setF("name", e.target.value); setDup((d) => ({ ...d, name: false })); }} /></div>
-            <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={form.radius_m} onChange={(e) => setF("radius_m", e.target.value)} /></div>
+            <div><label style={labelStyle}>거래처명 *</label><FInput value={clientForm.clientName} onChange={(e) => setClientForm((f) => ({ ...f, clientName: e.target.value }))} /></div>
+            <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={clientForm.radius_m} onChange={(e) => setClientForm((f) => ({ ...f, radius_m: e.target.value }))} /></div>
           </div>
-          <label style={{ ...labelStyle, marginTop: 12 }}>주소 * {dup.address && <span style={{ color: COL.red }}>*중복*</span>}</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <FInput placeholder="주소 입력 후 검색" error={dup.address} value={form.address} style={{ flex: 1 }}
-              onChange={(e) => { setF("address", e.target.value); setF("lat", ""); setF("lng", ""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
-            <button onClick={search} disabled={searching} style={{ ...S.subGhost, padding: "8px 16px", whiteSpace: "nowrap" }}>{searching ? "검색 중…" : "검색"}</button>
-          </div>
-          <label style={{ ...labelStyle, marginTop: 12 }}>상세주소</label>
-          <FInput placeholder="상세주소 (동/호 등)" value={form.detailAddress} onChange={(e) => setF("detailAddress", e.target.value)} />
-          <div style={{ fontSize: 12, color: COL.gray, marginTop: 8 }}>
-            우편번호: {form.postalCode || "—"} &nbsp; 위도: {form.lat || "—"} &nbsp; 경도: {form.lng || "—"}
-          </div>
+          <div style={{ fontSize: 12, color: COL.gray, marginTop: 8 }}>※ 거래처명·참고반경은 이 거래처의 모든 지점에 함께 적용됩니다.</div>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button style={{ ...S.subGhost, flex: 1 }} onClick={reset} disabled={busy}>취소</button>
-            <button style={{ ...S.subPrimary, flex: 2, background: COL.blue, opacity: busy ? 0.6 : 1 }} onClick={save} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
+            <button style={{ ...S.subGhost, flex: 1 }} onClick={closeForms} disabled={busy}>취소</button>
+            <button style={{ ...S.subPrimary, flex: 2, background: COL.blue, opacity: busy ? 0.6 : 1 }} onClick={saveClient} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
           </div>
         </div>
       )}
-      {loading ? <div style={S.empty}>불러오는 중…</div> : !list.length && !adding ? <div style={S.empty}>등록된 근무지가 없습니다.</div> : list.map((wp) => (
-        <CardRow key={wp.id}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{wp.name} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {wp.radius_m || 500}m</span></p>
-            <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
+
+      {loading ? <div style={S.empty}>불러오는 중…</div> : !groups.length && !rowForm ? <div style={S.empty}>등록된 근무지가 없습니다.</div> : groups.map((g) => {
+        if (isSingle(g)) {
+          const wp = g.branches[0];
+          return (
+            <CardRow key={g.clientName}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{g.clientName} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {g.radius_m}m</span></p>
+                <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
+              </div>
+              {canEdit && <EditButton onClick={() => openSingleEdit(wp)} />}
+              {canEdit && <DeleteButton onClick={() => delClient(g)} disabled={busy} />}
+            </CardRow>
+          );
+        }
+        const open = openClient === g.clientName;
+        return (
+          <div key={g.clientName} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", cursor: "pointer" }}
+              onClick={() => { setOpenClient(open ? null : g.clientName); setDelMode(null); setSel({}); }}>
+              <span style={{ color: COL.blue, fontSize: 12, transform: open ? "rotate(90deg)" : "none", transition: ".15s" }}>▶</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: "0 0 2px" }}>{g.clientName} <span style={{ fontSize: 11, fontWeight: 800, color: COL.blue, background: COL.blueSoft || "#e3eef4", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>반경 {g.radius_m}m</span></p>
+                <p style={{ fontSize: 12.5, color: COL.gray, margin: 0 }}>{g.branches.length}개 점</p>
+              </div>
+              {canEdit && <button style={miniBtn("#636a7a")} onClick={(e) => { e.stopPropagation(); openClientEdit(g); }}>수정</button>}
+              {canEdit && <button style={miniBtn(COL.red, "#fff5f5")} onClick={(e) => { e.stopPropagation(); delClient(g); }}>삭제</button>}
+            </div>
+            {open && (
+              <div style={{ borderTop: `1px solid ${C.lineAdmin}`, background: COL.formBg || "#f3f9fc", padding: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 6px 8px" }}>
+                  <span style={{ fontSize: 12, color: COL.gray, fontWeight: 700 }}>지점 {g.branches.length}개</span>
+                  {canEdit && <button style={delMode === g.clientName ? { ...miniBtn("#fff"), background: COL.blue, borderColor: COL.blue } : miniBtn(COL.red, "#fff5f5")}
+                    onClick={() => toggleDel(g.clientName)} disabled={busy}>{delMode === g.clientName ? "확인" : "삭제"}</button>}
+                </div>
+                {g.branches.map((wp) => (
+                  <div key={wp.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.lineAdmin}`, borderRadius: 9, padding: "9px 12px", margin: "6px 0", cursor: delMode === g.clientName ? "default" : "pointer" }}
+                    onClick={() => { if (delMode !== g.clientName && canEdit) openBranchEdit(wp); }}>
+                    {delMode === g.clientName && <input type="checkbox" style={{ width: 18, height: 18, accentColor: COL.red }} checked={!!sel[wp.id]} onChange={(e) => setSel((s) => ({ ...s, [wp.id]: e.target.checked }))} onClick={(e) => e.stopPropagation()} />}
+                    <span style={{ fontWeight: 700, fontSize: 14, flex: "none", minWidth: 80 }}>{wp.branch_name || "(지점명 없음)"}</span>
+                    <span style={{ fontSize: 12.5, color: COL.gray, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ")}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          {canEdit && <EditButton onClick={() => { setForm({ name: wp.name || "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setEditing(wp.id); setAdding(false); setMsg(null); setDup({ name: false, address: false }); }} />}
-          {canEdit && <DeleteButton onClick={() => del(wp.id)} disabled={busy} />}
-        </CardRow>
-      ))}
+        );
+      })}
     </div>
   );
 }

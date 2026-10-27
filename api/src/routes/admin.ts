@@ -160,14 +160,19 @@ router.get('/geocode', async (req: Request, res: Response): Promise<void> => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// 거래처명 + 지점명 → 표시/매칭용 name 조합
+const wpFullName = (client: string, branch: string) => (branch ? `${client} ${branch}` : client);
+
 router.get('/workplaces', async (_req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    'SELECT id, name, lat, lng, radius_m, address, postal_code, detail_address, is_active, created_at FROM workplaces WHERE is_active=TRUE ORDER BY name'
+    `SELECT id, name, client_name, branch_name, lat, lng, radius_m, address, postal_code, detail_address, is_active, created_at
+       FROM workplaces WHERE is_active=TRUE
+      ORDER BY client_name, (branch_name IS NULL) DESC, branch_name, name`
   );
   res.json({ workplaces: rows });
 });
 
-// 근무지명/주소 중복 검사 (활성 근무지 대상). excludeId는 수정 시 자기 자신 제외.
+// name(조합) 중복 검사 (활성 근무지 대상). excludeId는 수정 시 자기 자신 제외.
 async function workplaceDupCheck(name: string, address: string, excludeId?: string): Promise<{ name: boolean; address: boolean }> {
   const { rows } = await pool.query(
     `SELECT name, address FROM workplaces WHERE is_active=TRUE ${excludeId ? 'AND id<>$3' : ''}
@@ -178,36 +183,93 @@ async function workplaceDupCheck(name: string, address: string, excludeId?: stri
 }
 
 router.post('/workplaces', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  const { name, lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
-  if (!name || lat == null || lng == null) { res.status(400).json({ error: 'name, lat, lng는 필수입니다.' }); return; }
+  const clientName = (req.body.clientName ?? req.body.name ?? '').trim();
+  const branchName = (req.body.branchName ?? '').trim();
+  const { lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
+  if (!clientName || lat == null || lng == null) { res.status(400).json({ error: '거래처명, 좌표는 필수입니다.' }); return; }
+  const name = wpFullName(clientName, branchName);
   const dup = await workplaceDupCheck(name, address);
   if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
+  // 참고반경은 거래처 공통: 같은 거래처가 이미 있으면 그 반경을 따른다.
+  const { rows: ex } = await pool.query('SELECT radius_m FROM workplaces WHERE is_active=TRUE AND client_name=$1 LIMIT 1', [clientName]);
+  const radius = ex[0] ? ex[0].radius_m : (radiusM || 500);
   const { rows } = await pool.query(
-    'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-    [name, lat, lng, radiusM || 500, address || null, postalCode || null, detailAddress || null]
+    `INSERT INTO workplaces (name, client_name, branch_name, lat, lng, radius_m, address, postal_code, detail_address)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [name, clientName, branchName || null, lat, lng, radius, address || null, postalCode || null, detailAddress || null]
   );
-  await logAudit(req, '추가', '근무지', rows[0]?.name);
+  await logAudit(req, '추가', '근무지', name);
   res.status(201).json({ workplace: rows[0] });
 });
 
-router.put('/workplaces/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  const { name, lat, lng, radiusM, address, postalCode, detailAddress } = req.body;
-  const dup = await workplaceDupCheck(name, address, req.params.id);
-  if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
-  const { rows: owp } = await pool.query('SELECT name, radius_m, address, detail_address FROM workplaces WHERE id=$1', [req.params.id]);
-  const ow = owp[0] || {};
-  const { rows } = await pool.query(
-    'UPDATE workplaces SET name=$1, lat=$2, lng=$3, radius_m=$4, address=$5, postal_code=$6, detail_address=$7 WHERE id=$8 RETURNING *',
-    [name, lat, lng, radiusM || 500, address || null, postalCode || null, detailAddress || null, req.params.id]
+// 거래처 단위 수정: 거래처명 + 참고반경을 그 거래처의 모든 지점에 일괄 적용
+router.put('/workplaces/client', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const oldClientName = (req.body.oldClientName ?? '').trim();
+  const clientName = (req.body.clientName ?? '').trim();
+  const radiusM = parseInt(req.body.radiusM, 10) || 500;
+  if (!oldClientName || !clientName) { res.status(400).json({ error: '거래처명이 필요합니다.' }); return; }
+  const { rows: before } = await pool.query('SELECT radius_m FROM workplaces WHERE is_active=TRUE AND client_name=$1 LIMIT 1', [oldClientName]);
+  if (!before[0]) { res.status(404).json({ error: '거래처를 찾을 수 없습니다.' }); return; }
+  await pool.query(
+    `UPDATE workplaces
+        SET client_name=$1, radius_m=$2,
+            name = CASE WHEN branch_name IS NOT NULL AND branch_name<>'' THEN $1||' '||branch_name ELSE $1 END
+      WHERE is_active=TRUE AND client_name=$3`,
+    [clientName, radiusM, oldClientName]
   );
-  if (!rows[0]) { res.status(404).json({ error: '근무지를 찾을 수 없습니다.' }); return; }
+  const cparts: string[] = [];
+  if (oldClientName !== clientName) cparts.push(`(거래처명)${oldClientName}->${clientName}`);
+  if (String(before[0].radius_m ?? '') !== String(radiusM)) cparts.push(`(참고 반경)${before[0].radius_m}->${radiusM}`);
+  await logAudit(req, '수정', '근무지', clientName, cparts.join(', ') || null);
+  res.json({ success: true });
+});
+
+// 단일 행(지점 또는 단일 근무지) 수정: 지점명/주소(좌표)/상세주소. (거래처명·반경은 /client에서)
+router.put('/workplaces/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const { rows: curRows } = await pool.query(
+    'SELECT client_name, branch_name, name, radius_m, address, detail_address FROM workplaces WHERE id=$1', [req.params.id]
+  );
+  const cur = curRows[0];
+  if (!cur) { res.status(404).json({ error: '근무지를 찾을 수 없습니다.' }); return; }
+  const clientName = (req.body.clientName !== undefined ? String(req.body.clientName) : (cur.client_name || '')).trim();
+  const branchName = (req.body.branchName !== undefined ? String(req.body.branchName) : (cur.branch_name || '')).trim();
+  const radiusM = req.body.radiusM !== undefined ? (parseInt(req.body.radiusM, 10) || 500) : cur.radius_m;
+  const { lat, lng, address, postalCode, detailAddress } = req.body;
+  const name = wpFullName(clientName, branchName);
+  const dup = await workplaceDupCheck(name, address ?? cur.address, req.params.id);
+  if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
+  const { rows } = await pool.query(
+    `UPDATE workplaces SET name=$1, client_name=$2, branch_name=$3, radius_m=$4,
+       lat=COALESCE($5,lat), lng=COALESCE($6,lng), address=$7, postal_code=$8, detail_address=$9
+     WHERE id=$10 RETURNING *`,
+    [name, clientName, branchName || null, radiusM, lat ?? null, lng ?? null,
+     address ?? cur.address ?? null, postalCode ?? null, detailAddress ?? cur.detail_address ?? null, req.params.id]
+  );
   const wparts: string[] = [];
-  if ((ow.name || '') !== (name || '')) wparts.push(`(근무지명)${ow.name}->${name}`);
-  if (String(ow.radius_m ?? '') !== String(radiusM || 500)) wparts.push(`(참고 반경)${ow.radius_m}->${radiusM || 500}`);
-  if ((ow.address || '') !== (address || '')) wparts.push(`(주소)${ow.address || '-'}->${address || '-'}`);
-  if ((ow.detail_address || '') !== (detailAddress || '')) wparts.push(`(상세주소)${ow.detail_address || '-'}->${detailAddress || '-'}`);
+  if ((cur.branch_name || '') !== branchName) wparts.push(`(지점명)${cur.branch_name || '-'}->${branchName || '-'}`);
+  if ((cur.client_name || '') !== clientName) wparts.push(`(근무지명)${cur.client_name}->${clientName}`);
+  if (address !== undefined && (cur.address || '') !== (address || '')) wparts.push(`(주소)${cur.address || '-'}->${address || '-'}`);
   await logAudit(req, '수정', '근무지', name, wparts.join(', ') || null);
   res.json({ workplace: rows[0] });
+});
+
+// 거래처 전체 삭제(비활성): 과거 기록은 그대로 보존
+router.delete('/workplaces/client', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const clientName = (req.body.clientName ?? req.query.clientName ?? '').toString().trim();
+  if (!clientName) { res.status(400).json({ error: '거래처명이 필요합니다.' }); return; }
+  const { rowCount } = await pool.query('UPDATE workplaces SET is_active=FALSE WHERE is_active=TRUE AND client_name=$1', [clientName]);
+  await logAudit(req, '삭제', '근무지', clientName, `(근무지)${clientName} 전체 ${rowCount || 0}개점`);
+  res.json({ success: true, count: rowCount || 0 });
+});
+
+// 지점 다중 삭제(비활성)
+router.post('/workplaces/delete-branches', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const ids: string[] = Array.isArray(req.body.ids) ? req.body.ids : [];
+  if (!ids.length) { res.status(400).json({ error: '삭제할 지점이 없습니다.' }); return; }
+  const { rows } = await pool.query('UPDATE workplaces SET is_active=FALSE WHERE id = ANY($1) RETURNING name', [ids]);
+  const names = rows.map((r: any) => r.name);
+  if (names.length) await logAudit(req, '삭제', '근무지', `${names.length}개 지점`, `(지점)${names.join(', ')} 총 ${names.length}개`);
+  res.json({ success: true, count: names.length });
 });
 
 router.delete('/workplaces/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
@@ -221,21 +283,33 @@ router.post('/workplaces/bulk', requireAdmin, permSettings, async (req: Request,
   if (!process.env.KAKAO_REST_KEY) { res.status(500).json({ error: '카카오 API 키가 설정되지 않았습니다.' }); return; }
   const rows: any[] = Array.isArray(req.body.rows) ? req.body.rows : [];
   let success = 0; const failed: any[] = []; const okNames: string[] = [];
+  // 거래처별 참고반경 캐시(공통 반경 유지). DB에 이미 있으면 그 값 우선.
+  const clientRadius: Record<string, number> = {};
   for (const r of rows) {
-    const name = (r.name || '').trim();
+    const clientName = (r.clientName || r.name || '').trim();
+    const branchName = (r.branchName || '').trim();
     const address = (r.address || '').trim();
-    if (!name) { failed.push({ name: r.name || '(이름없음)', reason: '근무지명 누락' }); continue; }
+    const name = wpFullName(clientName, branchName);
+    if (!clientName) { failed.push({ name: r.clientName || '(이름없음)', reason: '거래처명 누락' }); continue; }
     if (!address) { failed.push({ name, reason: '주소 누락' }); continue; }
     try {
       const dup = await workplaceDupCheck(name, address);
       if (dup.name && dup.address) { failed.push({ name, reason: '근무지명·주소 모두 중복' }); continue; }
-      if (dup.name)    { failed.push({ name, reason: '근무지명 중복' }); continue; }
+      if (dup.name)    { failed.push({ name, reason: '근무지명(거래처+지점) 중복' }); continue; }
       if (dup.address) { failed.push({ name, reason: '주소 중복' }); continue; }
       const g = await geocodeAddress(address);
       if (!g) { failed.push({ name, reason: '주소 검색 실패(좌표 없음)' }); continue; }
+      // 참고반경: 캐시 → DB 기존값 → 행 값 순으로 거래처 공통 유지
+      let radius = clientRadius[clientName];
+      if (radius === undefined) {
+        const { rows: ex } = await pool.query('SELECT radius_m FROM workplaces WHERE is_active=TRUE AND client_name=$1 LIMIT 1', [clientName]);
+        radius = ex[0] ? ex[0].radius_m : (parseInt(r.radiusM, 10) || 500);
+        clientRadius[clientName] = radius;
+      }
       await pool.query(
-        'INSERT INTO workplaces (name, lat, lng, radius_m, address, postal_code, detail_address) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [name, g.lat, g.lng, parseInt(r.radiusM, 10) || 500, g.road, g.zone || null, (r.detailAddress || '').trim() || null]
+        `INSERT INTO workplaces (name, client_name, branch_name, lat, lng, radius_m, address, postal_code, detail_address)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [name, clientName, branchName || null, g.lat, g.lng, radius, g.road, g.zone || null, (r.detailAddress || '').trim() || null]
       );
       success++; okNames.push(name);
     } catch (e: any) { failed.push({ name, reason: e.message }); }
