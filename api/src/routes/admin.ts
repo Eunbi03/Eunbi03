@@ -1628,8 +1628,11 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
       failed.push({ ...info, reason: e.code === '23505' ? '중복(전화번호/이메일)' : e.message });
     }
   }
-  if (success > 0) {
-    await logAudit(req, '추가', '근로자', `엑셀 일괄 ${success}명`, `(근로자)${okNames.join(', ')} 총 ${success}명`);
+  if (success > 0 || failed.length > 0) {
+    const failText = failed.length
+      ? `, 실패: ${failed.map((f) => `${f.name || '(이름없음)'}(사유: ${f.reason})`).join(', ')}`
+      : '';
+    await logAudit(req, '추가', '근로자', `엑셀 일괄 ${success}명`, `(근로자)${okNames.join(', ')} 총 ${success}명${failText}`);
   }
   res.json({ success, failed });
 });
