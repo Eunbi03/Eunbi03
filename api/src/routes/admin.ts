@@ -1566,6 +1566,15 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
             to_char(break_start,'HH24:MI') bs, to_char(break_end,'HH24:MI') be FROM job_schedules`
   );
   const jsByName: Record<string, any> = {}; for (const j of jss) jsByName[j.name] = j;
+  // 조직 마스터(설정 등록값)로 법인/본부/팀 검증 준비
+  const { rows: corpRows } = await pool.query('SELECT name FROM corporations');
+  const corpSet = new Set<string>(corpRows.map((c: any) => c.name));
+  const { rows: divRows } = await pool.query('SELECT id, name FROM divisions');
+  const divSet = new Set<string>(divRows.map((d: any) => d.name));
+  const divIdToName: Record<string, string> = {}; for (const d of divRows) divIdToName[d.id] = d.name;
+  const { rows: teamRows } = await pool.query('SELECT division_id, name FROM teams');
+  const teamSet = new Set<string>(teamRows.map((t: any) => t.name));
+  const divTeamPairs = new Set<string>(teamRows.map((t: any) => `${divIdToName[t.division_id]}\u0000${t.name}`));
 
   let success = 0; const failed: any[] = []; const okNames: string[] = [];
   for (const r of rows) {
@@ -1573,6 +1582,16 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
     const phoneDigits = (r.phone || '').replace(/\D/g, '');
     const info = { corp: r.corp, division: r.division, team: r.team, jobTitle: r.jobTitle, name };
     if (!name || !phoneDigits) { failed.push({ ...info, reason: '이름/전화번호 누락' }); continue; }
+    // 법인/본부/팀: 설정에 등록된 값이 아니면 실패 (예전 양식·오타 유입 방지)
+    const corp = (r.corp || '').trim(), division = (r.division || '').trim(), team = (r.team || '').trim();
+    const orgReasons: string[] = [];
+    if (corp && !corpSet.has(corp)) orgReasons.push(`법인 '${corp}' 미등록`);
+    if (division && !divSet.has(division)) orgReasons.push(`본부 '${division}' 미등록`);
+    if (team) {
+      if (!teamSet.has(team)) orgReasons.push(`팀 '${team}' 미등록`);
+      else if (division && !divTeamPairs.has(`${division}\u0000${team}`)) orgReasons.push(`팀 '${team}'은(는) 본부 '${division}' 소속이 아님`);
+    }
+    if (orgReasons.length) { failed.push({ ...info, reason: orgReasons.join(', ') }); continue; }
     const workplaceId = r.workplaceName ? wpByName[String(r.workplaceName).trim()] : null;
     if (r.workplaceName && !workplaceId) { failed.push({ ...info, reason: `근무지 '${r.workplaceName}' 없음` }); continue; }
     const js = r.jobTitle ? jsByName[String(r.jobTitle).trim()] : null;

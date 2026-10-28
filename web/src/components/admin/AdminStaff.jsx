@@ -1036,7 +1036,8 @@ export default function AdminStaff({ filters, currentUser }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
                 {uploadResult.failed.map((f, i) => (
                   <div key={i} style={{ fontSize: 12, color: C.ink, background: C.sealSoft, borderRadius: 8, padding: "8px 10px" }}>
-                    <b>{[f.corp, f.division, f.team, f.jobTitle, f.name].filter(Boolean).join(" · ")}</b>
+                    <b>{f.name || "(이름없음)"}</b>
+                    <span style={{ color: C.inkSoft }}>{[f.corp, f.division, f.team, f.jobTitle].filter(Boolean).length ? "  (" + [f.corp, f.division, f.team, f.jobTitle].filter(Boolean).join(" · ") + ")" : ""}</span>
                     <div style={{ color: C.seal }}>사유: {f.reason}</div>
                   </div>
                 ))}
