@@ -125,26 +125,54 @@ router.post('/login',
       res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다.' }); return;
     }
     const user = rows[0];
-
-    if (user.is_locked) {
-      await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'ACCOUNT_LOCKED', req });
-      res.status(403).json({ error: '계정이 잠겼습니다. 인적자원팀에 문의하세요.' }); return;
-    }
-
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
-    if (!passwordMatch) {
-      const newFailCount = user.failed_login_attempts + 1;
-      const shouldLock = newFailCount >= MAX_FAILED;
-      await pool.query(
-        `UPDATE users SET failed_login_attempts=$1, is_locked=$2, locked_reason=$3,
-         locked_at=CASE WHEN $2 THEN now() ELSE locked_at END WHERE id=$4`,
-        [newFailCount, shouldLock, shouldLock ? '5회 이상 로그인 실패' : null, user.id]
-      );
-      await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'WRONG_PASSWORD', req });
-      res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.', remainingAttempts: Math.max(0, MAX_FAILED - newFailCount) }); return;
-    }
-
     const isAdminUser = user.role === 'admin' || user.role === 'hr';
+
+    if (isAdminUser) {
+      // 관리자: 공용 계정이므로 잠금/실패횟수를 '이 기기(admin_devices)' 단위로 처리한다.
+      const { rows: devRows } = await pool.query('SELECT * FROM admin_devices WHERE user_id=$1 AND device_id=$2', [user.id, deviceId]);
+      const dev = devRows[0];
+      if (dev && dev.is_locked) {
+        await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DEVICE_LOCKED', req });
+        res.status(403).json({ error: '이 기기가 잠겼습니다. 권한자에게 잠금 해제를 요청하세요.' }); return;
+      }
+      const passwordMatch = await bcrypt.compare(password, user.password_hash);
+      if (!passwordMatch) {
+        // 등록된(혹은 승인대기) 기기면 그 기기만 실패횟수 증가·잠금. 미등록 기기는 잠글 대상이 없어 그냥 거부.
+        if (dev) {
+          const n = (dev.failed_login_attempts || 0) + 1;
+          const shouldLock = n >= MAX_FAILED;
+          await pool.query(
+            `UPDATE admin_devices SET failed_login_attempts=$1, is_locked=$2, locked_reason=$3,
+             locked_at=CASE WHEN $2 THEN now() ELSE locked_at END WHERE id=$4`,
+            [n, shouldLock, shouldLock ? '5회 이상 로그인 실패' : null, dev.id]
+          );
+          await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'WRONG_PASSWORD', req });
+          res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.', remainingAttempts: Math.max(0, MAX_FAILED - n) }); return;
+        }
+        await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'WRONG_PASSWORD', req });
+        res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' }); return;
+      }
+      // 비번 정답 → 이 기기 실패횟수 초기화
+      if (dev) await pool.query('UPDATE admin_devices SET failed_login_attempts=0 WHERE id=$1', [dev.id]);
+    } else {
+      // 근로자: 단일 기기이므로 기존처럼 users 행 기준 잠금.
+      if (user.is_locked) {
+        await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'ACCOUNT_LOCKED', req });
+        res.status(403).json({ error: '계정이 잠겼습니다. 인적자원팀에 문의하세요.' }); return;
+      }
+      const passwordMatch = await bcrypt.compare(password, user.password_hash);
+      if (!passwordMatch) {
+        const newFailCount = user.failed_login_attempts + 1;
+        const shouldLock = newFailCount >= MAX_FAILED;
+        await pool.query(
+          `UPDATE users SET failed_login_attempts=$1, is_locked=$2, locked_reason=$3,
+           locked_at=CASE WHEN $2 THEN now() ELSE locked_at END WHERE id=$4`,
+          [newFailCount, shouldLock, shouldLock ? '5회 이상 로그인 실패' : null, user.id]
+        );
+        await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'WRONG_PASSWORD', req });
+        res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.', remainingAttempts: Math.max(0, MAX_FAILED - newFailCount) }); return;
+      }
+    }
 
     if (isAdminUser) {
       // 관리자: admin_devices 테이블에서 기기 확인

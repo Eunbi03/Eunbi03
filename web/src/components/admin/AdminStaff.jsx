@@ -231,7 +231,7 @@ const permText = (perms) => {
 };
 
 // 관리자 카드 — 관리자명당 1개. 공통 정보(권한/법인/전화)는 한 번만, 기기코드는 아래에 목록으로.
-function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo }) {
+function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpList = [], teamList = [], onApprove, onRemove, onTransfer, onSaveInfo, onUnlock }) {
   const rep = devices[0] || {};                       // 공통 정보 대표 기기(권한은 그룹 동기화됨)
   const anyAuthority = devices.some((d) => d.is_authority);
   // 권한자(그룹) 최소 3명 유지: 이 그룹의 마지막 권한자 기기이고 권한자 그룹이 3개 이하면 삭제 불가
@@ -313,11 +313,13 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 10, color: C.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>{d.device_id}</span>
                 {d.is_authority && <span style={{ fontSize: 9, fontWeight: 700, color: "#b9820f", background: "#f6ebcf", padding: "1px 6px", borderRadius: 20 }}>권한자</span>}
+                {d.is_locked && <span style={{ fontSize: 9, fontWeight: 700, color: C.seal, background: C.sealSoft, padding: "1px 6px", borderRadius: 20 }}>잠김</span>}
               </div>
               <div style={{ fontSize: 10, fontWeight: 700, color: d.is_approved ? C.green : C.amber }}>{d.is_approved ? "승인됨" : "대기 중"}</div>
             </div>
             {isHolder && (
               <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                {d.is_locked && <button style={smallBtn(C.seal, "#fef5f5")} onClick={() => onUnlock(d.id)}>잠금해제</button>}
                 {!d.is_approved && <button style={smallBtn(C.green)} onClick={() => onApprove(d.id)}>승인</button>}
                 {d.is_approved && !d.is_authority && <button style={smallBtn("#b9820f")} onClick={() => onTransfer(d)}>권한자 변경</button>}
                 {!(d.is_authority && lastInGroup && authorityGroupCount <= 3) && <button style={{ ...smallBtn(C.seal, "#fef5f5"), border: "none" }} onClick={() => onRemove(d.id)}>삭제</button>}
@@ -385,7 +387,7 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
 }
 
 // 관리자/인적자원팀 계정 수정 모달
-function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, onApproveDevice, onRemoveDevice, onTransfer, onResetPw, onNameSave, onSaveDeviceInfo, onClose }) {
+function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, onApproveDevice, onRemoveDevice, onTransfer, onResetPw, onNameSave, onSaveDeviceInfo, onUnlockDevice, onClose }) {
   // 관리자 정보 수정(이름·기기·비밀번호·권한자 변경)은 모두 '권한자'만 가능.
   // (공용 계정을 공유하므로 role이 아니라 권한자 여부로 구분)
   const isHolder = !!currentUser?.isAuthorityHolder;
@@ -610,7 +612,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                 <ManagerCard key={mName} name={mName} devices={devs} isHolder={isHolder}
                   authorityGroupCount={new Set(adminDevices.filter((x) => x.is_authority).map((x) => x.device_name)).size}
                   corpList={corpList} teamList={teamList}
-                  onApprove={onApproveDevice} onRemove={onRemoveDevice} onTransfer={handleTransfer} onSaveInfo={onSaveDeviceInfo} />
+                  onApprove={onApproveDevice} onRemove={onRemoveDevice} onTransfer={handleTransfer} onSaveInfo={onSaveDeviceInfo} onUnlock={onUnlockDevice} />
               ))}
             </div>
           )}
@@ -754,6 +756,15 @@ export default function AdminStaff({ filters, currentUser }) {
     await api.updateDeviceInfo(deviceRowId, data);
     setMsg("기기 정보가 저장되었습니다.");
     if (adminTarget) await refreshAdminDevices(adminTarget.id);
+  };
+
+  const handleUnlockDevice = async (deviceRowId) => {
+    if (!confirm("이 기기의 잠금을 해제하시겠습니까?")) return;
+    try {
+      await api.unlockAdminDevice(deviceRowId);
+      setMsg("기기 잠금이 해제되었습니다.");
+      if (adminTarget) await refreshAdminDevices(adminTarget.id);
+    } catch (e) { setMsg(e.message); }
   };
 
   const handleTransferAuthority = async (targetDeviceId) => {
@@ -1103,6 +1114,7 @@ export default function AdminStaff({ filters, currentUser }) {
           onResetPw={handleAdminResetPw}
           onNameSave={handleAdminNameSave}
           onSaveDeviceInfo={handleSaveDeviceInfo}
+          onUnlockDevice={handleUnlockDevice}
           onClose={() => setAdminTarget(null)}
         />
       )}

@@ -145,6 +145,7 @@ export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day",
 export const getMyAdminDevices = () => request("/admin/my-devices");
 export const getAdminDevices = (userId) => request(`/admin/admin-devices/${userId}`);
 export const approveAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}/approve`, { method: "POST" });
+export const unlockAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}/unlock`, { method: "POST" });
 export const removeAdminDevice = (deviceRowId) => request(`/admin/devices/${deviceRowId}`, { method: "DELETE" });
 export const transferAuthority = (targetDeviceId) => request("/admin/authority/transfer", { method: "PUT", body: { targetDeviceId } });
 export const updateDeviceInfo = (deviceRowId, data) => request(`/admin/devices/${deviceRowId}/info`, { method: "PUT", body: data });

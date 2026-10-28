@@ -974,7 +974,7 @@ router.post('/attendance/:recordId/approve-time-change', async (req: Request, re
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
   const isHolder = await reqIsAuthority(req); // 권한자만 대기 기기(승인 대상) 목록 조회
   const { rows: myDevices } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, scope_teams, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, scope_teams, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
   );
   let pendingDevices: any[] = [];
@@ -992,7 +992,7 @@ router.get('/my-devices', async (req: Request, res: Response): Promise<void> => 
 // 특정 관리자의 기기 목록 (모든 관리자 조회 가능 — 편집 권한은 별도)
 router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, scope_teams, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, scope_teams, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.params.userId]
   );
   res.json({ devices: rows });
@@ -1007,6 +1007,18 @@ router.post('/devices/:id/approve', async (req: Request, res: Response): Promise
   );
   if (!rows[0]) { res.status(404).json({ error: '승인할 기기를 찾을 수 없습니다.' }); return; }
   await logAudit(req, '승인', '관리자', rows[0].device_name);
+  res.json({ success: true });
+});
+
+// 기기 잠금 해제 (권한자만) — 비번 실패로 잠긴 특정 관리자 기기만 해제
+router.post('/devices/:id/unlock', async (req: Request, res: Response): Promise<void> => {
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 잠금 해제할 수 있습니다.' }); return; }
+  const { rows } = await pool.query(
+    'UPDATE admin_devices SET is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL WHERE id=$1 RETURNING device_name',
+    [req.params.id]
+  );
+  if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
+  await logAudit(req, '잠금해제', '관리자', rows[0].device_name, '기기 잠금 해제');
   res.json({ success: true });
 });
 
