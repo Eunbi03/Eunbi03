@@ -3,10 +3,13 @@ import crypto from 'crypto';
 import { renderTemplate } from './messageTemplates';
 
 // 템플릿 본문(일반 텍스트)을 이메일 HTML로 변환: 이스케이프 + 링크 자동연결 + 줄바꿈.
-function htmlizeBody(text: string, link?: string): string {
+function htmlizeBody(text: string, _link?: string): string {
   const esc = (s: string) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
-  let h = esc(text);
-  if (link) h = h.split(esc(link)).join(`<a href="${link}">${esc(link)}</a>`);
+  // 본문의 모든 http(s) URL을 클릭 가능한 <a>로 자동 변환 (치환자/직접입력 무관).
+  const parts = String(text ?? '').split(/(https?:\/\/[^\s]+)/g);
+  let h = parts.map((p) => (/^https?:\/\//.test(p)
+    ? `<a href="${p.replace(/"/g, '%22')}">${esc(p)}</a>`
+    : esc(p))).join('');
   h = h.replace(/\n/g, '<br>');
   return `<div style="font-family:'맑은 고딕',sans-serif;color:#333;font-size:14px;line-height:1.7;">${h}</div>`;
 }
