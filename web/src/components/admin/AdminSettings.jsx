@@ -44,8 +44,17 @@ function AddButton({ children, onClick }) {
 function DeleteButton({ onClick, disabled }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{ border: `1px solid ${COL.lred}`, background: COL.lred, borderRadius: 8, padding: "7px 14px", fontSize: 13, color: COL.red, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+      style={{ border: "none", background: COL.lred, borderRadius: 8, padding: "7px 14px", fontSize: 13, color: COL.red, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
       삭제
+    </button>
+  );
+}
+// 행 단위 '추가' 버튼 (수정/삭제와 동일 크기)
+function RowAddButton({ onClick }) {
+  return (
+    <button onClick={onClick}
+      style={{ border: `1px solid ${COL.blue}`, background: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 13, color: COL.blue, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+      추가
     </button>
   );
 }
@@ -267,7 +276,7 @@ function WorkplaceSection({ canEdit }) {
                 <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{g.clientName} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {g.radius_m}m</span></p>
                 <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
               </div>
-              {canEdit && <button style={miniBtn(COL.blue, COL.blueSoft || "#e3eef4")} onClick={() => openBranchAdd(g)}>추가</button>}
+              {canEdit && <RowAddButton onClick={() => openBranchAdd(g)} />}
               {canEdit && <EditButton onClick={() => openSingleEdit(wp)} />}
               {canEdit && <DeleteButton onClick={() => delClient(g)} disabled={busy} />}
             </CardRow>
@@ -283,9 +292,13 @@ function WorkplaceSection({ canEdit }) {
                 <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: "0 0 2px" }}>{g.clientName} <span style={{ fontSize: 11, fontWeight: 800, color: COL.blue, background: COL.blueSoft || "#e3eef4", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>반경 {g.radius_m}m</span></p>
                 <p style={{ fontSize: 12.5, color: COL.gray, margin: 0 }}>{g.branches.length}개 점</p>
               </div>
-              {canEdit && <button style={miniBtn(COL.blue, COL.blueSoft || "#e3eef4")} onClick={(e) => { e.stopPropagation(); openBranchAdd(g); }}>추가</button>}
-              {canEdit && <button style={miniBtn("#636a7a")} onClick={(e) => { e.stopPropagation(); openClientEdit(g); }}>수정</button>}
-              {canEdit && <button style={miniBtn(COL.red, "#fff5f5")} onClick={(e) => { e.stopPropagation(); delClient(g); }}>삭제</button>}
+              {canEdit && (
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                  <RowAddButton onClick={() => openBranchAdd(g)} />
+                  <EditButton onClick={() => openClientEdit(g)} />
+                  <DeleteButton onClick={() => delClient(g)} disabled={busy} />
+                </div>
+              )}
             </div>
             {open && (
               <div style={{ borderTop: `1px solid ${C.lineAdmin}`, background: COL.formBg || "#f3f9fc", padding: 8 }}>
