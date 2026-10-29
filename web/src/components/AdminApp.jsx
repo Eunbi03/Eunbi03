@@ -6,6 +6,7 @@ import AdminStaff from "./admin/AdminStaff.jsx";
 import AdminIndividual from "./admin/AdminIndividual.jsx";
 import AdminSettings from "./admin/AdminSettings.jsx";
 import AdminLog from "./admin/AdminLog.jsx";
+import AdminMessage from "./admin/AdminMessage.jsx";
 import * as api from "../api/client.js";
 
 const BASE_TABS = [
@@ -44,6 +45,8 @@ export default function AdminApp({ user }) {
   }, []);
   const effUser = { ...user, isAuthorityHolder: perm.isAuthorityHolder, permissions: perm.permissions };
   const isAuthority = perm.isAuthorityHolder;
+  // 자율 메시지 발송: 근로자관리 쓰기(staff) 또는 권한자
+  const canMsg = isAuthority || (perm.permissions || []).includes("staff");
   // 로그 페이지는 권한자만
   const TABS = isAuthority ? [...BASE_TABS, { key: "log", label: "로그" }] : BASE_TABS;
   const [tab, setTab] = useState("overall");
@@ -97,13 +100,23 @@ export default function AdminApp({ user }) {
             onClick={() => clickTab(t.key)}
           >{t.label}</button>
         ))}
-        {/* 설명서: 탭이 아니라 외부 링크(새 탭) */}
-        <a href="https://timecard-neon.vercel.app/" target="_blank" rel="noopener noreferrer"
-          style={{ flexShrink: 0, marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4,
-            border: `1px solid ${C.lineAdmin}`, borderRadius: 8, padding: isMobile ? "7px 14px" : "8px 18px",
-            fontSize: isMobile ? 13 : 15, fontWeight: 700, color: C.inkSoft, background: "transparent",
-            cursor: "pointer", textDecoration: "none", whiteSpace: "nowrap" }}
-        >📘 설명서</a>
+        {/* 오른쪽: 메시지 발송(권한 필요) + 설명서(외부 링크) */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 4, flexShrink: 0 }}>
+          {canMsg && (
+            <button onClick={() => clickTab("message")}
+              style={{ flexShrink: 0, borderRadius: 8, padding: isMobile ? "7px 14px" : "8px 18px", fontSize: isMobile ? 13 : 15,
+                fontWeight: tab === "message" ? 800 : 700, cursor: "pointer", whiteSpace: "nowrap",
+                border: tab === "message" ? "none" : `1px solid ${C.lineAdmin}`,
+                background: tab === "message" ? "#2f6d8f" : "transparent", color: tab === "message" ? "#fff" : C.inkSoft }}
+            >✉️ 메시지 발송</button>
+          )}
+          <a href="https://timecard-neon.vercel.app/" target="_blank" rel="noopener noreferrer"
+            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4,
+              border: `1px solid ${C.lineAdmin}`, borderRadius: 8, padding: isMobile ? "7px 14px" : "8px 18px",
+              fontSize: isMobile ? 13 : 15, fontWeight: 700, color: C.inkSoft, background: "transparent",
+              cursor: "pointer", textDecoration: "none", whiteSpace: "nowrap" }}
+          >📘 설명서</a>
+        </div>
       </div>
 
       {/* 필터: 법인 / 본부 / 팀 / 직위 */}
@@ -140,6 +153,7 @@ export default function AdminApp({ user }) {
       {tab === "individual" && <AdminIndividual key={`individual-${reloadNonce}`} filters={filters} currentUser={effUser} />}
       {tab === "settings"   && <AdminSettings   key={`settings-${reloadNonce}`}   currentUser={effUser} />}
       {tab === "log"        && <AdminLog        key={`log-${reloadNonce}`} />}
+      {tab === "message"    && <AdminMessage    key={`message-${reloadNonce}`}    filters={filters} currentUser={effUser} />}
     </div>
   );
 }

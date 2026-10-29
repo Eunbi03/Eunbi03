@@ -137,6 +137,7 @@ export const getAuditLogs = (params = {}) => { const qs = new URLSearchParams(pa
 export const getMyPerms = () => request("/admin/me");
 export const getReportScores = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/report-scores${qs ? `?${qs}` : ""}`); };
 export const sendMonthlyReport = ({ userIds, from, to, label }) => request("/admin/send-report", { method: "POST", body: { userIds, from, to, label } });
+export const sendFreeMessage = ({ userIds, channel }) => request("/admin/send-message", { method: "POST", body: { userIds, channel } });
 
 /* 관리자 — 연차 */
 export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day", { method: "POST", body: data });

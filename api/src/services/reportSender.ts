@@ -68,6 +68,35 @@ export async function sendAdminDeviceInvite(opts: {
   return result;
 }
 
+// 자율 메시지: 설정의 'free_message' 템플릿을 치환해 발송.
+// channel: 'email'=이메일만, 'sms'=문자만, 'both'=이메일 있으면 이메일, 없으면 문자.
+export async function sendFreeMessage(opts: {
+  email?: string | null; phone?: string | null; channel: 'email' | 'sms' | 'both';
+  vars?: Record<string, string>; senderPhone?: string;
+}): Promise<'email' | 'sms' | 'none'> {
+  const { email, phone, channel, vars = {}, senderPhone = '' } = opts;
+  const { subject, body: bodyText } = await renderTemplate('free_message', vars);
+  const bodyHtml = htmlizeBody(bodyText);
+
+  const wantEmail = channel === 'email' ? !!email : (channel === 'both' ? !!email : false);
+  const wantSms = channel === 'sms' ? !!phone : (channel === 'both' ? (!email && !!phone) : false);
+
+  if (wantEmail && process.env.SMTP_HOST && process.env.SMTP_USER) {
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST, port, secure: port === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
+    });
+    try { await transporter.sendMail({ from: process.env.SMTP_USER, to: email as string, subject: subject || 'TimeCard', html: bodyHtml, text: bodyText }); return 'email'; }
+    catch (e: any) { console.error('[자율메시지 이메일 실패]', e.message); return 'none'; }
+  }
+  if (wantSms && process.env.SOLAPI_API_KEY && process.env.SOLAPI_API_SECRET) {
+    try { const ok = await sendSolapiSms(phone as string, bodyText, senderPhone || process.env.SMS_SENDER || ''); return ok ? 'sms' : 'none'; }
+    catch (e: any) { console.error('[자율메시지 문자 실패]', e.message); return 'none'; }
+  }
+  return 'none';
+}
+
 interface ReportData {
   to: string; name: string; yearMonth: string;
   lateCount: number; earlyLeaveCount: number; missingClockCount: number;

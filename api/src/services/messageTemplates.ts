@@ -19,6 +19,7 @@ const DEFAULTS: Record<string, Template> = {
       '{link}\n\n링크는 7일간 유효합니다.',
   },
   random_check_push: { subject: 'TimeCard', body: '위치 권한을 확인해 주세요.' },
+  free_message: { subject: 'TimeCard 안내', body: '' },
 };
 
 let cache: Record<string, Template> = {};

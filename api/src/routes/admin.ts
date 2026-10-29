@@ -7,7 +7,7 @@ import { classifyDay, leaveCountsAsCheckIn, leaveCountsAsCheckOut, leaveCountsAs
 import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
 import jwt from 'jsonwebtoken';
 import { buildIndividualReport } from '../services/reportBuilder';
-import { sendReportLink, sendAdminDeviceInvite } from '../services/reportSender';
+import { sendReportLink, sendAdminDeviceInvite, sendFreeMessage } from '../services/reportSender';
 import { invalidateTemplateCache } from '../services/messageTemplates';
 import { VALID_PERMS, normalizePerms } from '../utils/permissions';
 
@@ -838,6 +838,37 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
 });
 
 // POST /api/admin/send-report — 지정 인원에게 기간 리포트 링크를 수동 발송 (이메일 우선, 없으면 문자)
+// 자율 메시지 발송 — 근로자관리 쓰기(staff) 권한 + 권한 팀 범위 필수
+router.post('/send-message', permStaff, async (req: Request, res: Response): Promise<void> => {
+  const { userIds, channel } = req.body;
+  const ch = (channel === 'email' || channel === 'sms' || channel === 'both') ? channel : 'both';
+  if (!Array.isArray(userIds) || !userIds.length) { res.status(400).json({ error: '발송 대상이 필요합니다.' }); return; }
+  // 대상 조회 + 권한 범위(권한 팀) 검증 — 범위 밖 인원이 섞여 있으면 거부
+  const { rows: targets } = await pool.query(
+    `SELECT u.id, u.name, u.email, u.phone, u.corp, u.division, u.team, u.position, u.job_title, w.name AS wp
+       FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id
+      WHERE u.id = ANY($1) AND u.is_active=TRUE AND u.role='worker'`, [userIds]
+  );
+  const scope = await getReadScope(req);
+  if (scope) {
+    const outOfScope = targets.filter((t: any) => !scope.includes(t.team));
+    if (outOfScope.length) { res.status(403).json({ error: '권한 범위 밖 근로자가 포함되어 있습니다.' }); return; }
+  }
+  const manual = 'https://timecard-neon.vercel.app/';
+  const results: { name: string; via: string }[] = [];
+  for (const t of targets) {
+    const via = await sendFreeMessage({
+      email: t.email, phone: t.phone, channel: ch,
+      vars: { name: t.name || '', phone: t.phone || '', email: t.email || '', corp: t.corp || '',
+        division: t.division || '', team: t.team || '', position: t.position || '', jobTitle: t.job_title || '', workplace: t.wp || '', manual },
+    });
+    results.push({ name: t.name, via });
+  }
+  const sent = results.filter((r) => r.via !== 'none').length;
+  await logAudit(req, '발송', '메시지', `자율 메시지 ${sent}명`, `(자율 메시지)${results.filter((r) => r.via !== 'none').map((r) => r.name).join(', ')} 총 ${sent}명`);
+  res.json({ sent, total: targets.length, results });
+});
+
 router.post('/send-report', async (req: Request, res: Response): Promise<void> => {
   if (!requirePerm(req, res, 'report_leave')) return; // 개별리포트 쓰기 권한 필요
   const { userIds, from, to } = req.body;
