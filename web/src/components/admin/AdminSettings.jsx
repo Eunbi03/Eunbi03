@@ -237,6 +237,22 @@ function WorkplaceSection({ canEdit }) {
 
   const miniBtn = (color, bg) => ({ border: `1px solid ${color}`, color, background: bg || "#fff", borderRadius: 7, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" });
 
+  // 거래처 수정 폼 (거래처명 + 참고반경)
+  const renderClientForm = () => (
+    <div style={formCardStyle}>
+      <p style={formTitleStyle}>거래처 수정</p>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+        <div><label style={labelStyle}>거래처명 *</label><FInput value={clientForm.clientName} onChange={(e) => setClientForm((f) => ({ ...f, clientName: e.target.value }))} /></div>
+        <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={clientForm.radius_m} onChange={(e) => setClientForm((f) => ({ ...f, radius_m: e.target.value }))} /></div>
+      </div>
+      <div style={{ fontSize: 12, color: COL.gray, marginTop: 8 }}>※ 거래처명·참고반경은 이 거래처의 모든 지점에 함께 적용됩니다.</div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button style={{ ...S.subGhost, flex: 1 }} onClick={closeForms} disabled={busy}>취소</button>
+        <button style={{ ...S.subPrimary, flex: 2, background: COL.blue, opacity: busy ? 0.6 : 1 }} onClick={saveClient} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -251,35 +267,26 @@ function WorkplaceSection({ canEdit }) {
         )}
       </div>
       <Msg msg={msg} />
-      {rowForm && renderRowForm()}
-      {clientForm && (
-        <div style={formCardStyle}>
-          <p style={formTitleStyle}>거래처 수정</p>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-            <div><label style={labelStyle}>거래처명 *</label><FInput value={clientForm.clientName} onChange={(e) => setClientForm((f) => ({ ...f, clientName: e.target.value }))} /></div>
-            <div><label style={labelStyle}>참고 반경 (미터) *</label><FInput type="number" value={clientForm.radius_m} onChange={(e) => setClientForm((f) => ({ ...f, radius_m: e.target.value }))} /></div>
-          </div>
-          <div style={{ fontSize: 12, color: COL.gray, marginTop: 8 }}>※ 거래처명·참고반경은 이 거래처의 모든 지점에 함께 적용됩니다.</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button style={{ ...S.subGhost, flex: 1 }} onClick={closeForms} disabled={busy}>취소</button>
-            <button style={{ ...S.subPrimary, flex: 2, background: COL.blue, opacity: busy ? 0.6 : 1 }} onClick={saveClient} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
-          </div>
-        </div>
-      )}
+      {/* 새 근무지 추가 폼만 상단에 */}
+      {rowForm && rowForm.kind === "add" && renderRowForm()}
 
       {loading ? <div style={S.empty}>불러오는 중…</div> : !groups.length && !rowForm ? <div style={S.empty}>등록된 근무지가 없습니다.</div> : groups.map((g) => {
         if (isSingle(g)) {
           const wp = g.branches[0];
+          const editingThis = rowForm && rowForm.kind === "single" && rowForm.id === wp.id;
           return (
-            <CardRow key={g.clientName}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{g.clientName} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {g.radius_m}m</span></p>
-                <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
-              </div>
-              {canEdit && <RowAddButton onClick={() => openBranchAdd(g)} />}
-              {canEdit && <EditButton onClick={() => openSingleEdit(wp)} />}
-              {canEdit && <DeleteButton onClick={() => delClient(g)} disabled={busy} />}
-            </CardRow>
+            <div key={g.clientName}>
+              <CardRow>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{g.clientName} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {g.radius_m}m</span></p>
+                  <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
+                </div>
+                {canEdit && <RowAddButton onClick={() => openBranchAdd(g)} />}
+                {canEdit && <EditButton onClick={() => openSingleEdit(wp)} />}
+                {canEdit && <DeleteButton onClick={() => delClient(g)} disabled={busy} />}
+              </CardRow>
+              {editingThis && renderRowForm()}
+            </div>
           );
         }
         const open = openClient === g.clientName;
@@ -300,6 +307,9 @@ function WorkplaceSection({ canEdit }) {
                 </div>
               )}
             </div>
+            {/* 거래처 수정 / 지점 추가 폼 — 헤더 바로 아래 */}
+            {clientForm && clientForm.oldClientName === g.clientName && <div style={{ padding: "0 12px 10px" }}>{renderClientForm()}</div>}
+            {rowForm && rowForm.kind === "addBranch" && rowForm.clientName === g.clientName && <div style={{ padding: "0 12px 10px" }}>{renderRowForm()}</div>}
             {open && (
               <div style={{ borderTop: `1px solid ${C.lineAdmin}`, background: COL.formBg || "#f3f9fc", padding: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 6px 8px" }}>
@@ -307,14 +317,20 @@ function WorkplaceSection({ canEdit }) {
                   {canEdit && <button style={delMode === g.clientName ? { ...miniBtn("#fff"), background: COL.blue, borderColor: COL.blue } : miniBtn(COL.red, "#fff5f5")}
                     onClick={() => toggleDel(g.clientName)} disabled={busy}>{delMode === g.clientName ? "확인" : "삭제"}</button>}
                 </div>
-                {g.branches.map((wp) => (
-                  <div key={wp.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.lineAdmin}`, borderRadius: 9, padding: "9px 12px", margin: "6px 0", cursor: delMode === g.clientName ? "default" : "pointer" }}
-                    onClick={() => { if (delMode !== g.clientName && canEdit) openBranchEdit(wp); }}>
-                    {delMode === g.clientName && <input type="checkbox" style={{ width: 18, height: 18, accentColor: COL.red }} checked={!!sel[wp.id]} onChange={(e) => setSel((s) => ({ ...s, [wp.id]: e.target.checked }))} onClick={(e) => e.stopPropagation()} />}
-                    <span style={{ fontWeight: 700, fontSize: 14, flex: "none", minWidth: 80 }}>{wp.branch_name || "(지점명 없음)"}</span>
-                    <span style={{ fontSize: 12.5, color: COL.gray, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ")}</span>
-                  </div>
-                ))}
+                {g.branches.map((wp) => {
+                  const editingBranch = rowForm && rowForm.kind === "branch" && rowForm.id === wp.id;
+                  return (
+                    <div key={wp.id}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${editingBranch ? COL.blue : C.lineAdmin}`, borderRadius: 9, padding: "9px 12px", margin: "6px 0", cursor: delMode === g.clientName ? "default" : "pointer" }}
+                        onClick={() => { if (delMode !== g.clientName && canEdit) openBranchEdit(wp); }}>
+                        {delMode === g.clientName && <input type="checkbox" style={{ width: 18, height: 18, accentColor: COL.red }} checked={!!sel[wp.id]} onChange={(e) => setSel((s) => ({ ...s, [wp.id]: e.target.checked }))} onClick={(e) => e.stopPropagation()} />}
+                        <span style={{ fontWeight: 700, fontSize: 14, flex: "none", minWidth: 80 }}>{wp.branch_name || "(지점명 없음)"}</span>
+                        <span style={{ fontSize: 12.5, color: COL.gray, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ")}</span>
+                      </div>
+                      {editingBranch && renderRowForm()}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
