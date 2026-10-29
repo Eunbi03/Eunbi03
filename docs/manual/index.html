@@ -3,500 +3,100 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TimeCard 설명서</title>
-<meta name="description" content="주식회사 케이프라이드 TimeCard 근태관리 — 관리자용·개발자용 설명서">
+<title>TimeCard 사용 방법</title>
+<meta name="description" content="주식회사 케이프라이드 TimeCard 앱 사용 방법 안내">
 <style>
   :root{
-    --bg:#eef2f6; --surface:#ffffff; --ink:#1e2430; --soft:#5b6472; --line:#dde4ec;
-    --accent:#2d6cdf; --accent-soft:#e7effc; --good:#2f8f5b; --goodbg:#e2f1e9;
-    --warn:#b9820f; --warnbg:#f7edcf; --seal:#c8594e; --sealbg:#fbe9e7; --violet:#6d52c4; --violetbg:#ece6fb;
-    --shadow:0 1px 2px rgba(30,36,48,.05),0 8px 24px rgba(30,36,48,.07);
-    --radius:16px;
+    --bg:#eef2f6; --surface:#ffffff; --ink:#1e2430; --soft:#5b6472; --line:#d7dee7;
+    --accent:#2d6cdf; --shadow:0 2px 10px rgba(30,36,48,.08);
   }
   @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
-    --bg:#0c1016; --surface:#161c27; --ink:#eef2f8; --soft:#9aa5b5; --line:#2a3342;
-    --accent:#5b92f2; --accent-soft:#1a2740; --good:#53c088; --goodbg:#14281d;
-    --warn:#d7a53a; --warnbg:#332a12; --seal:#e3867b; --sealbg:#30191650; --violet:#a991f0; --violetbg:#231c3a;
-    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45); color-scheme:dark;
+    --bg:#0c1016; --surface:#161c27; --ink:#eef2f8; --soft:#9aa5b5; --line:#2a3342; --accent:#5b92f2; color-scheme:dark;
   }}
-  :root[data-theme="dark"]{
-    --bg:#0c1016; --surface:#161c27; --ink:#eef2f8; --soft:#9aa5b5; --line:#2a3342;
-    --accent:#5b92f2; --accent-soft:#1a2740; --good:#53c088; --goodbg:#14281d;
-    --warn:#d7a53a; --warnbg:#332a12; --seal:#e3867b; --sealbg:#301916; --violet:#a991f0; --violetbg:#231c3a;
-    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45); color-scheme:dark;
-  }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.6;
-    font-family:'Apple SD Gothic Neo','Pretendard','Malgun Gothic',system-ui,sans-serif;
-    -webkit-font-smoothing:antialiased;}
-  .wrap{max-width:900px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-left)) 64px;}
+  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.5;
+    font-family:'Apple SD Gothic Neo','Pretendard','Malgun Gothic',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:820px;margin:0 auto;padding:0 max(12px,env(safe-area-inset-left)) 48px;}
+  header{text-align:center;padding:26px 0 6px;}
+  .brand{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--accent);}
+  h1{font-size:23px;font-weight:800;margin:4px 0 2px;}
+  .sub{font-size:13px;color:var(--soft);margin:0;}
 
-  header{padding:34px 0 10px;}
-  .brand{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--accent);text-transform:uppercase;}
-  h1{font-size:28px;font-weight:800;margin:4px 0 6px;letter-spacing:-.02em;}
-  .lead{color:var(--soft);font-size:14px;margin:0;}
-
-  /* 탭 */
-  .tabs{position:sticky;top:0;z-index:20;background:var(--bg);padding:14px 0 10px;margin-top:10px;}
-  .tabrow{display:inline-flex;gap:4px;background:var(--surface);border:1px solid var(--line);
-    border-radius:999px;padding:5px;box-shadow:var(--shadow);}
-  .tab{appearance:none;border:none;background:none;cursor:pointer;font:inherit;font-weight:700;
-    color:var(--soft);padding:9px 22px;border-radius:999px;transition:.15s;font-size:14px;}
+  .tabs{position:sticky;top:0;z-index:10;background:var(--bg);padding:14px 0 12px;display:flex;justify-content:center;}
+  .tabrow{display:inline-flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px;box-shadow:var(--shadow);}
+  .tab{appearance:none;border:none;background:none;cursor:pointer;font:inherit;font-weight:800;color:var(--soft);
+    padding:11px 22px;border-radius:999px;transition:.15s;font-size:15px;white-space:nowrap;}
   .tab[aria-selected="true"]{background:var(--accent);color:#fff;}
   .tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  @media (max-width:420px){ .tab{padding:10px 15px;font-size:14px;} }
 
-  section[role="tabpanel"]{display:none;animation:fade .25s ease;}
-  section[role="tabpanel"].active{display:block;}
-  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-    box-shadow:var(--shadow);padding:20px 22px;margin-top:16px;}
-  .card h2{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;margin:0 0 4px;}
-  .card h2 .ic{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
-    background:var(--accent-soft);color:var(--accent);font-size:16px;}
-  .card .hint{color:var(--soft);font-size:13px;margin:0 0 14px;padding-left:40px;}
-  .card h3{font-size:14px;font-weight:800;margin:16px 0 6px;color:var(--ink);}
-
-  ul.clean{list-style:none;margin:0;padding:0;}
-  ul.clean li{position:relative;padding:5px 0 5px 20px;font-size:14px;}
-  ul.clean li::before{content:"";position:absolute;left:4px;top:13px;width:6px;height:6px;border-radius:2px;background:var(--accent);}
-  b{font-weight:700;}
-  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
-    background:var(--accent-soft);color:var(--accent);padding:1.5px 6px;border-radius:6px;}
-  pre{background:#0e1420;color:#e6edf6;border-radius:12px;padding:14px 16px;overflow-x:auto;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.7;margin:8px 0;}
-  pre .c{color:#7d8da3;}
-  :root[data-theme="light"] pre, :root:not([data-theme="dark"]) pre{}
-
-  /* 권한 뱃지 */
-  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px;}
-  .chip{font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;}
-  .c-read{background:var(--line);color:var(--soft);}
-  .c-staff{background:var(--accent-soft);color:var(--accent);}
-  .c-rep{background:var(--goodbg);color:var(--good);}
-  .c-set{background:var(--violetbg);color:var(--violet);}
-  .c-auth{background:var(--warnbg);color:var(--warn);}
-
-  table{width:100%;border-collapse:collapse;margin:10px 0 2px;font-size:13px;}
-  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
-  th{font-size:12px;color:var(--soft);font-weight:800;}
-  td b{color:var(--ink);}
-  .yes{color:var(--good);font-weight:800;}
-  .no{color:var(--soft);}
-
-  .note{border-left:3px solid var(--warn);background:var(--warnbg);border-radius:0 10px 10px 0;
-    padding:10px 14px;margin:12px 0 2px;font-size:13px;color:var(--ink);}
-  .note.blue{border-color:var(--accent);background:var(--accent-soft);}
-  .note.red{border-color:var(--seal);background:var(--sealbg);}
-  .note b{font-weight:800;}
-
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-  @media (max-width:640px){ .grid2{grid-template-columns:1fr;} h1{font-size:23px;} .card{padding:18px 16px;} .card .hint{padding-left:0;} }
-
-  .mini{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;
-    background:var(--warnbg);color:var(--warn);margin-left:6px;vertical-align:2px;}
-  footer{color:var(--soft);font-size:12px;text-align:center;margin-top:30px;}
-  .kv{display:grid;grid-template-columns:120px 1fr;gap:4px 14px;font-size:13px;margin:6px 0;}
-  .kv dt{color:var(--soft);font-weight:700;}
-  .kv dd{margin:0;}
-
-  /* 단계 번호 리스트 */
-  ol.steps{counter-reset:s;list-style:none;margin:4px 0 0;padding:0;}
-  ol.steps>li{position:relative;padding:9px 0 9px 40px;border-bottom:1px dashed var(--line);font-size:14px;}
-  ol.steps>li:last-child{border-bottom:none;}
-  ol.steps>li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:8px;
-    width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:13px;display:grid;place-items:center;}
-  ol.steps small{color:var(--soft);}
-  /* FAQ 아코디언 */
-  details.faq{border:1px solid var(--line);border-radius:10px;margin:8px 0;background:var(--bg);overflow:hidden;}
-  details.faq>summary{cursor:pointer;padding:11px 14px;font-weight:700;font-size:14px;list-style:none;}
-  details.faq>summary::-webkit-details-marker{display:none;}
-  details.faq>summary::before{content:"▸";color:var(--accent);margin-right:8px;font-weight:800;}
-  details.faq[open]>summary::before{content:"▾";}
-  details.faq .fbody{padding:2px 14px 13px 32px;font-size:13.5px;}
-  details.faq .fbody ul.clean li{font-size:13.5px;}
-  /* 스크린샷 자리 */
-  .shot{border:1.5px dashed var(--line);border-radius:10px;background:var(--bg);color:var(--soft);
-    font-size:12px;text-align:center;padding:18px 14px;margin:10px 0;}
-  /* 엑셀 양식 표 */
-  .xls{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0;display:block;overflow-x:auto;white-space:nowrap;}
-  .xls th,.xls td{border:1px solid var(--line);padding:6px 9px;text-align:center;}
-  .xls th{background:var(--accent-soft);color:var(--accent);font-weight:800;}
+  .stage{margin-top:4px;text-align:center;}
+  .stage img{max-width:100%;height:auto;border-radius:14px;border:1px solid var(--line);box-shadow:var(--shadow);background:var(--surface);}
+  .missing{display:none;border:1.5px dashed var(--line);border-radius:14px;background:var(--surface);color:var(--soft);
+    padding:40px 20px;font-size:14px;line-height:1.8;}
+  .missing code{font-family:ui-monospace,Menlo,monospace;background:var(--bg);padding:2px 7px;border-radius:6px;color:var(--accent);}
+  footer{color:var(--soft);font-size:12px;text-align:center;margin-top:26px;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="brand">주식회사 케이프라이드 · TimeCard</div>
-    <h1>TimeCard 사용 설명서</h1>
-    <p class="lead">근태관리 시스템 — 관리자 콘솔과 개발·운영 가이드</p>
+    <div class="brand">주식회사 케이프라이드</div>
+    <h1>TimeCard 사용 방법</h1>
+    <p class="sub">해당하는 휴대폰을 선택하세요</p>
   </header>
 
   <div class="tabs">
-    <div class="tabrow" role="tablist" aria-label="설명서 구분">
-      <button class="tab" id="tab-admin" role="tab" aria-controls="panel-admin" aria-selected="true">👤 관리자용</button>
-      <button class="tab" id="tab-dev" role="tab" aria-controls="panel-dev" aria-selected="false">🛠️ 개발자용</button>
+    <div class="tabrow" role="tablist" aria-label="사용 방법 구분">
+      <button class="tab" role="tab" data-key="common" aria-selected="true">공통</button>
+      <button class="tab" role="tab" data-key="ios" aria-selected="false">🍎 아이폰</button>
+      <button class="tab" role="tab" data-key="android" aria-selected="false">📱 갤럭시</button>
     </div>
   </div>
 
-  <!-- ================= 관리자용 ================= -->
-  <section id="panel-admin" role="tabpanel" aria-labelledby="tab-admin" class="active">
-
-    <div class="card">
-      <h2><span class="ic">🔐</span> 로그인 · 기기 등록</h2>
-      <p class="hint">관리자 기기는 "등록"된 기기만 접속할 수 있습니다.</p>
-      <ul class="clean">
-        <li><b>등록된 기기</b> → 바로 로그인됩니다.</li>
-        <li><b>미등록 기기</b> → 승인요청 화면이 뜹니다. 관리자명·전화번호·권한·권한팀을 입력해 요청하면, <b>권한자의 승인</b> 후 사용할 수 있습니다.</li>
-        <li>이미 쓰는 관리자명으로는 스스로 요청할 수 없습니다 → 권한자에게 <b>기기 등록 초대 링크</b>를 요청하세요.</li>
-        <li>등록 기기를 삭제하면 그 기기는 즉시 로그아웃됩니다.</li>
-      </ul>
+  <div class="stage">
+    <img id="viewer" alt="TimeCard 사용 방법" src="TimeCardApp사용방법-공통-261023.png">
+    <div class="missing" id="missing">
+      이미지를 아직 올리지 않았습니다.<br>
+      <code>docs/manual</code> 폴더에 아래 파일을 넣어주세요.<br>
+      <span id="missingName"></span>
     </div>
+  </div>
 
-    <div class="card">
-      <h2><span class="ic">🧭</span> 최초 세팅 순서</h2>
-      <p class="hint">근로자는 소속·근무 기준이 먼저 있어야 등록되므로, 설정부터 채운 뒤 사람을 넣습니다.</p>
-      <ol class="steps">
-        <li><b>법인</b> 등록 <small>— 설정 → 법인</small></li>
-        <li><b>본부 · 팀</b> 등록 <small>— 설정 → 본부·팀 (팀 추가 시 담당 관리자 권한팀도 지정)</small></li>
-        <li><b>직책</b> 등록 <small>— 사원/선임 등</small></li>
-        <li><b>근무시간 및 직무</b> 등록 <small>— 직무명 + 근무/휴게시간</small></li>
-        <li><b>근무지</b> 등록 <small>— 주소·반경(출퇴근 위치 기준)</small></li>
-        <li><b>공휴일</b> 등록 <small>— 근무일 판정·랜덤체크 제외</small></li>
-        <li><b>근로자</b> 등록 <small>— 위 항목들을 선택해 배정</small></li>
-      </ol>
-      <div class="note blue">순서가 꼬이면 근로자 등록 화면에서 선택할 법인/팀/직무/근무지가 안 보입니다. 설정을 먼저 채우세요.</div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">🧩</span> 권한 체계 <span class="mini">중복 선택</span></h2>
-      <p class="hint">권한은 중복 선택할 수 있고, 같은 관리자명으로 등록된 기기들은 권한을 공유합니다.</p>
-      <div class="chips">
-        <span class="chip c-read">읽기 전용</span>
-        <span class="chip c-staff">근로자관리 쓰기</span>
-        <span class="chip c-rep">개별리포트(연차)</span>
-        <span class="chip c-rep">개별리포트(전체)</span>
-        <span class="chip c-set">설정 쓰기</span>
-        <span class="chip c-auth">권한자</span>
-      </div>
-      <table>
-        <tr><th>권한</th><th>할 수 있는 일</th></tr>
-        <tr><td><b>읽기 전용</b><br><span class="no">권한 미선택</span></td><td>조회만 가능. 추가·수정·삭제·발송 버튼이 <b>보이지 않음</b>.</td></tr>
-        <tr><td><b>근로자관리 쓰기</b></td><td>근로자 추가·수정·삭제·비번초기화·기기변경·엑셀 업로드.</td></tr>
-        <tr><td><b>개별리포트(연차)</b></td><td>리포트 발송 + <b>연차</b> 인정.</td></tr>
-        <tr><td><b>개별리포트(전체)</b></td><td>발송 + 연차·<b>출퇴근·근무노트</b> 인정까지.</td></tr>
-        <tr><td><b>설정 쓰기</b></td><td>설정 탭의 추가·수정·삭제.</td></tr>
-        <tr><td><b>권한자</b></td><td>위 <b>전부</b> + 관리자 기기 관리 + <b>로그</b> 탭. 체크와 무관하게 모든 권한.</td></tr>
-      </table>
-      <div class="note blue">일반 관리자는 자신의 <b>권한 팀</b>에 속한 근로자만 보이고 다룰 수 있습니다. 권한자·'전체' 범위는 모든 팀을 봅니다.</div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">👥</span> 근로자 관리</h2>
-      <p class="hint">본부 &gt; 팀으로 묶여 표시됩니다. (쓰기 권한 필요)</p>
-      <div class="grid2">
-        <ul class="clean">
-          <li><b>추가 / 수정 / 삭제</b></li>
-          <li><b>비번초기화</b> — 전화번호로 자동 초기화</li>
-          <li><b>기기변경</b> — 다음 로그인 기기가 자동 등록</li>
-        </ul>
-        <ul class="clean">
-          <li><b>잠금해제</b> — 로그인 5회 실패로 잠긴 계정</li>
-          <li><b>엑셀 일괄 등록</b> — <code>직원 관리</code> 시트</li>
-          <li>이름 검색 / '문제계정만' 필터</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">📊</span> 전체현황 · 개별 리포트</h2>
-      <ul class="clean">
-        <li><b>전체현황</b> — 기간별 근태 요약 조회·엑셀 다운로드.</li>
-        <li><b>개별 리포트</b> — 근로자별 월간 리포트를 이메일로 발송. 직접 선택 또는 팀/본부/법인 단위.</li>
-        <li><b>인정 처리</b> — 연차·출근·퇴근·근무노트를 날짜별로 인정/해제(권한에 따라 노출).</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">⚙️</span> 설정 <span class="mini">설정 쓰기</span></h2>
-      <p class="hint">조직·근무 기준을 관리합니다.</p>
-      <ul class="clean">
-        <li>법인 / 본부·팀 / 직책 / <b>근무시간 및 직무</b> / 근무지 / 공휴일</li>
-        <li>발송 메시지 템플릿(월간 리포트·기기 등록 초대·위치 확인 푸시)</li>
-      </ul>
-      <div class="note"><b>설정 전파</b> — 직무의 근무/휴게시간을 수정하면, 그 직무를 쓰면서 <b>기존 시간 그대로였던 근로자</b>만 자동 변경됩니다(개별 조정자는 제외). <b>직무명</b> 변경은 그 직무의 <b>모든</b> 근로자에 적용됩니다.</div>
-
-      <h3>근무지 — 거래처 &gt; 지점</h3>
-      <ul class="clean">
-        <li>지점이 여러 개면 <b>거래처</b>로 묶여 보입니다(거래처명 + 참고반경, 아래 <b>N개 점</b>). 거래처를 누르면 지점(지점명·주소)이 펼쳐집니다.</li>
-        <li><b>참고반경은 거래처 공통</b> — 거래처 '수정'에서 거래처명·참고반경을 바꾸면 모든 지점에 적용됩니다.</li>
-        <li><b>지점명 클릭</b> → 지점명·주소 수정. 지점 리스트의 <b>삭제</b> → 체크 후 '확인'으로 여러 지점 한 번에 삭제.</li>
-        <li>지점이 <b>1개뿐</b>이면 지금처럼 평면 형태로 보이고, 수정 시 주소·상세주소까지 바로 편집합니다.</li>
-        <li>각 거래처 행의 <b>수정 왼쪽 '추가' 버튼</b> → 지점명·주소·상세주소만 입력해 그 거래처에 지점을 바로 추가(반경은 거래처 공통, 좌표 자동).</li>
-        <li><b>+ 근무지 추가</b>에서 <b>이미 있는 거래처명</b>을 입력하면 <b>"동일한 거래처가 존재합니다. 지점으로 추가하시겠습니까?"</b> 팝업이 떠서, 확인하면 지점으로 추가됩니다(지점명 필수).</li>
-        <li>삭제는 <b>비활성 처리</b>라 과거 출퇴근 기록은 그대로 보존됩니다(목록에서만 사라짐).</li>
-      </ul>
-      <p style="font-size:13px;margin:10px 0 4px"><b>엑셀 양식</b> — 시트명 <code>근무지 추가</code>, 2행 헤더·3행부터 데이터:</p>
-      <table class="xls">
-        <tr><th>A 거래처명</th><th>B 지점명(빈칸 가능)</th><th>C 참고반경(m)</th><th>D 주소</th><th>E 상세주소</th></tr>
-        <tr><td>이마트</td><td>강릉점</td><td>500</td><td>강원 강릉시 경강로 2100</td><td>(선택)</td></tr>
-        <tr><td>에다마메 남영점</td><td>(빈칸)</td><td>500</td><td>서울 용산구 한강대로 100</td><td>(선택)</td></tr>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">📝</span> 로그 (작업 기록) <span class="mini">권한자 전용</span></h2>
-      <p class="hint">설정 오른쪽의 '로그' 탭. 권한자만 볼 수 있습니다.</p>
-      <ul class="clean">
-        <li>근로자·관리자·설정·리포트·기기·인정 등 모든 변경이 <b>일시·관리자·작업·구분·대상·비고</b>로 기록됩니다.</li>
-        <li>비고에 변경 전후값이 남습니다. 예: <code>(이름)홍길동-&gt;김철수</code>, <code>(출퇴근)09:00~18:00-&gt;09:00~16:00</code>, <code>연차 인정(10/22)</code></li>
-        <li>기간·관리자명·근로자명으로 검색. <b>1년 보관</b> 후 자동 삭제.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">🛡️</span> 권한자 2명 유지 규칙</h2>
-      <p class="hint">권한자가 1명으로 떨어지면 복구가 번거로워지므로, 항상 최소 3명(3그룹)을 유지합니다.</p>
-      <ul class="clean">
-        <li>권한자 그룹의 <b>마지막 기기</b>는, 권한자가 2명뿐이면 <b>삭제할 수 없습니다</b>.</li>
-        <li><b>권한자 변경(이전)</b>은 대상 관리자 이름의 <b>모든 기기</b>에 적용됩니다. 결과가 2명 미만이 되면 거부됩니다.</li>
-        <li><b>권한자 계정의 이름</b>을 기존의 다른 관리자 이름으로 바꾸는 것(병합)은 거부됩니다. 반대로 일반 관리자를 권한자 이름으로 바꾸면 그 관리자가 권한자가 됩니다.</li>
-      </ul>
-      <div class="note red">권한자를 넘기려면 <b>'권한자 변경'</b> 버튼을 사용하세요. 이름 변경으로 권한을 옮기지 않습니다.</div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">✅</span> 자주 하는 작업 (단계별)</h2>
-      <p class="hint">근로자관리/개별리포트/설정 등 해당 권한이 있어야 버튼이 보입니다.</p>
-
-      <details class="faq">
-        <summary>근로자 1명 추가</summary>
-        <div class="fbody">
-          <ol class="steps">
-            <li>근로자 관리 → <b>+ 근로자 추가</b></li>
-            <li>이름·전화번호(필수), 소속(법인/본부/팀)·직책·직무·근무지 선택</li>
-            <li>저장 → <b>초기 비밀번호 = 전화번호</b>로 생성됩니다</li>
-            <li>근로자가 그 번호로 로그인 → 최초 1회 비밀번호 변경</li>
-          </ol>
-        </div>
-      </details>
-
-      <details class="faq">
-        <summary>엑셀로 여러 명 한 번에 등록</summary>
-        <div class="fbody">
-          <p>시트 이름은 반드시 <code>직원 관리</code>. <b>2행이 헤더, 3행부터 데이터</b>. 열 순서:</p>
-          <table class="xls">
-            <tr><th>이름</th><th>직책</th><th>전화번호</th><th>이메일</th><th>근무지</th><th>비고</th><th>법인</th><th>본부</th><th>팀</th><th>직무</th><th>근무노트 제외</th><th>비정기적</th></tr>
-            <tr><td>홍길동</td><td>사원</td><td>010-1234-5678</td><td>(선택)</td><td>새말센터</td><td>(선택)</td><td>케이프라이드</td><td>MS본부</td><td>MS팀</td><td>영업관리</td><td>1 또는 공란</td><td>1 또는 공란</td></tr>
-          </table>
-          <ul class="clean">
-            <li>근무지·직무·법인/본부/팀은 <b>설정에 미리 등록된 이름</b>과 정확히 일치해야 합니다(없으면 실패 행으로 표시).</li>
-            <li>근무노트 제외·비정기적: 해당이면 <code>1</code>, 아니면 비움.</li>
-            <li>전화번호가 중복이면 기존 계정으로 매칭(삭제된 계정은 자동 복구).</li>
-          </ul>
-          <ol class="steps">
-            <li>근로자 관리 → <b>엑셀 업로드</b> → 파일 선택</li>
-            <li>결과 화면에서 <b>성공/실패</b> 확인(실패 행은 사유 표시)</li>
-          </ol>
-        </div>
-      </details>
-
-      <details class="faq">
-        <summary>관리자(동료) 기기 등록 초대하기 <span class="mini">권한자</span></summary>
-        <div class="fbody">
-          <ol class="steps">
-            <li>근로자 관리에서 관리자 카드 → <b>+ 관리자 추가</b>(또는 기기코드 옆 ＋)</li>
-            <li>관리자명·이메일·전화·권한·권한팀 입력 → <b>초대 링크 발송</b>(이메일·문자)</li>
-            <li>상대가 <b>등록할 기기에서</b> 링크를 열면 등록 완료 → 바로 로그인</li>
-          </ol>
-          <div class="note">같은 관리자명으로 추가하면 그 그룹의 권한을 그대로 상속합니다.</div>
-        </div>
-      </details>
-
-      <details class="faq">
-        <summary>비밀번호 초기화 / 기기변경</summary>
-        <div class="fbody">
-          <ul class="clean">
-            <li><b>비번초기화</b> — 근로자 행의 '비번초기화' → 비밀번호가 <b>전화번호</b>로 초기화. 근로자에게 전화번호로 로그인하라고 안내.</li>
-            <li><b>기기변경</b> — '기기변경' 클릭 후, 근로자가 <b>새 기기에서 다음 로그인</b> 하면 그 기기가 자동 등록됩니다(별도 승인 없음).</li>
-            <li><b>잠금해제</b> — 로그인 5회 실패로 잠긴 계정은 '잠금해제'.</li>
-          </ul>
-        </div>
-      </details>
-
-      <details class="faq">
-        <summary>월간 리포트 발송 / 연차·출근 인정 <span class="mini">개별리포트</span></summary>
-        <div class="fbody">
-          <ul class="clean">
-            <li><b>리포트 발송</b> — 개별 리포트에서 대상(직접 선택 또는 팀/본부/법인) 지정 → 발송. 근로자 <b>이메일이 등록</b>돼 있어야 전송됩니다.</li>
-            <li><b>인정 처리</b> — 날짜 셀에서 연차·출근·퇴근·근무노트를 인정/해제. (연차=개별리포트(연차), 출퇴근·노트=개별리포트(전체) 권한 필요)</li>
-          </ul>
-        </div>
-      </details>
-
-      <div class="shot">🖼️ 스크린샷 자리 — 실제 화면 캡처를 주시면 각 단계에 넣어 드립니다.</div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">🆘</span> 문제 해결 FAQ</h2>
-
-      <details class="faq">
-        <summary>근로자가 로그인이 안 돼요</summary>
-        <div class="fbody"><ul class="clean">
-          <li>비밀번호를 모름 → <b>비번초기화</b>(전화번호로 초기화) 후 전달.</li>
-          <li>"등록되지 않은 기기" → 기기가 바뀐 것. <b>기기변경</b> 누른 뒤 그 기기에서 로그인.</li>
-          <li>"계정 잠김" → 5회 실패. <b>잠금해제</b>.</li>
-        </ul></div>
-      </details>
-
-      <details class="faq">
-        <summary>근로자가 폰을 바꿨어요</summary>
-        <div class="fbody">근로자 행 → <b>기기변경</b> → 근로자가 새 폰에서 로그인하면 자동으로 새 기기가 등록됩니다. (기존 폰은 자동 해제)</div>
-      </details>
-
-      <details class="faq">
-        <summary>월간 리포트 이메일이 안 가요</summary>
-        <div class="fbody"><ul class="clean">
-          <li>해당 근로자에게 <b>이메일이 등록</b>돼 있는지 확인(없으면 발송 대상에서 빠짐).</li>
-          <li>설정 → 발송 메시지의 <b>월간 리포트 템플릿</b> 내용 확인.</li>
-          <li>발송 결과 화면의 실패 사유 확인.</li>
-        </ul></div>
-      </details>
-
-      <details class="faq">
-        <summary>새 관리자 기기를 승인하려면 <span class="mini">권한자</span></summary>
-        <div class="fbody">권한자 계정에서 근로자 관리 → 관리자 기기 영역의 <b>승인 대기</b> 기기를 <b>승인</b>. 또는 애초에 <b>초대 링크</b>로 등록하면 승인 단계가 없습니다.</div>
-      </details>
-
-      <details class="faq">
-        <summary>버튼(추가/수정/발송/설정)이 안 보여요</summary>
-        <div class="fbody"><ul class="clean">
-          <li>해당 <b>권한이 없는</b> 것입니다(읽기 전용은 버튼이 숨겨집니다). 권한자에게 권한 추가를 요청하세요.</li>
-          <li>방금 권한을 받았다면 <b>새로고침/재로그인</b> 후 반영됩니다.</li>
-          <li>'로그' 탭·기기 관리는 <b>권한자 전용</b>입니다.</li>
-        </ul></div>
-      </details>
-
-      <details class="faq">
-        <summary>권한자가 1명만 남을까 걱정돼요</summary>
-        <div class="fbody">시스템이 <b>항상 최소 3명</b>을 강제합니다. 마지막 권한자 기기 삭제·이전·이름변경은 자동으로 막히니, 먼저 다른 관리자에게 <b>권한자 변경</b>으로 넘기세요.</div>
-      </details>
-    </div>
-  </section>
-
-  <!-- ================= 개발자용 ================= -->
-  <section id="panel-dev" role="tabpanel" aria-labelledby="tab-dev">
-
-    <div class="card">
-      <h2><span class="ic">🏗️</span> 아키텍처</h2>
-      <dl class="kv">
-        <dt>클라이언트</dt><dd>Capacitor (iOS / Android) + React 웹 — 근로자 앱 & 관리자 콘솔 동일 코드베이스</dd>
-        <dt>서버</dt><dd>Express (TypeScript) REST API</dd>
-        <dt>DB</dt><dd>PostgreSQL</dd>
-        <dt>호스팅</dt><dd>Synology NAS · Docker Compose (<code>api</code> / <code>web</code> / <code>db</code>)</dd>
-      </dl>
-      <div class="note">앱은 웹 빌드(<code>webDir: dist</code>)를 <b>번들</b>합니다(원격 URL 로딩 아님). 근로자가 보는 화면 문구를 바꾸면 <b>앱 재빌드·스토어 재심사</b>가 필요합니다. 관리자 콘솔(브라우저)·서버 메시지는 재배포만으로 반영됩니다.</div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">🚀</span> 배포</h2>
-      <p class="hint">NAS 리포지터리에서:</p>
-      <pre><span class="c"># 최신 코드 받기</span>
-git pull origin &lt;branch&gt;
-
-<span class="c"># api·web 둘 다 재빌드 (한쪽만 하면 반영 안 됨)</span>
-sudo docker compose build api web
-sudo docker compose up -d</pre>
-      <div class="note red">용어·UI 변경이 안 보이면 십중팔구 <b>web 미빌드</b>이거나 <b>브랜치 미반영</b>입니다. <code>git log --oneline -3</code>로 커밋 확인 후 <b>api·web 모두</b> 빌드하세요.</div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">🧩</span> 권한 모델</h2>
-      <ul class="clean">
-        <li>권한은 <b>기기(admin_devices)</b>에 붙고, 같은 <code>device_name</code>(관리자명) 그룹끼리 공유됩니다.</li>
-        <li><code>admin_devices.permissions TEXT[]</code> — 키: <code>staff</code>, <code>report_leave</code>, <code>report_full</code>, <code>settings</code> (빈 배열=읽기전용)</li>
-        <li><code>admin_devices.is_authority</code> — 권한자. 키와 무관하게 전부 허용. <b>항상 2그룹 이상 유지</b>.</li>
-        <li>유효 키·정규화는 <code>api/src/utils/permissions.ts</code> (<code>VALID_PERMS</code>, <code>normalizePerms</code>)로 일원화.</li>
-        <li>서버 가드: <code>hasPerm / requirePerm / needPerm</code>, 팀 범위: <code>getReadScope / assertWorkerInScope</code>, 권한자: <code>reqIsAuthority</code>.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">🗄️</span> 주요 데이터 &amp; 잡</h2>
-      <div class="grid2">
-        <div>
-          <h3>테이블</h3>
-          <ul class="clean">
-            <li><code>users</code> — 근로자/관리자(공용 계정), <code>device_id</code> 단일 기기</li>
-            <li><code>admin_devices</code> — 관리자 기기·권한·권한자</li>
-            <li><code>attendance_records</code> — 출퇴근·연차</li>
-            <li><code>audit_logs</code> — 작업 기록(1년)</li>
-            <li><code>random_location_checks</code> — 랜덤 위치 확인</li>
-          </ul>
-        </div>
-        <div>
-          <h3>마이그레이션 · 잡</h3>
-          <ul class="clean">
-            <li><code>api/migrations/*.sql</code> — api 기동 시 <b>자동 실행</b></li>
-            <li>랜덤 체크 슬롯 — 근무일마다 근로자별 3개 생성(스케줄러)</li>
-            <li>감사 로그 1년 경과 시 자동 삭제</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">✉️</span> 알림 (이메일 / SMS)</h2>
-      <ul class="clean">
-        <li>이메일 SMTP 비밀번호 환경변수: <code>SMTP_PASSWORD</code> (<code>SMTP_PASS</code> 아님)</li>
-        <li>보안 연결: 포트 <code>465</code>일 때 <code>secure: true</code></li>
-        <li>발신 메시지 내용은 <code>message_templates</code> DB 행 — 코드의 기본값은 <b>최초 시드용</b>. 기존 행은 콘솔(설정 → 발송 메시지)에서 수정.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">⚠️</span> 주의 사항</h2>
-      <ul class="clean">
-        <li>엑셀 업로드 시트명 <code>직원 관리</code>는 데이터 매칭용 → <b>변경 금지</b>(관리자 콘솔 용어는 '근로자').</li>
-        <li>근로자 로그인은 한 기기가 여러 계정에 바인딩될 수 있습니다(현재 의도된 허용 상태).</li>
-        <li>권한자 이전/삭제/이름변경은 전부 <b>2그룹 유지</b> 규칙으로 막혀 있습니다.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2><span class="ic">💻</span> 자주 쓰는 명령</h2>
-      <p class="hint">컨테이너 환경변수로 DB 접속(사용자명·DB명 하드코딩 금지).</p>
-      <pre><span class="c"># DB 접속(psql)</span>
-sudo docker compose exec -T db sh -c \
-  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' &lt;&lt;'SQL'
-SELECT device_name, is_authority FROM admin_devices
-WHERE is_authority = TRUE ORDER BY device_name;
-SQL</pre>
-      <pre><span class="c"># 권한자 비상 복구(특정 관리자명을 권한자로)</span>
-UPDATE admin_devices SET is_authority = TRUE
-WHERE device_name = '관리자명' AND is_approved = TRUE;</pre>
-    </div>
-  </section>
-
-  <footer>© 주식회사 케이프라이드 · TimeCard 내부 설명서</footer>
+  <footer>© 주식회사 케이프라이드 · TimeCard</footer>
 </div>
 
 <script>
-  (function(){
-    var tabs = document.querySelectorAll('[role="tab"]');
-    function select(id){
-      tabs.forEach(function(t){
-        var on = t.id === id;
-        t.setAttribute('aria-selected', on ? 'true' : 'false');
-        var panel = document.getElementById(t.getAttribute('aria-controls'));
-        panel.classList.toggle('active', on);
-      });
-      try{ localStorage.setItem('tc-manual-tab', id); }catch(e){}
-    }
-    tabs.forEach(function(t){ t.addEventListener('click', function(){ select(t.id); }); });
-    try{ var saved = localStorage.getItem('tc-manual-tab'); if(saved && document.getElementById(saved)) select(saved); }catch(e){}
-  })();
+  var IMAGES = {
+    common:  "TimeCardApp사용방법-공통-261023.png",
+    ios:     "TimeCardApp사용방법-iOS-261023.png",
+    android: "TimeCardApp사용방법-android-261023.png",
+  };
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  var viewer = document.getElementById('viewer');
+  var missing = document.getElementById('missing');
+  var missingName = document.getElementById('missingName');
+
+  viewer.addEventListener('error', function(){
+    viewer.style.display = 'none';
+    missingName.textContent = decodeURIComponent(viewer.getAttribute('src'));
+    missing.style.display = 'block';
+  });
+  viewer.addEventListener('load', function(){
+    viewer.style.display = '';
+    missing.style.display = 'none';
+  });
+
+  function select(key){
+    tabs.forEach(function(t){ t.setAttribute('aria-selected', t.dataset.key === key ? 'true' : 'false'); });
+    missing.style.display = 'none';
+    viewer.style.display = '';
+    viewer.src = IMAGES[key];
+    try{ localStorage.setItem('tc-guide-tab', key); }catch(e){}
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  tabs.forEach(function(t){ t.addEventListener('click', function(){ select(t.dataset.key); }); });
+  try{ var saved = localStorage.getItem('tc-guide-tab'); if(saved && IMAGES[saved]) select(saved); }catch(e){}
 </script>
 </body>
 </html>
