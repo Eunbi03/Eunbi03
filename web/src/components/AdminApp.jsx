@@ -102,7 +102,7 @@ export default function AdminApp({ user }) {
         ))}
         {/* 오른쪽: 메시지 발송(권한 필요) + 설명서(외부 링크) */}
         <div style={{ marginLeft: "auto", display: "flex", gap: 4, flexShrink: 0 }}>
-          {canMsg && (
+          {canMsg && (tab === "staff" || tab === "message") && (
             <button onClick={() => clickTab("message")}
               style={{ flexShrink: 0, borderRadius: 8, padding: isMobile ? "7px 14px" : "8px 18px", fontSize: isMobile ? 13 : 15,
                 fontWeight: tab === "message" ? 800 : 700, cursor: "pointer", whiteSpace: "nowrap",
