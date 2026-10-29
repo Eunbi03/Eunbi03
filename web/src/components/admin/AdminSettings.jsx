@@ -384,6 +384,14 @@ function CorporationSection({ canEdit }) {
     catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
   };
   const del = async (id) => { if (!window.confirm("이 법인을 삭제하시겠습니까?")) return; setBusy(true); try { await api.deleteCorporation(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+  const edit = async (c) => {
+    const name = window.prompt("법인명 수정\n(이 법인으로 등록된 근로자·담당자 법인도 함께 변경됩니다)", c.name);
+    if (name === null) return; const nm = name.trim();
+    if (!nm || nm === c.name) return;
+    setBusy(true); setMsg(null);
+    try { await api.updateCorporation(c.id, { name: nm, address: c.address ?? null }); setMsg({ text: `'${c.name}' → '${nm}' 변경 완료(해당 근로자 법인도 변경됨).`, ok: true }); load(); }
+    catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+  };
 
   return (
     <div>
@@ -411,6 +419,7 @@ function CorporationSection({ canEdit }) {
             <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{c.name}</p>
             <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{c.address || "주소 없음"}</p>
           </div>
+          {canEdit && <EditButton onClick={() => edit(c)} />}
           {canEdit && <DeleteButton onClick={() => del(c.id)} disabled={busy} />}
         </CardRow>
       ))}
@@ -454,6 +463,20 @@ function DivisionSection({ canEdit }) {
   };
   const delDivision = async (id) => { if (!window.confirm("이 본부와 소속 팀을 모두 삭제하시겠습니까?")) return; setBusy(true); try { await api.deleteDivision(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
   const delTeam = async (id, name) => { if (!window.confirm(`'${name || "이 팀"}' 팀을 삭제하시겠습니까?`)) return; setBusy(true); try { await api.deleteTeam(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+  const editDivision = async (d) => {
+    const name = window.prompt("본부명 수정\n(이 본부로 등록된 근로자도 함께 변경됩니다)", d.name);
+    if (name === null) return; const nm = name.trim(); if (!nm || nm === d.name) return;
+    setBusy(true); setMsg(null);
+    try { await api.updateDivision(d.id, nm); setMsg({ text: `본부명 '${d.name}' → '${nm}' 변경 완료.`, ok: true }); load(); }
+    catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+  };
+  const editTeam = async (t) => {
+    const name = window.prompt("팀명 수정\n(이 팀으로 등록된 근로자·관리자 권한 팀도 함께 변경됩니다)", t.name);
+    if (name === null) return; const nm = name.trim(); if (!nm || nm === t.name) return;
+    setBusy(true); setMsg(null);
+    try { await api.updateTeam(t.id, nm); setMsg({ text: `팀명 '${t.name}' → '${nm}' 변경 완료.`, ok: true }); load(); }
+    catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+  };
 
   return (
     <div>
@@ -479,13 +502,16 @@ function DivisionSection({ canEdit }) {
         <div key={d.id} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, padding: "14px 18px", marginBottom: 10, background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <p style={{ flex: 1, fontWeight: 800, fontSize: 15, color: COL.blue, margin: 0 }}>{d.name}</p>
+            {canEdit && <EditButton onClick={() => editDivision(d)} />}
             {canEdit && <DeleteButton onClick={() => delDivision(d.id)} disabled={busy} />}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
             {d.teams.length === 0 && <span style={{ fontSize: 13, color: COL.gray }}>등록된 팀 없음</span>}
             {d.teams.map((t) => (
               <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: COL.lgray, borderRadius: 999, padding: "5px 10px 5px 12px", fontSize: 13, color: COL.black }}>
-                {t.name}
+                {canEdit
+                  ? <span onClick={() => editTeam(t)} title="클릭하여 팀명 수정" style={{ cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted" }}>{t.name}</span>
+                  : t.name}
                 {canEdit && <button onClick={() => delTeam(t.id, t.name)} disabled={busy} aria-label="팀 삭제"
                   style={{ border: "none", background: "transparent", color: COL.gray, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 0 }}>×</button>}
               </span>
@@ -538,6 +564,13 @@ function PositionSection({ canEdit }) {
     catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
   };
   const del = async (id) => { if (!window.confirm("이 직책을 삭제하시겠습니까?")) return; setBusy(true); try { await api.deletePosition(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+  const edit = async (p) => {
+    const name = window.prompt("직책명 수정\n(이 직책으로 등록된 근로자도 함께 변경됩니다)", p.name);
+    if (name === null) return; const nm = name.trim(); if (!nm || nm === p.name) return;
+    setBusy(true); setMsg(null);
+    try { await api.updatePosition(p.id, nm); setMsg({ text: `직책명 '${p.name}' → '${nm}' 변경 완료.`, ok: true }); load(); }
+    catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
+  };
 
   return (
     <div>
@@ -563,7 +596,9 @@ function PositionSection({ canEdit }) {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {list.map((p) => (
             <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 999, padding: "7px 12px 7px 14px", fontSize: 14, color: C.ink, fontWeight: 700 }}>
-              {p.name}
+              {canEdit
+                ? <span onClick={() => edit(p)} title="클릭하여 직책명 수정" style={{ cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted" }}>{p.name}</span>
+                : p.name}
               {canEdit && <button onClick={() => del(p.id)} disabled={busy} aria-label="직책 삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>}
             </span>
           ))}

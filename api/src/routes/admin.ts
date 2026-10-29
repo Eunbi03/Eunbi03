@@ -1445,6 +1445,32 @@ router.post('/corporations', requireAdmin, permSettings, async (req: Request, re
     else res.status(500).json({ error: e.message });
   }
 });
+router.put('/corporations/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const { name, address } = req.body;
+  if (!name || !name.trim()) { res.status(400).json({ error: '법인명은 필수입니다.' }); return; }
+  const newName = name.trim();
+  const { rows: cur } = await pool.query('SELECT name FROM corporations WHERE id=$1', [req.params.id]);
+  if (!cur[0]) { res.status(404).json({ error: '법인을 찾을 수 없습니다.' }); return; }
+  const oldName = cur[0].name;
+  try {
+    await pool.query('UPDATE corporations SET name=$1, address=$2 WHERE id=$3', [newName, address ?? null, req.params.id]);
+  } catch (e: any) { if (e.code === '23505') { res.status(400).json({ error: '이미 등록된 법인명입니다.' }); return; } throw e; }
+  if (oldName !== newName) {
+    // 근로자 법인명 자동 변경
+    await pool.query('UPDATE users SET corp=$1 WHERE corp=$2', [newName, oldName]);
+    // 관리자 담당 법인(목록) 내 토큰도 치환
+    const { rows: ads } = await pool.query("SELECT id, corp FROM admin_devices WHERE corp IS NOT NULL AND corp<>''");
+    for (const ad of ads) {
+      const toks = String(ad.corp).split(/[,·]/).map((s: string) => s.trim()).filter(Boolean);
+      if (toks.includes(oldName)) {
+        const nt = Array.from(new Set(toks.map((t: string) => (t === oldName ? newName : t))));
+        await pool.query('UPDATE admin_devices SET corp=$1 WHERE id=$2', [nt.join(', '), ad.id]);
+      }
+    }
+  }
+  await logAudit(req, '수정', '법인', newName, oldName !== newName ? `(법인명)${oldName}->${newName}` : null);
+  res.json({ success: true });
+});
 router.delete('/corporations/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   { const { rows: r } = await pool.query('DELETE FROM corporations WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '법인', r[0]?.name); }
   res.json({ success: true });
@@ -1475,6 +1501,20 @@ router.post('/divisions', requireAdmin, permSettings, async (req: Request, res: 
     if (e.code === '23505') res.status(400).json({ error: '이미 등록된 본부명입니다.' });
     else res.status(500).json({ error: e.message });
   }
+});
+router.put('/divisions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const { name } = req.body;
+  if (!name || !name.trim()) { res.status(400).json({ error: '본부명은 필수입니다.' }); return; }
+  const newName = name.trim();
+  const { rows: cur } = await pool.query('SELECT name FROM divisions WHERE id=$1', [req.params.id]);
+  if (!cur[0]) { res.status(404).json({ error: '본부를 찾을 수 없습니다.' }); return; }
+  const oldName = cur[0].name;
+  try {
+    await pool.query('UPDATE divisions SET name=$1 WHERE id=$2', [newName, req.params.id]);
+  } catch (e: any) { if (e.code === '23505') { res.status(400).json({ error: '이미 등록된 본부명입니다.' }); return; } throw e; }
+  if (oldName !== newName) await pool.query('UPDATE users SET division=$1 WHERE division=$2', [newName, oldName]);
+  await logAudit(req, '수정', '본부', newName, oldName !== newName ? `(본부명)${oldName}->${newName}` : null);
+  res.json({ success: true });
 });
 router.delete('/divisions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   { const { rows: r } = await pool.query('DELETE FROM divisions WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '본부', r[0]?.name); } // 팀은 CASCADE 삭제
@@ -1518,6 +1558,24 @@ router.post('/divisions/:id/teams', requireAdmin, permSettings, async (req: Requ
     else res.status(500).json({ error: e.message });
   }
 });
+router.put('/teams/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const { name } = req.body;
+  if (!name || !name.trim()) { res.status(400).json({ error: '팀명은 필수입니다.' }); return; }
+  const newName = name.trim();
+  const { rows: cur } = await pool.query('SELECT name FROM teams WHERE id=$1', [req.params.id]);
+  if (!cur[0]) { res.status(404).json({ error: '팀을 찾을 수 없습니다.' }); return; }
+  const oldName = cur[0].name;
+  try {
+    await pool.query('UPDATE teams SET name=$1 WHERE id=$2', [newName, req.params.id]);
+  } catch (e: any) { if (e.code === '23505') { res.status(400).json({ error: '이미 등록된 팀명입니다.' }); return; } throw e; }
+  if (oldName !== newName) {
+    await pool.query('UPDATE users SET team=$1 WHERE team=$2', [newName, oldName]);
+    // 관리자 권한 팀(배열) 내 팀명도 치환
+    await pool.query('UPDATE admin_devices SET scope_teams = array_replace(scope_teams, $1, $2) WHERE $1 = ANY(scope_teams)', [oldName, newName]);
+  }
+  await logAudit(req, '수정', '팀', newName, oldName !== newName ? `(팀명)${oldName}->${newName}` : null);
+  res.json({ success: true });
+});
 router.delete('/teams/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   { const { rows: r } = await pool.query('DELETE FROM teams WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '팀', r[0]?.name); }
   res.json({ success: true });
@@ -1542,6 +1600,20 @@ router.post('/positions', requireAdmin, permSettings, async (req: Request, res: 
   }
   await logAudit(req, '추가', '직책', added.map((p: any) => p.name).join(', '));
   res.status(201).json({ positions: added });
+});
+router.put('/positions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const { name } = req.body;
+  if (!name || !name.trim()) { res.status(400).json({ error: '직책명은 필수입니다.' }); return; }
+  const newName = name.trim();
+  const { rows: cur } = await pool.query('SELECT name FROM positions WHERE id=$1', [req.params.id]);
+  if (!cur[0]) { res.status(404).json({ error: '직책을 찾을 수 없습니다.' }); return; }
+  const oldName = cur[0].name;
+  try {
+    await pool.query('UPDATE positions SET name=$1 WHERE id=$2', [newName, req.params.id]);
+  } catch (e: any) { if (e.code === '23505') { res.status(400).json({ error: '이미 등록된 직책명입니다.' }); return; } throw e; }
+  if (oldName !== newName) await pool.query('UPDATE users SET position=$1 WHERE position=$2', [newName, oldName]);
+  await logAudit(req, '수정', '직책', newName, oldName !== newName ? `(직책명)${oldName}->${newName}` : null);
+  res.json({ success: true });
 });
 router.delete('/positions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   { const { rows: r } = await pool.query('DELETE FROM positions WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '직책', r[0]?.name); }

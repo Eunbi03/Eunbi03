@@ -173,12 +173,15 @@ export const bulkWorkers = (rows) => request("/admin/workers/bulk", { method: "P
 /* 관리자 — 조직 마스터 (법인/본부·팀/직책/근무시간) */
 export const getCorporations = () => request("/admin/corporations");
 export const createCorporation = (name, address) => request("/admin/corporations", { method: "POST", body: { name, address } });
+export const updateCorporation = (id, data) => request(`/admin/corporations/${id}`, { method: "PUT", body: data });
 export const deleteCorporation = (id) => request(`/admin/corporations/${id}`, { method: "DELETE" });
 
 export const getDivisions = () => request("/admin/divisions");
 export const createDivision = (name, teams) => request("/admin/divisions", { method: "POST", body: { name, teams } });
+export const updateDivision = (id, name) => request(`/admin/divisions/${id}`, { method: "PUT", body: { name } });
 export const deleteDivision = (id) => request(`/admin/divisions/${id}`, { method: "DELETE" });
 export const addTeam = (divisionId, name, grantTo = []) => request(`/admin/divisions/${divisionId}/teams`, { method: "POST", body: { name, grantTo } });
+export const updateTeam = (id, name) => request(`/admin/teams/${id}`, { method: "PUT", body: { name } });
 export const getManagers = () => request("/admin/managers");
 export const getMessageTemplates = () => request("/admin/message-templates");
 export const updateMessageTemplate = (key, data) => request(`/admin/message-templates/${key}`, { method: "PUT", body: data });
@@ -186,6 +189,7 @@ export const deleteTeam = (id) => request(`/admin/teams/${id}`, { method: "DELET
 
 export const getPositions = () => request("/admin/positions");
 export const createPositions = (names) => request("/admin/positions", { method: "POST", body: { names } });
+export const updatePosition = (id, name) => request(`/admin/positions/${id}`, { method: "PUT", body: { name } });
 export const deletePosition = (id) => request(`/admin/positions/${id}`, { method: "DELETE" });
 
 export const getJobSchedules = () => request("/admin/job-schedules");
