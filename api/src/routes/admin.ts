@@ -882,12 +882,26 @@ router.post('/send-message', permStaff, async (req: Request, res: Response): Pro
     if (outOfScope.length) { res.status(403).json({ error: '권한 범위 밖 근로자가 포함되어 있습니다.' }); return; }
   }
   const manual = 'https://timecard-neon.vercel.app/';
+  // 문의처({managers}): 관리자 기기의 담당 법인·전화 → '이름 (담당법인) | 전화'
+  const { rows: mgrRows } = await pool.query(
+    `SELECT DISTINCT device_name, corp, phone FROM admin_devices
+      WHERE corp IS NOT NULL AND corp<>'' AND phone IS NOT NULL AND phone<>''`
+  );
+  const mgrLine = (m: any) => `${m.device_name} (${m.corp}) | ${m.phone}`;
+  const allMgrs = mgrRows.map(mgrLine);
+  const mgrByCorp: Record<string, string[]> = {};
+  for (const m of mgrRows) {
+    for (const c of String(m.corp).split(/[,·]/).map((s: string) => s.trim()).filter(Boolean)) {
+      (mgrByCorp[c] ||= []).push(mgrLine(m));
+    }
+  }
   const results: { name: string; via: string }[] = [];
   for (const t of targets) {
+    const managers = ((t.corp && mgrByCorp[t.corp]) ? mgrByCorp[t.corp] : allMgrs).join('\n');
     const via = await sendFreeMessage({
       email: t.email, phone: t.phone, channel: ch, attachments,
       vars: { name: t.name || '', phone: t.phone || '', email: t.email || '', corp: t.corp || '',
-        division: t.division || '', team: t.team || '', position: t.position || '', jobTitle: t.job_title || '', workplace: t.wp || '', manual },
+        division: t.division || '', team: t.team || '', position: t.position || '', jobTitle: t.job_title || '', workplace: t.wp || '', manual, managers },
     });
     results.push({ name: t.name, via });
   }
