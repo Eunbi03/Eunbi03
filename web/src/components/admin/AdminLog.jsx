@@ -80,7 +80,7 @@ export default function AdminLog() {
         <div style={S.empty}>해당 조건의 작업 기록이 없습니다.</div>
       ) : (
         <div style={{ overflowX: "auto", border: `1px solid ${C.lineAdmin}`, borderRadius: 12, background: "#fff" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
             <thead>
               <tr>
                 <th style={th}>일시</th>
@@ -97,11 +97,11 @@ export default function AdminLog() {
                 return (
                   <tr key={i}>
                     <td style={{ ...td, whiteSpace: "nowrap", color: C.inkSoft, fontVariantNumeric: "tabular-nums" }}>{l.at}</td>
-                    <td style={{ ...td, fontWeight: 700 }}>{l.admin_name || "-"}</td>
-                    <td style={td}><span style={{ fontSize: 11, fontWeight: 800, color: ac.c, background: ac.bg, padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>{l.action}</span></td>
-                    <td style={{ ...td, color: C.inkSoft }}>{l.entity}</td>
-                    <td style={{ ...td, fontWeight: 700 }}>{l.target_name || "-"}</td>
-                    <td style={{ ...td, color: C.inkSoft }}>{l.detail || "-"}</td>
+                    <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}>{l.admin_name || "-"}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}><span style={{ fontSize: 11, fontWeight: 800, color: ac.c, background: ac.bg, padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>{l.action}</span></td>
+                    <td style={{ ...td, color: C.inkSoft, whiteSpace: "nowrap" }}>{l.entity}</td>
+                    <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}>{l.target_name || "-"}</td>
+                    <td style={{ ...td, color: C.inkSoft, minWidth: 280, wordBreak: "break-word" }}>{l.detail || "-"}</td>
                   </tr>
                 );
               })}
