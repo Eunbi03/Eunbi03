@@ -300,7 +300,7 @@ function WorkplaceSection({ canEdit }) {
                 <p style={{ fontSize: 12.5, color: COL.gray, margin: 0 }}>{g.branches.length}개 점</p>
               </div>
               {canEdit && (
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: "flex", gap: 10, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                   <RowAddButton onClick={() => openBranchAdd(g)} />
                   <EditButton onClick={() => openClientEdit(g)} />
                   <DeleteButton onClick={() => delClient(g)} disabled={busy} />
