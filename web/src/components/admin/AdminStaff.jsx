@@ -42,6 +42,15 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // 근무지 검색형 선택(부분 일치·띄어쓰기 무시)
+  const normTxt = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+  const [wpQuery, setWpQuery] = useState(() => {
+    const c = workplaces.find((w) => String(w.id) === (worker?.workplace_id ? String(worker.workplace_id) : ""));
+    return c ? c.name : "";
+  });
+  const [wpOpen, setWpOpen] = useState(false);
+  const wpMatches = workplaces.filter((w) => normTxt(w.name).includes(normTxt(wpQuery))).slice(0, 60);
+
   // 본부 선택 시 팀 후보
   const teamOptions = form.division
     ? ((divisions.find((d) => d.name === form.division)?.teams) || []).map((t) => t.name)
@@ -148,10 +157,24 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
             <input style={S.input} type="text" inputMode="email" placeholder="예: kpride@gmail.com" value={form.email} onChange={(e) => set("email", e.target.value)} />
           </Field>
           <Field label="근무지 *" half>
-            <select style={selStyle} value={form.workplaceId} onChange={(e) => set("workplaceId", e.target.value)}>
-              <option value="">근무지 선택</option>
-              {workplaces.map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
-            </select>
+            <div style={{ position: "relative" }}>
+              <input style={S.input} placeholder="근무지 검색 (예: 안양 / 이마트안양)" value={wpQuery}
+                onChange={(e) => { setWpQuery(e.target.value); set("workplaceId", ""); setWpOpen(true); }}
+                onFocus={() => setWpOpen(true)}
+                onBlur={() => setTimeout(() => setWpOpen(false), 150)} />
+              {wpOpen && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: "#fff", border: `1px solid ${C.lineAdmin}`, borderRadius: 8, marginTop: 4, maxHeight: 220, overflowY: "auto", boxShadow: "0 6px 18px rgba(0,0,0,.12)" }}>
+                  {wpMatches.length === 0
+                    ? <div style={{ padding: "10px 12px", fontSize: 13, color: C.inkSoft }}>일치하는 근무지가 없습니다</div>
+                    : wpMatches.map((w) => (
+                      <div key={w.id} onMouseDown={() => { set("workplaceId", String(w.id)); setWpQuery(w.name); setWpOpen(false); }}
+                        style={{ padding: "9px 12px", fontSize: 13.5, cursor: "pointer", background: String(w.id) === form.workplaceId ? "#e3eef4" : "#fff", borderBottom: `1px solid ${C.lineAdmin}` }}>
+                        {w.name}
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
           </Field>
           <Field label="비고 (선택)" half>
             <input style={S.input} placeholder="예: 새말센터 외 xxx개점" value={form.remark} onChange={(e) => set("remark", e.target.value)} />
