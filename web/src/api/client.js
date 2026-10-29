@@ -137,7 +137,17 @@ export const getAuditLogs = (params = {}) => { const qs = new URLSearchParams(pa
 export const getMyPerms = () => request("/admin/me");
 export const getReportScores = (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/admin/report-scores${qs ? `?${qs}` : ""}`); };
 export const sendMonthlyReport = ({ userIds, from, to, label }) => request("/admin/send-report", { method: "POST", body: { userIds, from, to, label } });
-export const sendFreeMessage = ({ userIds, channel }) => request("/admin/send-message", { method: "POST", body: { userIds, channel } });
+export const sendFreeMessage = ({ userIds, channel, attachmentIds }) => request("/admin/send-message", { method: "POST", body: { userIds, channel, attachmentIds } });
+export async function uploadMessageAttachment(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const headers = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const res = await fetch(`${API_BASE}/admin/message-attachment`, { method: "POST", headers, body: fd });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || "첨부 업로드에 실패했습니다.");
+  return data; // { id, filename, url }
+}
 
 /* 관리자 — 연차 */
 export const setLeaveDday = (data) => request("/admin/attendance/set-leave-day", { method: "POST", body: data });

@@ -99,6 +99,14 @@ async function purgeOldAuditLogs() {
   } catch (e: any) { console.error('[감사로그 삭제 실패]', e.message); }
 }
 
+// 30일 지난 자율 메시지 첨부파일 자동 삭제 (용량 관리)
+async function purgeOldAttachments() {
+  try {
+    const { rowCount } = await pool.query("DELETE FROM message_attachments WHERE created_at < now() - interval '30 days'");
+    if (rowCount) console.log(`[첨부파일] 30일 경과 ${rowCount}건 삭제`);
+  } catch (e: any) { console.error('[첨부파일 삭제 실패]', e.message); }
+}
+
 async function sendRandomCheckAlerts() {
   const { rows } = await pool.query(
     `SELECT rc.id, rc.user_id, u.fcm_token
@@ -229,5 +237,6 @@ export function startScheduler() {
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', sendDailyReminders, { timezone: 'Asia/Seoul' });
   cron.schedule('10 4 * * *', purgeOldAuditLogs, { timezone: 'Asia/Seoul' }); // 매일 04:10 1년 지난 작업기록 삭제
+  cron.schedule('15 4 * * *', purgeOldAttachments, { timezone: 'Asia/Seoul' }); // 매일 04:15 30일 지난 첨부파일 삭제
   console.log('[스케줄러] 모든 정기 작업 등록 완료');
 }

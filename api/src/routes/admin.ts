@@ -10,8 +10,12 @@ import { buildIndividualReport } from '../services/reportBuilder';
 import { sendReportLink, sendAdminDeviceInvite, sendFreeMessage } from '../services/reportSender';
 import { invalidateTemplateCache } from '../services/messageTemplates';
 import { VALID_PERMS, normalizePerms } from '../utils/permissions';
+import multer from 'multer';
 
 const router = Router();
+// 자율 메시지 첨부 업로드 (메모리 저장, 20MB 제한)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const ALLOWED_ATTACH = new Set(['application/pdf', 'image/png', 'image/jpeg']);
 router.use(requireAuth, requireAdmin);
 
 // 유지해야 하는 최소 권한자 그룹(관리자명) 수
@@ -838,11 +842,34 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
 });
 
 // POST /api/admin/send-report — 지정 인원에게 기간 리포트 링크를 수동 발송 (이메일 우선, 없으면 문자)
+// 자율 메시지 첨부파일 업로드 (PDF/PNG/JPG) — 근로자관리 쓰기 권한
+router.post('/message-attachment', permStaff, upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+  const f = (req as any).file;
+  if (!f) { res.status(400).json({ error: '파일이 없습니다.' }); return; }
+  if (!ALLOWED_ATTACH.has(f.mimetype)) { res.status(400).json({ error: 'PDF·PNG·JPG 파일만 첨부할 수 있습니다.' }); return; }
+  let fname = f.originalname || 'file';
+  try { fname = Buffer.from(f.originalname, 'latin1').toString('utf8'); } catch { /* keep */ }
+  const { rows } = await pool.query(
+    'INSERT INTO message_attachments (filename, content_type, size, data) VALUES ($1,$2,$3,$4) RETURNING id',
+    [fname, f.mimetype, f.size, f.buffer]
+  );
+  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  res.status(201).json({ id: rows[0].id, filename: fname, url: `${base}/api/files/${rows[0].id}` });
+});
+
 // 자율 메시지 발송 — 근로자관리 쓰기(staff) 권한 + 권한 팀 범위 필수
 router.post('/send-message', permStaff, async (req: Request, res: Response): Promise<void> => {
   const { userIds, channel } = req.body;
   const ch = (channel === 'email' || channel === 'sms' || channel === 'both') ? channel : 'both';
   if (!Array.isArray(userIds) || !userIds.length) { res.status(400).json({ error: '발송 대상이 필요합니다.' }); return; }
+  // 첨부파일 로드(선택)
+  const attachmentIds: string[] = Array.isArray(req.body.attachmentIds) ? req.body.attachmentIds : [];
+  let attachments: { filename: string; contentType: string; content: Buffer; url: string }[] = [];
+  if (attachmentIds.length) {
+    const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const { rows: ar } = await pool.query('SELECT id, filename, content_type, data FROM message_attachments WHERE id = ANY($1)', [attachmentIds]);
+    attachments = ar.map((a: any) => ({ filename: a.filename, contentType: a.content_type, content: a.data, url: `${base}/api/files/${a.id}` }));
+  }
   // 대상 조회 + 권한 범위(권한 팀) 검증 — 범위 밖 인원이 섞여 있으면 거부
   const { rows: targets } = await pool.query(
     `SELECT u.id, u.name, u.email, u.phone, u.corp, u.division, u.team, u.position, u.job_title, w.name AS wp
@@ -858,7 +885,7 @@ router.post('/send-message', permStaff, async (req: Request, res: Response): Pro
   const results: { name: string; via: string }[] = [];
   for (const t of targets) {
     const via = await sendFreeMessage({
-      email: t.email, phone: t.phone, channel: ch,
+      email: t.email, phone: t.phone, channel: ch, attachments,
       vars: { name: t.name || '', phone: t.phone || '', email: t.email || '', corp: t.corp || '',
         division: t.division || '', team: t.team || '', position: t.position || '', jobTitle: t.job_title || '', workplace: t.wp || '', manual },
     });

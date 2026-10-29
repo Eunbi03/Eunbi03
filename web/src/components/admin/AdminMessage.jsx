@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 import { useIsMobile } from "../../utils/useIsMobile.js";
@@ -22,6 +22,9 @@ export default function AdminMessage({ filters, currentUser }) {
   const [selected, setSelected] = useState([]);      // [{id, name}]
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [attachments, setAttachments] = useState([]); // [{id, filename, url}]
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     setLoading(true);
@@ -39,6 +42,21 @@ export default function AdminMessage({ filters, currentUser }) {
     } catch (e) { alert(e.message); }
   };
   const removeSelected = (id) => setSelected((s) => s.filter((x) => x.id !== id));
+
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0]; if (e.target) e.target.value = "";
+    if (!file) return;
+    const okType = ["application/pdf", "image/png", "image/jpeg"].includes(file.type);
+    if (!okType) { alert("PDF·PNG·JPG 파일만 첨부할 수 있습니다."); return; }
+    if (file.size > 20 * 1024 * 1024) { alert("파일은 20MB 이하만 가능합니다."); return; }
+    setUploading(true); setMsg(null);
+    try {
+      const r = await api.uploadMessageAttachment(file);
+      setAttachments((a) => [...a, { id: r.id, filename: r.filename, url: r.url }]);
+    } catch (err) { setMsg({ text: "첨부 업로드 실패: " + err.message, ok: false }); }
+    finally { setUploading(false); }
+  };
+  const removeAttachment = (id) => setAttachments((a) => a.filter((x) => x.id !== id));
 
   const isProblem = (w) => !w.device_id || w.must_change_password || w.is_locked;
   const selectedIds = new Set(selected.map((s) => s.id));
@@ -61,7 +79,7 @@ export default function AdminMessage({ filters, currentUser }) {
     if (problemOnly && !window.confirm("문제계정만 보기가 활성화되어 있습니다.\n화면에 뜨는 근로자에게만 문자가 발송됩니다. 맞습니까?")) return;
     setSending(true); setMsg(null);
     try {
-      const r = await api.sendFreeMessage({ userIds: recipients.map((w) => w.id), channel });
+      const r = await api.sendFreeMessage({ userIds: recipients.map((w) => w.id), channel, attachmentIds: attachments.map((a) => a.id) });
       const fail = (r.results || []).filter((x) => x.via === "none");
       let text = `발송 완료: ${r.sent}/${r.total}명`;
       if (fail.length) text += ` · 미발송 ${fail.length}명(이메일·전화번호 없음 또는 설정 누락): ${fail.map((f) => f.name).join(", ")}`;
@@ -116,6 +134,22 @@ export default function AdminMessage({ filters, currentUser }) {
           <input type="checkbox" checked={problemOnly} onChange={(e) => setProblemOnly(e.target.checked)} style={{ width: 18, height: 18, accentColor: COL.blue }} />
           문제계정만 (기기미등록·비번미변경·잠김) — 앱 설치 안내 보낼 때
         </label>
+
+        {/* 파일 첨부 */}
+        <div style={{ marginTop: 14 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: COL.gray }}>파일 첨부 (PDF·PNG·JPG, 20MB 이하)</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" style={{ display: "none" }} onChange={onPickFile} />
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              style={{ ...S.subGhost, padding: "7px 14px" }}>{uploading ? "업로드 중…" : "파일 선택"}</button>
+            {attachments.map((a) => (
+              <span key={a.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: COL.blueSoft, color: COL.blue, borderRadius: 999, padding: "4px 11px", fontSize: 12.5, fontWeight: 700 }}>
+                📎 {a.filename}<button onClick={() => removeAttachment(a.id)} style={{ border: "none", background: "transparent", color: COL.blue, cursor: "pointer", fontSize: 13 }}>×</button>
+              </span>
+            ))}
+          </div>
+          {attachments.length > 0 && <p style={{ fontSize: 11.5, color: COL.gray, margin: "6px 0 0" }}>※ 이메일은 파일 첨부 + 링크, 문자는 다운로드 링크로 전달됩니다.</p>}
+        </div>
 
         {msg && <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: msg.ok ? "#2f8f5b" : COL.red, background: msg.ok ? "#e2f1e9" : "#fff0f0", borderRadius: 8, padding: "9px 12px" }}>{msg.text}</div>}
 

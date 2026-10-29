@@ -10,6 +10,7 @@ import authRoutes from './routes/auth';
 import attendanceRoutes from './routes/attendance';
 import randomCheckRoutes from './routes/randomCheck';
 import adminRoutes from './routes/admin';
+import filesRoutes from './routes/files';
 import { buildIndividualReport } from './services/reportBuilder';
 import { renderReportHtml } from './services/reportHtml';
 
@@ -33,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/random-check', randomCheckRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/files', filesRoutes);   // 첨부파일 공개 다운로드(인증 불필요)
 
 // 공개 리포트 링크 (토큰으로 접근, 인증 불필요) — 인라인 스타일 HTML 페이지
 // nginx가 /api/ 만 API로 전달하므로 /api/report 로 노출

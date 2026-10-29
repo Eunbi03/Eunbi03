@@ -76,10 +76,16 @@ export async function sendAdminDeviceInvite(opts: {
 export async function sendFreeMessage(opts: {
   email?: string | null; phone?: string | null; channel: 'email' | 'sms' | 'both';
   vars?: Record<string, string>; senderPhone?: string;
+  attachments?: { filename: string; contentType: string; content: Buffer; url: string }[];
 }): Promise<'email' | 'sms' | 'none'> {
-  const { email, phone, channel, vars = {}, senderPhone = '' } = opts;
-  const { subject, body: bodyText } = await renderTemplate('free_message', vars);
+  const { email, phone, channel, vars = {}, senderPhone = '', attachments = [] } = opts;
+  const { subject, body: bodyRaw } = await renderTemplate('free_message', vars);
+  // 첨부가 있으면 다운로드 링크를 본문 끝에 덧붙인다(문자·이메일 공통으로 링크 제공).
+  const bodyText = attachments.length
+    ? `${bodyRaw}\n\n[첨부파일]\n${attachments.map((a) => `${a.filename}: ${a.url}`).join('\n')}`
+    : bodyRaw;
   const bodyHtml = htmlizeBody(bodyText);
+  const mailAttachments = attachments.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType }));
 
   const wantEmail = channel === 'email' ? !!email : (channel === 'both' ? !!email : false);
   const wantSms = channel === 'sms' ? !!phone : (channel === 'both' ? (!email && !!phone) : false);
@@ -90,7 +96,7 @@ export async function sendFreeMessage(opts: {
       host: process.env.SMTP_HOST, port, secure: port === 465,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
     });
-    try { await transporter.sendMail({ from: process.env.SMTP_USER, to: email as string, subject: subject || 'TimeCard', html: bodyHtml, text: bodyText }); return 'email'; }
+    try { await transporter.sendMail({ from: process.env.SMTP_USER, to: email as string, subject: subject || 'TimeCard', html: bodyHtml, text: bodyText, attachments: mailAttachments.length ? mailAttachments : undefined }); return 'email'; }
     catch (e: any) { console.error('[자율메시지 이메일 실패]', e.message); return 'none'; }
   }
   if (wantSms && process.env.SOLAPI_API_KEY && process.env.SOLAPI_API_SECRET) {
