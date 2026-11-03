@@ -65,9 +65,12 @@ export default function AdminApp({ user }) {
   const [directActive, setDirectActive] = useState(false); // 전체현황 인원 직접입력 시 필터 비활성화
 
   useEffect(() => {
-    api.getCorporations().then((d) => setCorps((d.corporations || []).map((c) => c.name))).catch(() => {});
-    api.getDivisions().then((d) => setDivisions(d.divisions || [])).catch(() => {});
-    api.getPositions().then((d) => setPositions((d.positions || []).map((p) => p.name))).catch(() => {});
+    // 필터 선택지는 본인 권한 범위로 제한해 받는다(조직도 노출 방지).
+    api.getFilterOptions().then((d) => {
+      setCorps((d.corporations || []).map((c) => c.name));
+      setDivisions(d.divisions || []);
+      setPositions((d.positions || []).map((p) => p.name));
+    }).catch(() => {});
   }, []);
 
   // 팀→본부 매핑 (팀 선택 시 본부 자동 지정)

@@ -1699,6 +1699,50 @@ router.get('/positions', async (_req: Request, res: Response): Promise<void> => 
   const { rows } = await pool.query('SELECT id, name FROM positions ORDER BY name');
   res.json({ positions: rows });
 });
+
+// 필터(법인/본부·팀/직책) 선택지 — 본인 권한 범위로 제한해 조직도 노출을 막는다.
+//  권한자: 전체 마스터. 그 외: 내가 볼 수 있는 근로자에 실제로 존재하는 값만.
+router.get('/filter-options', async (req: Request, res: Response): Promise<void> => {
+  if (getScope(req).all) {
+    const { rows: corps } = await pool.query('SELECT name FROM corporations ORDER BY name');
+    const { rows: divs } = await pool.query('SELECT id, name FROM divisions ORDER BY name');
+    const { rows: teams } = await pool.query('SELECT division_id, name FROM teams ORDER BY name');
+    const byDiv: Record<string, any[]> = {};
+    for (const t of teams) (byDiv[t.division_id] ||= []).push({ name: t.name });
+    const { rows: pos } = await pool.query('SELECT name FROM positions ORDER BY name');
+    res.json({
+      corporations: corps,
+      divisions: divs.map((d: any) => ({ name: d.name, teams: byDiv[d.id] || [] })),
+      positions: pos,
+    });
+    return;
+  }
+  // 범위 내 근로자에 존재하는 값만 distinct 추출
+  const params: any[] = [];
+  const where = scopeClause(req, 'u', params);
+  const { rows } = await pool.query(
+    `SELECT DISTINCT u.corp, u.division, u.team, u.position
+       FROM users u WHERE u.is_active=TRUE AND u.role='worker' AND ${where}`,
+    params
+  );
+  const corpSet = new Set<string>();
+  const posSet = new Set<string>();
+  const divTeams: Record<string, Set<string>> = {};
+  for (const r of rows) {
+    if (r.corp) corpSet.add(r.corp);
+    if (r.position) posSet.add(r.position);
+    if (r.division) { (divTeams[r.division] ||= new Set()); if (r.team) divTeams[r.division].add(r.team); }
+    else if (r.team) { (divTeams['(미지정)'] ||= new Set()).add(r.team); }
+  }
+  const sortKo = (a: string, b: string) => a.localeCompare(b, 'ko');
+  res.json({
+    corporations: Array.from(corpSet).sort(sortKo).map((name) => ({ name })),
+    divisions: Object.keys(divTeams).sort(sortKo).map((name) => ({
+      name, teams: Array.from(divTeams[name]).sort(sortKo).map((tn) => ({ name: tn })),
+    })),
+    positions: Array.from(posSet).sort(sortKo).map((name) => ({ name })),
+  });
+});
 // 여러 개 동시 추가 가능
 router.post('/positions', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   const names: string[] = Array.isArray(req.body.names) ? req.body.names : (req.body.name ? [req.body.name] : []);

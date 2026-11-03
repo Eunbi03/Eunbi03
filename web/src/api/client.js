@@ -188,6 +188,8 @@ export const updateMessageTemplate = (key, data) => request(`/admin/message-temp
 export const deleteTeam = (id) => request(`/admin/teams/${id}`, { method: "DELETE" });
 
 export const getPositions = () => request("/admin/positions");
+// 필터 선택지(법인/본부·팀/직책) — 본인 권한 범위로 제한(조직도 노출 방지)
+export const getFilterOptions = () => request("/admin/filter-options");
 export const createPositions = (names) => request("/admin/positions", { method: "POST", body: { names } });
 export const updatePosition = (id, name) => request(`/admin/positions/${id}`, { method: "PUT", body: { name } });
 export const deletePosition = (id) => request(`/admin/positions/${id}`, { method: "DELETE" });
