@@ -1925,6 +1925,9 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
     isAuthorityHolder: !!ad.isAuthority,
     permissions: ad.permissions || [],
     roles: ad.roles || [],
+    scopeDivisions: ad.scopeDivisions || [],
+    scopeTeams: ad.scopeTeams || [],
+    scopeCorps: ad.scopeCorps || [],
     canSendReport: canSendReport(req),
     // 프론트 편의 플래그
     canWriteSettings: hasPerm(req, 'settings'),

@@ -254,6 +254,15 @@ const ROLE_OPTIONS = [
   ["general", "일반"],
 ];
 const ROLE_LABEL = { director: "본부장", teamlead: "팀장", hr: "인적자원팀", general: "일반" };
+// 필드 라벨: 주 텍스트는 진하게, 부가 설명은 연하고 얇게.
+function FieldLabel({ main, hint }) {
+  return (
+    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>
+      {main}
+      {hint ? <span style={{ fontWeight: 400, color: "#9aa5b5" }}> {hint}</span> : null}
+    </div>
+  );
+}
 const permText = (perms, roles) => {
   if ((roles || []).includes("general")) return "읽기 전용(일반)";
   const p = perms || [];
@@ -401,7 +410,7 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>쓰기 권한 · </span>{permText(rep.permissions, rep.roles)}</div>
           {(rep.roles || []).includes("director") && <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 본부 · </span>{teamsText(rep.scope_divisions)}</div>}
           {((rep.roles || []).includes("teamlead") || (rep.roles || []).includes("general")) && <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 팀 · </span>{teamsText(rep.scope_teams)}</div>}
-          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 법인 · </span>{rep.corp || "-"}</div>
+          {(rep.roles || []).includes("hr") && <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 법인 · </span>{rep.corp || "-"}</div>}
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>업무용 전화번호 · </span>{fmtPhone(rep.phone) || "-"}</div>
         </div>
       )}
@@ -412,14 +421,14 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
           <input style={inp} placeholder="업무용 전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
 
           {/* 역할 (복수 선택, 일반은 단독) */}
-          <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>역할 (복수 선택 · ‘일반’은 단독)</div>
+          <FieldLabel main="역할" hint="(복수 선택 · ‘일반’은 단독)" />
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {ROLE_OPTIONS.map(([k, label]) => <span key={k} style={chip(roleSel.includes(k))} onClick={() => setRoleSel(toggleRole(roleSel, k))}>{label}</span>)}
           </div>
 
           {/* 본부장 → 담당 본부 */}
           {roleSel.includes("director") && (<>
-            <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>담당 본부 (본부장) — 해당 본부의 모든 팀을 열람</div>
+            <FieldLabel main="담당 본부" hint="(본부장) — 해당 본부의 모든 팀을 열람" />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {divList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 본부 없음</span>}
               {divList.map((dv) => <span key={dv} style={chip(divSel.includes(dv))} onClick={() => setDivSel(toggle(divSel, dv))}>{dv}</span>)}
@@ -428,19 +437,21 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
 
           {/* 팀장/일반 → 담당 팀 */}
           {(roleSel.includes("teamlead") || roleSel.includes("general")) && (<>
-            <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>담당 팀 {isGeneral ? "(일반)" : "(팀장)"} — 해당 팀을 열람</div>
+            <FieldLabel main="담당 팀" hint={`${isGeneral ? "(일반)" : "(팀장)"} — 해당 팀을 열람`} />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
               {teamList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 팀 없음</span>}
               {teamList.map((tm) => <span key={tm} style={chip(teamSel.includes(tm))} onClick={() => setTeamSel(toggle(teamSel, tm))}>{tm}</span>)}
             </div>
           </>)}
 
-          {/* 담당 법인 (발신담당 + 인적자원팀 열람 범위) */}
-          <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>담당 법인 (복수 선택){roleSel.includes("hr") ? " — 인적자원팀: 소속 근로자 열람" : ""}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {corpList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 법인 없음</span>}
-            {corpList.map((c) => <span key={c} style={chip(corpSel.includes(c))} onClick={() => setCorpSel(toggle(corpSel, c))}>{c}</span>)}
-          </div>
+          {/* 담당 법인 — 인적자원팀 역할일 때만 */}
+          {roleSel.includes("hr") && (<>
+            <FieldLabel main="담당 법인" hint="(복수 선택) — 소속 근로자 열람" />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {corpList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 법인 없음</span>}
+              {corpList.map((c) => <span key={c} style={chip(corpSel.includes(c))} onClick={() => setCorpSel(toggle(corpSel, c))}>{c}</span>)}
+            </div>
+          </>)}
 
           {/* 쓰기 권한 — 일반(읽기전용)은 숨김 */}
           {isGeneral ? (
@@ -448,7 +459,7 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
               <b>일반</b>은 읽기 전용입니다. 모든 쓰기 권한이 차단됩니다.
             </div>
           ) : (<>
-            <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700 }}>쓰기 권한 (복수 선택, 미선택 시 읽기 전용)</div>
+            <FieldLabel main="쓰기 권한" hint="(복수 선택, 미선택 시 읽기 전용)" />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {PERM_OPTIONS.map(([k, label]) => {
                 // '설정' 쓰기는 인적자원팀(hr) 역할일 때만 노출
@@ -669,33 +680,35 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
                 const invChip = (on) => ({ padding: "5px 11px", borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? C.blue : C.line}`, background: on ? C.blue : "#fff", color: on ? "#fff" : C.inkSoft });
                 const invGeneral = inv.roleSel.includes("general");
                 return (<>
-                  <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>역할 (복수 선택 · ‘일반’은 단독)</div>
+                  <FieldLabel main="역할" hint="(복수 선택 · ‘일반’은 단독)" />
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {ROLE_OPTIONS.map(([k, label]) => <span key={k} onClick={() => setInv({ ...inv, roleSel: toggleRole(inv.roleSel, k) })} style={invChip(inv.roleSel.includes(k))}>{label}</span>)}
                   </div>
                   {inv.roleSel.includes("director") && (<>
-                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>담당 본부 (본부장)</div>
+                    <FieldLabel main="담당 본부" hint="(본부장) — 해당 본부의 모든 팀을 열람" />
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {divList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 본부 없음</span>}
                       {divList.map((dv) => <span key={dv} onClick={() => setInv({ ...inv, divSel: toggleInArr(inv.divSel, dv) })} style={invChip(inv.divSel.includes(dv))}>{dv}</span>)}
                     </div>
                   </>)}
                   {(inv.roleSel.includes("teamlead") || invGeneral) && (<>
-                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>담당 팀 {invGeneral ? "(일반)" : "(팀장)"}</div>
+                    <FieldLabel main="담당 팀" hint={`${invGeneral ? "(일반)" : "(팀장)"} — 해당 팀을 열람`} />
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
                       {teamList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 팀 없음</span>}
                       {teamList.map((tm) => <span key={tm} onClick={() => setInv({ ...inv, teamSel: toggleInArr(inv.teamSel, tm) })} style={invChip(inv.teamSel.includes(tm))}>{tm}</span>)}
                     </div>
                   </>)}
-                  <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>담당 법인 (복수 선택){inv.roleSel.includes("hr") ? " — 인적자원팀: 소속 근로자 열람" : ""}</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {corpList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 법인 없음</span>}
-                    {corpList.map((c) => <span key={c} onClick={() => setInv({ ...inv, corps: toggleInArr(inv.corps, c) })} style={invChip(inv.corps.includes(c))}>{c}</span>)}
-                  </div>
+                  {inv.roleSel.includes("hr") && (<>
+                    <FieldLabel main="담당 법인" hint="(복수 선택) — 소속 근로자 열람" />
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {corpList.length === 0 && <span style={{ fontSize: 12, color: C.inkSoft }}>등록된 법인 없음</span>}
+                      {corpList.map((c) => <span key={c} onClick={() => setInv({ ...inv, corps: toggleInArr(inv.corps, c) })} style={invChip(inv.corps.includes(c))}>{c}</span>)}
+                    </div>
+                  </>)}
                   {invGeneral ? (
                     <div style={{ fontSize: 12, color: "#b9820f", background: "#f7edcf", borderRadius: 8, padding: "7px 10px", lineHeight: 1.5 }}><b>일반</b>은 읽기 전용입니다. 쓰기 권한이 차단됩니다.</div>
                   ) : (<>
-                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 700, marginTop: 2 }}>쓰기 권한 (복수 선택, 미선택 시 읽기 전용)</div>
+                    <FieldLabel main="쓰기 권한" hint="(복수 선택, 미선택 시 읽기 전용)" />
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {PERM_OPTIONS.map(([k, label]) => {
                         if (k === "settings" && !inv.roleSel.includes("hr")) return null;

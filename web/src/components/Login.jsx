@@ -207,8 +207,9 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
                   });
                 };
                 const isGen = reqRoles.includes("general");
+                const softLab = { fontWeight: 400, color: "#9aa5b5" };
                 return (<>
-                  <label style={labelStyle}>역할 (복수 선택 · ‘일반’은 단독)</label>
+                  <label style={labelStyle}>역할 <span style={softLab}>(복수 선택 · ‘일반’은 단독)</span></label>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {[["director","본부장"],["teamlead","팀장"],["hr","인적자원팀"],["general","일반"]].map(([k,label]) => (
                       <span key={k} onClick={() => toggleRoleLocal(k)} style={chipStyle(reqRoles.includes(k))}>{label}</span>
@@ -216,7 +217,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
                   </div>
 
                   {reqRoles.includes("director") && (<>
-                    <label style={labelStyle}>담당 본부 (본부장)</label>
+                    <label style={labelStyle}>담당 본부 <span style={softLab}>(본부장)</span></label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {Object.keys(byDivision).length === 0 && <span style={{ fontSize: 13, color: t.subColor }}>본부 목록을 불러오는 중…</span>}
                       {Object.keys(byDivision).map((dv) => (
@@ -226,7 +227,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
                   </>)}
 
                   {(reqRoles.includes("teamlead") || isGen) && (<>
-                    <label style={labelStyle}>담당 팀 {isGen ? "(일반)" : "(팀장)"}</label>
+                    <label style={labelStyle}>담당 팀 <span style={softLab}>{isGen ? "(일반)" : "(팀장)"}</span></label>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 220, overflowY: "auto", padding: "4px 2px" }}>
                       {Object.keys(byDivision).length === 0 && <span style={{ fontSize: 13, color: t.subColor }}>팀 목록을 불러오는 중…</span>}
                       {Object.entries(byDivision).map(([division, teams]) => (
@@ -243,7 +244,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
                   </>)}
 
                   {reqRoles.includes("hr") && (<>
-                    <label style={labelStyle}>담당 법인 (인적자원팀)</label>
+                    <label style={labelStyle}>담당 법인 <span style={softLab}>(인적자원팀) — 소속 근로자 열람</span></label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {corpsList.length === 0 && <span style={{ fontSize: 13, color: t.subColor }}>법인 목록을 불러오는 중…</span>}
                       {corpsList.map((c) => (
@@ -255,7 +256,7 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
                   {isGen ? (
                     <div style={{ fontSize: 12.5, color: "#b9820f", background: "#f7edcf", borderRadius: 8, padding: "8px 11px", lineHeight: 1.5 }}>‘일반’은 읽기 전용입니다. 쓰기 권한이 부여되지 않습니다.</div>
                   ) : (<>
-                    <label style={labelStyle}>쓰기 권한 (복수 선택, 미선택 시 읽기 전용)</label>
+                    <label style={labelStyle}>쓰기 권한 <span style={softLab}>(복수 선택, 미선택 시 읽기 전용)</span></label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       {[["staff","근로자관리"],["report","개별리포트"],["settings","설정"]].map(([k,label]) => {
                         if (k === "settings" && !reqRoles.includes("hr")) return null;
