@@ -75,7 +75,7 @@ function CardRow({ children }) {
 }
 
 /* ── 근무지 관리: 거래처(client) > 지점(branch) 묶음 ───────────────────────── */
-const emptyWp = { clientName: "", branchName: "", radius_m: 500, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
+const emptyWp = { clientName: "", branchName: "", radius_m: 300, address: "", detailAddress: "", postalCode: "", lat: "", lng: "" };
 function WorkplaceSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
@@ -194,7 +194,7 @@ function WorkplaceSection({ canEdit }) {
     const base = { lat: parseFloat(f.lat), lng: parseFloat(f.lng), address: f.address.trim(), postalCode: f.postalCode, detailAddress: f.detailAddress.trim() };
     try {
       if (f.kind === "add" || f.kind === "addBranch") {
-        await api.createWorkplace({ ...base, clientName: f.clientName.trim(), branchName: f.branchName.trim(), radiusM: parseInt(f.radius_m, 10) || 500 });
+        await api.createWorkplace({ ...base, clientName: f.clientName.trim(), branchName: f.branchName.trim(), radiusM: parseInt(f.radius_m, 10) || 300 });
       } else if (f.kind === "single") {
         await api.updateWorkplace(f.id, { ...base, clientName: f.clientName.trim(), radiusM: parseInt(f.radius_m, 10) || 500 });
       } else { // branch

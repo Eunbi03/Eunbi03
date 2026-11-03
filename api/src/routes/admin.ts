@@ -244,7 +244,7 @@ router.post('/workplaces', requireAdmin, permSettings, async (req: Request, res:
   if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
   // 참고반경은 거래처 공통: 같은 거래처가 이미 있으면 그 반경을 따른다.
   const { rows: ex } = await pool.query('SELECT radius_m FROM workplaces WHERE is_active=TRUE AND client_name=$1 LIMIT 1', [clientName]);
-  const radius = ex[0] ? ex[0].radius_m : (radiusM || 500);
+  const radius = ex[0] ? ex[0].radius_m : (radiusM || 300);
   const { rows } = await pool.query(
     `INSERT INTO workplaces (name, client_name, branch_name, lat, lng, radius_m, address, postal_code, detail_address)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
@@ -258,7 +258,7 @@ router.post('/workplaces', requireAdmin, permSettings, async (req: Request, res:
 router.put('/workplaces/client', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   const oldClientName = (req.body.oldClientName ?? '').trim();
   const clientName = (req.body.clientName ?? '').trim();
-  const radiusM = parseInt(req.body.radiusM, 10) || 500;
+  const radiusM = parseInt(req.body.radiusM, 10) || 300;
   if (!oldClientName || !clientName) { res.status(400).json({ error: '거래처명이 필요합니다.' }); return; }
   const { rows: before } = await pool.query('SELECT radius_m FROM workplaces WHERE is_active=TRUE AND client_name=$1 LIMIT 1', [oldClientName]);
   if (!before[0]) { res.status(404).json({ error: '거래처를 찾을 수 없습니다.' }); return; }
@@ -355,7 +355,7 @@ router.post('/workplaces/bulk', requireAdmin, permSettings, async (req: Request,
       let radius = clientRadius[clientName];
       if (radius === undefined) {
         const { rows: ex } = await pool.query('SELECT radius_m FROM workplaces WHERE is_active=TRUE AND client_name=$1 LIMIT 1', [clientName]);
-        radius = ex[0] ? ex[0].radius_m : (parseInt(r.radiusM, 10) || 500);
+        radius = ex[0] ? ex[0].radius_m : (parseInt(r.radiusM, 10) || 300);
         clientRadius[clientName] = radius;
       }
       await pool.query(
