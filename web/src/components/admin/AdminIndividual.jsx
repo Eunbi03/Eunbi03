@@ -69,17 +69,18 @@ function TimeText({ time, lat, lng, color, bold }) {
 // 출퇴근지 + 거리 배지 (근무노트로 다르게 기입 시 '?' 배지)
 function PlaceDist({ note, place: nearPlace, dist, within, pending }) {
   const noted = note && note.trim();
-  const place = noted || nearPlace || "";
-  const useNote = noted && noted !== nearPlace;
+  // 표시 이름: 가장 가까운 근무지명 우선, 없으면 메모
+  const place = nearPlace || noted || "";
   let badge = null;
-  if (pending) {
-    badge = { text: "계산 중", bg: COL.lgray, fg: COL.gray };
-  } else if (useNote) {
-    badge = { text: "?", bg: COL.lgray, fg: COL.gray };
-  } else if (dist != null) {
-    // 초록/빨강 기준 = 서버 판정(어느 근무지든 반경 이내). 구버전 데이터는 거리 300m fallback.
+  if (dist != null) {
+    // 거리가 계산됐으면 메모가 있어도 거리/인정을 표시 (가장 가까운 근무지 기준)
+    // 초록/빨강 = 서버 판정(어느 근무지든 반경 이내). 구버전 데이터는 거리 300m fallback.
     const ok = within === true || (within == null && dist <= 300);
     badge = { text: fmtDist(dist), bg: ok ? "#dcece2" : "#f6dcd8", fg: ok ? COL.green : COL.red };
+  } else if (pending) {
+    badge = { text: "계산 중", bg: COL.lgray, fg: COL.gray };
+  } else if (noted) {
+    badge = { text: "?", bg: COL.lgray, fg: COL.gray };
   }
   return (
     <>
