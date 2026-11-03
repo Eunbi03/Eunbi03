@@ -78,7 +78,8 @@ function hasPerm(req: Request, key: string): boolean {
   if (!ad) return false;
   if (ad.isAuthority) return true;
   const roles: string[] = ad.roles || [];
-  if (roles.includes('general')) return false; // 일반 = 읽기 전용
+  if (roles.length === 0) return false;         // 보류(역할 없음) = 아무것도 못 함(읽기도 불가)
+  if (roles.includes('general')) return false;  // 일반 = 읽기 전용
   const p: string[] = ad.permissions || [];
   if (key === 'settings') return roles.includes('hr') && p.includes('settings');
   return p.includes(key);
@@ -422,6 +423,10 @@ router.post('/workers', permStaff, async (req: Request, res: Response): Promise<
             noteExempt, irregularWorker, mode } = req.body; // mode: undefined | 'restore' | 'new'
     const phoneDigits = (phone || '').replace(/\D/g, '');
     if (!name || !phoneDigits) { res.status(400).json({ error: '이름과 전화번호는 필수입니다.' }); return; }
+    // 쓰기는 읽기 범위 안에서만: 범위 밖 팀/본부/법인으로는 등록 불가(권한자는 제한 없음)
+    if (!workerRowInScope(req, { team, division, corp })) {
+      res.status(403).json({ error: '권한 범위 밖의 팀/본부/법인으로는 근로자를 등록할 수 없습니다.' }); return;
+    }
     const passwordHash = await bcrypt.hash(phoneDigits, 12); // 초기 비밀번호 = 하이픈 제외 전화번호
 
     // 같은 전화번호의 기존 계정 확인 (이메일로는 중복 검사하지 않음)
@@ -959,6 +964,13 @@ router.post('/send-report', async (req: Request, res: Response): Promise<void> =
   if (!canSendReport(req)) { res.status(403).json({ error: '리포트 발송 권한이 없습니다. 인적자원팀 또는 권한자만 발송할 수 있습니다.' }); return; }
   const { userIds, from, to } = req.body;
   if (!Array.isArray(userIds) || !userIds.length || !from || !to) { res.status(400).json({ error: '발송 대상과 기간이 필요합니다.' }); return; }
+  // 발송 대상이 모두 권한 범위 안인지 확인(권한자는 제한 없음)
+  if (!getScope(req).all) {
+    const { rows: tChk } = await pool.query('SELECT team, division, corp FROM users WHERE id = ANY($1)', [userIds]);
+    if (tChk.some((t: any) => !workerRowInScope(req, t))) {
+      res.status(403).json({ error: '권한 범위 밖 근로자가 포함되어 있습니다.' }); return;
+    }
+  }
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
   const m = Number(String(from).split('-')[1]);
   const monthLabel = `${m}`;
@@ -1076,6 +1088,14 @@ router.post('/users/:id/unlock', requireAdmin, permStaff, async (req: Request, r
 router.post('/attendance/:recordId/approve-time-change', async (req: Request, res: Response): Promise<void> => {
   if (!requirePerm(req, res, 'report')) return; // 출퇴근 시간변경 승인 → 개별리포트 쓰기
   const { approve } = req.body;
+  // 대상 기록의 근로자가 권한 범위 안인지 확인(권한자는 제한 없음)
+  const { rows: recRows } = await pool.query(
+    `SELECT u.team, u.division, u.corp FROM attendance_records a JOIN users u ON u.id=a.user_id WHERE a.id=$1`,
+    [req.params.recordId]
+  );
+  if (recRows[0] && !workerRowInScope(req, recRows[0])) {
+    res.status(403).json({ error: '권한 범위 밖 근로자의 요청입니다.' }); return;
+  }
   const { rows } = await pool.query(
     `UPDATE attendance_records SET temp_time_change_status=$1, temp_time_change_approved_by=$2
      WHERE id=$3 AND temp_time_change_status='pending' RETURNING id`,
@@ -1841,6 +1861,8 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
       else if (division && !divTeamPairs.has(`${division}\u0000${team}`)) orgReasons.push(`팀 '${team}'은(는) 본부 '${division}' 소속이 아님`);
     }
     if (orgReasons.length) { failed.push({ ...info, reason: orgReasons.join(', ') }); continue; }
+    // 쓰기는 읽기 범위 안에서만: 범위 밖 팀/본부/법인은 실패 처리(권한자는 제한 없음)
+    if (!workerRowInScope(req, { team, division, corp })) { failed.push({ ...info, reason: '권한 범위 밖(팀/본부/법인)' }); continue; }
     const workplaceId = r.workplaceName ? wpByName[String(r.workplaceName).trim()] : null;
     if (r.workplaceName && !workplaceId) { failed.push({ ...info, reason: `근무지 '${r.workplaceName}' 없음` }); continue; }
     const js = r.jobTitle ? jsByName[String(r.jobTitle).trim()] : null;

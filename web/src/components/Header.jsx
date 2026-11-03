@@ -26,7 +26,8 @@ function headerBadges(p) {
   }
   if (roles.includes("hr")) out.push("인적자원팀");
   if (roles.includes("general")) out.push("일반");
-  return out;
+  // 역할이 없으면 보류(열람 불가) 상태
+  return out.length ? out : ["보류"];
 }
 
 export default function Header({ user, onLogout }) {
