@@ -25,14 +25,46 @@ public class BgLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDel
     private var running = false
     private var timer: Timer?
 
+    // 창 기반 전력 듀티사이클 설정
+    private let windowLead: TimeInterval = 180     // 슬롯시각 이 초만큼 전부터 고정밀로 워밍업
+    private let windowTail: TimeInterval = 5 * 60  // 슬롯시각 +5분까지 (제출 창과 동일)
+    private var preciseMode = false                // 현재 고정밀 모드인지(불필요한 재설정 방지)
+
     override public func load() {
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        // 정지 상태에서도 업데이트가 오도록 거리 필터를 두지 않는다(창 평가 누락 방지).
-        manager.distanceFilter = kCLDistanceFilterNone
+        // 기본은 저전력(앱 생존용). 슬롯 창 근처에서만 고정밀로 올린다.
         manager.pausesLocationUpdatesAutomatically = false
         manager.allowsBackgroundLocationUpdates = true
         if #available(iOS 11.0, *) { manager.showsBackgroundLocationIndicator = true }
+        applyLowPowerMode()
+    }
+
+    // 창 밖: 저전력(셀/와이파이 기반). GPS 칩을 거의 쓰지 않아 발열이 없다.
+    // 위치 서비스는 켜진 상태라 앱은 백그라운드에서 유지된다.
+    private func applyLowPowerMode() {
+        if !preciseMode && manager.desiredAccuracy == kCLLocationAccuracyKilometer { return }
+        preciseMode = false
+        manager.desiredAccuracy = kCLLocationAccuracyKilometer
+        manager.distanceFilter = 500
+    }
+
+    // 창 안: 고정밀. 정확한 좌표를 확보해 제출.
+    // 정지 상태에서도 업데이트가 오도록 거리 필터를 두지 않는다(창 평가 누락 방지).
+    private func applyPreciseMode() {
+        if preciseMode { return }
+        preciseMode = true
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        manager.distanceFilter = kCLDistanceFilterNone
+    }
+
+    // 지금이 제출 대기 슬롯의 [슬롯시각 − windowLead, 슬롯시각 + windowTail] 창 안인가
+    private func nearWindow(_ now: Date) -> Bool {
+        for slot in slots where !slot.submitted {
+            if now >= slot.start.addingTimeInterval(-windowLead) && now <= slot.start.addingTimeInterval(windowTail) {
+                return true
+            }
+        }
+        return false
     }
 
     // start({ apiBase, slots: [{ checkId, t, scheduledTime(ISO) }] })
@@ -59,6 +91,8 @@ public class BgLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDel
         running = true
 
         manager.requestAlwaysAuthorization()
+        // 슬롯이 임박했으면 evaluate()가 곧바로 고정밀로 올린다.
+        applyLowPowerMode()
         manager.startUpdatingLocation()
         // 위치 콜백이 뜸할 때를 대비해 주기적으로도 창을 평가한다(앱이 살아있는 동안 동작).
         DispatchQueue.main.async {
@@ -82,8 +116,11 @@ public class BgLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDel
 
     // 현재 위치로 열린 슬롯 창을 제출하고, 남은 창이 없으면 추적을 멈춘다.
     private func evaluate() {
-        guard running, let loc = manager.location else { return }
+        guard running else { return }
         let now = Date()
+        // 전력 모드 전환: 슬롯 창 근처면 고정밀, 아니면 저전력(발열 억제).
+        if nearWindow(now) { applyPreciseMode() } else { applyLowPowerMode() }
+        guard let loc = manager.location else { return }
         for slot in slots {
             if slot.submitted || slot.inFlight { continue }
             let winStart = slot.start
