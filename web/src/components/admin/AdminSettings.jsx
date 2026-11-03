@@ -105,6 +105,27 @@ function WorkplaceSection({ canEdit }) {
   }
   const isSingle = (g) => g.branches.length === 1 && !g.branches[0].branch_name;
 
+  // 이름/주소 정규화: 띄어쓰기 제거 + 소문자 (띄어쓰기·대소문자 차이 무시)
+  const normTxt = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+  // 두 문자열 유사도(0~1, Dice 계수/바이그램). 표기 차이 감지용.
+  const similarity = (a, b) => {
+    a = normTxt(a); b = normTxt(b);
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    if (a.length < 2 || b.length < 2) return 0;
+    const bigrams = (s) => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+    const A = bigrams(a), B = bigrams(b); let inter = 0;
+    for (const [g, c] of A) { if (B.has(g)) inter += Math.min(c, B.get(g)); }
+    return (2 * inter) / ((a.length - 1) + (b.length - 1));
+  };
+  // 경고창에 보여줄 라벨: 단일 지점 거래처는 '거래처명', 여러 지점이면 '거래처명 지점명'
+  const wpLabel = (wp) => {
+    const c = wp.client_name || wp.name;
+    const grp = byClient[c];
+    const multi = grp && grp.branches.length > 1;
+    return multi && wp.branch_name ? `${c} ${wp.branch_name}` : c;
+  };
+
   const search = async () => {
     if (!rowForm?.address.trim()) { setMsg({ text: "주소를 입력한 뒤 검색하세요.", ok: false }); return; }
     setSearching(true); setMsg(null);
@@ -120,12 +141,41 @@ function WorkplaceSection({ canEdit }) {
     if (f.kind !== "branch" && !f.clientName.trim()) { setMsg({ text: "거래처명을 입력해주세요.", ok: false }); return; }
     if ((f.kind === "branch" || f.kind === "addBranch") && !f.branchName.trim()) { setMsg({ text: "지점명을 입력해주세요.", ok: false }); return; }
     if (f.lat === "" || f.lng === "") { setMsg({ text: "주소를 검색해 좌표를 채워주세요.", ok: false }); return; }
-    // '새 근무지 추가'인데 같은 거래처가 이미 있으면 → 지점으로 추가할지 확인
-    if (f.kind === "add") {
-      const exists = groups.some((g) => g.clientName === f.clientName.trim());
-      if (exists) {
-        if (!f.branchName.trim()) { setMsg({ text: "이미 있는 거래처입니다. 지점명을 입력해 지점으로 추가하세요.", ok: false }); return; }
+    // 신규 등록(새 근무지/지점 추가) 시 중복·유사·동일주소 검증
+    if (f.kind === "add" || f.kind === "addBranch") {
+      const typedClient = (f.clientName || "").trim();
+      const typedBranch = (f.branchName || "").trim();
+      // 1) 띄어쓰기·대소문자 무시하고 동일 거래처면 → 지점으로 추가 (add일 때만)
+      let matchedClient = groups.find((g) => normTxt(g.clientName) === normTxt(typedClient)) || null;
+      if (f.kind === "add" && matchedClient) {
+        if (!typedBranch) { setMsg({ text: "이미 있는 거래처입니다. 지점명을 입력해 지점으로 추가하세요.", ok: false }); return; }
         if (!window.confirm("동일한 거래처가 존재합니다. 지점으로 추가하시겠습니까?")) return;
+        f.clientName = matchedClient.clientName; // 기존 표기(철자)로 통일해 그룹 유지
+      }
+      // 3) 동일 주소(도로명 기준, 상세주소 제외)의 근무지가 있으면 경고
+      const addrDup = f.address.trim() ? list.find((wp) => wp.address && normTxt(wp.address) === normTxt(f.address)) : null;
+      if (addrDup) {
+        if (!window.confirm(`동일한 주소의 근무지가 있습니다. 계속 등록하시겠습니까?\n\n거래처명: ${wpLabel(addrDup)}`)) return;
+      }
+      // 2) 유사한 근무지명(80% 이상) 경고
+      let simWp = null, simScore = 0;
+      if (matchedClient) {
+        // 같은 거래처에 추가하는 경우: 기존 지점명과 비교
+        for (const wp of matchedClient.branches) {
+          if (!wp.branch_name) continue;
+          const sc = similarity(typedBranch, wp.branch_name);
+          if (sc > simScore) { simScore = sc; simWp = wp; }
+        }
+      } else {
+        // 새 거래처: 기존 거래처명과 비교(완전 동일은 위에서 처리되므로 제외)
+        for (const g of groups) {
+          if (normTxt(g.clientName) === normTxt(typedClient)) continue;
+          const sc = similarity(typedClient, g.clientName);
+          if (sc > simScore) { simScore = sc; simWp = g.branches[0]; }
+        }
+      }
+      if (simWp && simScore >= 0.8) {
+        if (!window.confirm(`유사한 근무지명이 있습니다. 계속 등록하시겠습니까?\n\n거래처명: ${wpLabel(simWp)}`)) return;
       }
     }
     setBusy(true); setMsg(null);
