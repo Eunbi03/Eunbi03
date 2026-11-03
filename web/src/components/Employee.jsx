@@ -110,7 +110,13 @@ export default function Employee({ user }) {
       if (t.schedule) setSchedule(t.schedule);
       setDayMeta({ irregularWorker: !!t.irregularWorker, isWorkday: t.isWorkday !== false });
       setWeekly(w);
-    } catch (e) { setErr(e.message); }
+      setErr("");   // 성공 시 이전 네트워크 오류 안내 제거
+    } catch (e) {
+      // 백그라운드 자동 새로고침(silent)·폴링 실패는 사용자에게 표시하지 않는다
+      // (이동/외근 중 일시적 신호 끊김으로 'Failed to fetch'가 계속 남는 문제 방지).
+      // 사용자가 직접 누른 동작의 실패만 에러로 보여준다.
+      if (!silent) setErr(e.message);
+    }
     finally { if (!silent) setLoading(false); }
   };
 
