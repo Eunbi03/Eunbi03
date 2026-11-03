@@ -233,7 +233,8 @@ export function startScheduler() {
   console.log(`[FCM] 푸시 사용 가능: ${fcmEnabled() ? '예' : '아니오(키 파일 확인 필요)'}`);
   cron.schedule('0 5 * * *', generateDailyRandomCheckSlots, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', activateDueRandomChecks, { timezone: 'Asia/Seoul' });
-  cron.schedule('* * * * *', sendRandomCheckAlerts, { timezone: 'Asia/Seoul' });
+  // 랜덤 위치 확인이 수집 안 됐을 때 보내던 '위치 확인' 알림은 사용하지 않음(요청으로 비활성화).
+  // cron.schedule('* * * * *', sendRandomCheckAlerts, { timezone: 'Asia/Seoul' });
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', sendDailyReminders, { timezone: 'Asia/Seoul' });
   cron.schedule('10 4 * * *', purgeOldAuditLogs, { timezone: 'Asia/Seoul' }); // 매일 04:10 1년 지난 작업기록 삭제
