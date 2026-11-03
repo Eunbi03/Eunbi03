@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
-import { isWithinRadius, validateGpsReport } from '../utils/geo';
+import { validateGpsReport } from '../utils/geo';
+import { nearestWorkplace } from '../utils/workplaces';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -24,15 +25,10 @@ async function recordCheckLocation(
   if (Date.now() - new Date(checkRows[0].scheduled_time).getTime() > RESPONSE_WINDOW_MS) {
     return { status: 409, body: { error: '응답 시간이 지났습니다.' } };
   }
-  const { rows: userRows } = await pool.query(
-    'SELECT w.lat AS w_lat, w.lng AS w_lng, w.radius_m FROM users u JOIN workplaces w ON u.workplace_id = w.id WHERE u.id=$1',
-    [userId]
-  );
-  const wp = userRows[0];
   const gpsCheck = validateGpsReport({ lat, lng, accuracyM, isMocked, maxAccuracyM: GPS_MAX_ACCURACY_M });
-  const { withinRadius } = wp
-    ? isWithinRadius({ lat, lng, workplaceLat: wp.w_lat, workplaceLng: wp.w_lng, radiusM: wp.radius_m })
-    : { withinRadius: null };
+  // 기본 근무지 개념 제거 → 등록된 모든 근무지 중 어느 반경이든 이내면 인정
+  const near = await nearestWorkplace(lat, lng);
+  const withinRadius = near.wpName == null ? null : near.withinAny;
   await pool.query(
     `UPDATE random_location_checks
      SET submitted_time=now(), lat=$1, lng=$2, accuracy_m=$3, is_within_radius=$4, mock_location_detected=$5
@@ -120,16 +116,10 @@ router.post('/:checkId/submit', requireAuth,
       res.status(409).json({ error: '응답 시간이 지났습니다.' }); return;
     }
 
-    const { rows: userRows } = await pool.query(
-      'SELECT w.lat AS w_lat, w.lng AS w_lng, w.radius_m FROM users u JOIN workplaces w ON u.workplace_id = w.id WHERE u.id=$1',
-      [req.user.userId]
-    );
-    const wp = userRows[0];
-
     const gpsCheck = validateGpsReport({ lat, lng, accuracyM, isMocked, maxAccuracyM: GPS_MAX_ACCURACY_M });
-    const { withinRadius } = wp
-      ? isWithinRadius({ lat, lng, workplaceLat: wp.w_lat, workplaceLng: wp.w_lng, radiusM: wp.radius_m })
-      : { withinRadius: null };
+    // 기본 근무지 개념 제거 → 등록된 모든 근무지 중 어느 반경이든 이내면 인정
+    const near = await nearestWorkplace(lat, lng);
+    const withinRadius = near.wpName == null ? null : near.withinAny;
 
     await pool.query(
       `UPDATE random_location_checks

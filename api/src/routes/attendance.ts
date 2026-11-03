@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
-import { isWithinRadius, validateGpsReport, haversineDistanceMeters } from '../utils/geo';
+import { validateGpsReport, haversineDistanceMeters } from '../utils/geo';
+import { nearestWorkplace } from '../utils/workplaces';
 import { requireAuth } from '../middleware/auth';
 import { workdaysBetween, isHoliday } from '../utils/holidays';
 import { classifyDay } from '../utils/attendanceKpi';
@@ -17,17 +18,6 @@ function todayKST(): string {
 function nowHHMM(): string {
   const s = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false }).slice(0, 5);
   return s === '24:00' ? '00:00' : s; // 일부 환경에서 자정이 24:00으로 나오는 경우 방어
-}
-
-// 사용자 근무지 정보 조회 + 거리 계산 (블록하지 않음, 기록만)
-async function calcDistance(userId: string, lat: number, lng: number): Promise<{ distanceM: number | null; wpName: string | null }> {
-  const { rows } = await pool.query(
-    `SELECT w.lat, w.lng, w.radius_m, w.name FROM users u
-     LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [userId]
-  );
-  if (!rows[0] || rows[0].lat == null) return { distanceM: null, wpName: null };
-  const { distanceM } = isWithinRadius({ lat, lng, workplaceLat: rows[0].lat, workplaceLng: rows[0].lng, radiusM: rows[0].radius_m || 500 });
-  return { distanceM: Math.round(distanceM * 10) / 10, wpName: rows[0].name };
 }
 
 // POST /api/attendance/fcm-token — 근로자 기기의 푸시 토큰 등록/갱신
@@ -63,46 +53,56 @@ router.post('/check-in', requireAuth,
     );
     if (existing.rows[0]?.check_in_time) { res.status(409).json({ error: '오늘 이미 출근 처리되었습니다.' }); return; }
 
-    const { distanceM } = await calcDistance(userId, lat, lng);
     const { rows: userRows } = await pool.query('SELECT scheduled_start FROM users WHERE id=$1', [userId]);
     const scheduledStart = userRows[0]?.scheduled_start?.slice(0, 5) || '09:00';
     const status = nowHHMM() > scheduledStart ? '지각' : '정상';
 
+    // 출근은 '빠르게': 위치만 저장하고 즉시 완료 응답. 거리·근무지 판정은 응답 후 비동기로 계산해
+    // 관리자 화면에 반영한다. (거리 계산 전에는 distance/verified/place = NULL → '계산 중')
     let rows;
     if (existing.rows[0]) {
       // 기존 빈 행(출근 인정 등) → 실제 출근으로 업데이트
       ({ rows } = await pool.query(
         `UPDATE attendance_records
          SET check_in_time=now(), check_in_lat=$1, check_in_lng=$2,
-             check_in_location_verified=TRUE, check_in_distance_m=$3, status=$4
-         WHERE id=$5 RETURNING id, check_in_time, status`,
-        [lat, lng, distanceM, status, existing.rows[0].id]
+             check_in_location_verified=NULL, check_in_distance_m=NULL, check_in_place=NULL, status=$3
+         WHERE id=$4 RETURNING id, check_in_time, status`,
+        [lat, lng, status, existing.rows[0].id]
       ));
     } else {
       ({ rows } = await pool.query(
         `INSERT INTO attendance_records (user_id, date, check_in_time, check_in_lat, check_in_lng,
            check_in_location_verified, check_in_distance_m, status)
-         VALUES ($1,$2,now(),$3,$4,TRUE,$5,$6) RETURNING id, check_in_time, status`,
-        [userId, date, lat, lng, distanceM, status]
+         VALUES ($1,$2,now(),$3,$4,NULL,NULL,$5) RETURNING id, check_in_time, status`,
+        [userId, date, lat, lng, status]
       ));
     }
-    // 오늘 랜덤 확인 슬롯이 아직 없으면, 출근을 기준으로 그날 남은 시간에 생성한다.
-    // - 비정기 근무자: 새벽 5시 자동생성 대상이 아니므로 출근한 날에만 생성
-    // - 정기 근무자가 비근무일(주말·공휴일)에 출근한 경우: 5시 생성이 건너뛰어졌으므로 생성
-    // - 정기 근무자의 평일: 이미 5시에 생성되어 슬롯이 있으므로 건너뜀(중복 방지)
-    try {
-      const { rows: slotRows } = await pool.query(
-        'SELECT 1 FROM random_location_checks WHERE user_id=$1 AND date=$2 LIMIT 1', [userId, date]
-      );
-      if (slotRows.length === 0) {
-        const { rows: u } = await pool.query(
-          'SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE id=$1', [userId]
-        );
-        if (u[0]) await generateRandomCheckSlotsForUser(u[0], date, true, true); // onlyFuture + force
-      }
-    } catch (e: any) { console.error('[출근 시 랜덤슬롯 생성 실패]', e.message); }
+    const recordId = rows[0].id;
 
-    res.status(201).json({ success: true, record: rows[0], distanceM });
+    // 즉시 완료 응답 (근로자 대기 없음)
+    res.status(201).json({ success: true, record: rows[0] });
+
+    // ── 응답 후 처리(비동기): 거리·근무지 판정 + 랜덤슬롯 생성 ──
+    (async () => {
+      try {
+        const n = await nearestWorkplace(lat, lng);
+        await pool.query(
+          `UPDATE attendance_records SET check_in_distance_m=$1, check_in_location_verified=$2, check_in_place=$3 WHERE id=$4`,
+          [n.distanceM, n.withinAny, n.wpName, recordId]
+        );
+      } catch (e: any) { console.error('[출근 거리계산 실패]', e.message); }
+      try {
+        const { rows: slotRows } = await pool.query(
+          'SELECT 1 FROM random_location_checks WHERE user_id=$1 AND date=$2 LIMIT 1', [userId, date]
+        );
+        if (slotRows.length === 0) {
+          const { rows: u } = await pool.query(
+            'SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE id=$1', [userId]
+          );
+          if (u[0]) await generateRandomCheckSlotsForUser(u[0], date, true, true); // onlyFuture + force
+        }
+      } catch (e: any) { console.error('[출근 시 랜덤슬롯 생성 실패]', e.message); }
+    })();
   }
 );
 
@@ -180,7 +180,7 @@ router.post('/check-out', requireAuth,
     const record = attRows[0];
     if (record.check_out_time) { res.status(409).json({ error: '이미 퇴근 처리되었습니다.' }); return; }
 
-    const { distanceM } = await calcDistance(userId, lat, lng);
+    const nOut = await nearestWorkplace(lat, lng);
 
     const { rows: userRows } = await pool.query('SELECT scheduled_end FROM users WHERE id=$1', [userId]);
     const scheduledEnd = record.temp_time_change_status === 'approved' && record.temp_time_change_requested_end
@@ -197,7 +197,7 @@ router.post('/check-out', requireAuth,
     const { rows } = await pool.query(
       `UPDATE attendance_records
        SET check_out_time=now(), check_out_lat=$1, check_out_lng=$2, check_out_is_field=FALSE,
-           check_out_distance_m=$3,
+           check_out_distance_m=$3, check_out_location_verified=$11, check_out_place=$12,
            work_note_in=COALESCE(NULLIF($4,''), work_note_in),
            work_note_out=COALESCE(NULLIF($5,''), work_note_out),
            work_note_field=COALESCE(NULLIF($6,''), work_note_field),
@@ -205,7 +205,7 @@ router.post('/check-out', requireAuth,
            daily_report=COALESCE(NULLIF($7,''), daily_report),
            status=$8, work_minutes=$9
        WHERE id=$10 RETURNING id, check_out_time, status`,
-      [lat, lng, distanceM, workNoteIn || '', workNoteOut || '', workNoteField || '', workNoteToday || '', newStatus, workMinutes, record.id]
+      [lat, lng, nOut.distanceM, workNoteIn || '', workNoteOut || '', workNoteField || '', workNoteToday || '', newStatus, workMinutes, record.id, nOut.withinAny, nOut.wpName]
     );
     res.json({ success: true, record: rows[0], message: '오늘 하루 수고하셨습니다.' });
   }
@@ -276,11 +276,13 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
       time: att.check_in_time,
       lat: att.check_in_lat, lng: att.check_in_lng,
       distanceM: att.check_in_distance_m,
+      within: att.check_in_location_verified,
     } : null,
     checkOut: att.check_out_time ? {
       time: att.check_out_time,
       lat: att.check_out_lat, lng: att.check_out_lng,
       distanceM: att.check_out_distance_m,
+      within: att.check_out_location_verified,
     } : null,
     outings: outingRows.map((o: any) => ({
       id: o.id,

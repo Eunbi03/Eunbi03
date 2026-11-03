@@ -737,6 +737,8 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
             ar.work_minutes, ar.status, ar.daily_report, ar.leave_type,
             ar.work_note_in, ar.work_note_out, ar.work_note_field, ar.work_note_today,
             ar.check_in_distance_m, ar.check_out_distance_m,
+            ar.check_in_location_verified, ar.check_out_location_verified,
+            ar.check_in_place, ar.check_out_place,
             ar.temp_time_change_reason, ar.temp_time_change_status
      FROM attendance_records ar
      WHERE ar.user_id=$1 AND ar.date>=$2 AND ar.date<=$3 ORDER BY ar.date`,
@@ -807,8 +809,8 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     return {
       date: day,
       leaveType: lt || undefined,
-      checkIn: hasIn ? { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: r.check_in_distance_m, note: r.work_note_in } : null,
-      checkOut: r.check_out_time ? { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: r.check_out_distance_m, isField: r.check_out_is_field, note: r.work_note_out } : null,
+      checkIn: hasIn ? { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: r.check_in_distance_m, within: r.check_in_location_verified, place: r.check_in_place, note: r.work_note_in } : null,
+      checkOut: r.check_out_time ? { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: r.check_out_distance_m, within: r.check_out_location_verified, place: r.check_out_place, isField: r.check_out_is_field, note: r.work_note_out } : null,
       status: r.status,
       workMinutes: r.work_minutes,
       isLate: k.isLate,

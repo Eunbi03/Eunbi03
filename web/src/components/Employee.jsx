@@ -89,8 +89,8 @@ export default function Employee({ user }) {
   const checkInPlaceSuggestion = (() => {
     const ci = today?.checkIn;
     if (!ci || ci.distanceM == null) return null;
-    const radius = schedule.radiusM ?? 500;
-    if (ci.distanceM <= radius) return null; // 반경 안에서 출근했으면 제안 없음
+    // 등록된 어느 근무지 반경에도 안 들어간 경우(within=false)에만 외근지 출근으로 제안
+    if (ci.within !== false) return null;
     const ciMs = new Date(ci.time).getTime();
     const match = outings.find((o) => {
       if (!o.destination) return false;

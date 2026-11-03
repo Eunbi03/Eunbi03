@@ -67,15 +67,20 @@ function TimeText({ time, lat, lng, color, bold }) {
 }
 
 // 출퇴근지 + 거리 배지 (근무노트로 다르게 기입 시 '?' 배지)
-function PlaceDist({ note, workplaceName, dist }) {
+function PlaceDist({ note, place: nearPlace, dist, within, pending }) {
   const noted = note && note.trim();
-  const place = noted || workplaceName || "";
-  const useNote = noted && noted !== workplaceName;
-  const badge = useNote
-    ? { text: "?", bg: COL.lgray, fg: COL.gray }
-    : dist != null
-      ? { text: fmtDist(dist), bg: dist > 200 ? "#f6dcd8" : "#dcece2", fg: dist > 200 ? COL.red : COL.green }
-      : null;
+  const place = noted || nearPlace || "";
+  const useNote = noted && noted !== nearPlace;
+  let badge = null;
+  if (pending) {
+    badge = { text: "계산 중", bg: COL.lgray, fg: COL.gray };
+  } else if (useNote) {
+    badge = { text: "?", bg: COL.lgray, fg: COL.gray };
+  } else if (dist != null) {
+    // 초록/빨강 기준 = 서버 판정(어느 근무지든 반경 이내). 구버전 데이터는 거리 300m fallback.
+    const ok = within === true || (within == null && dist <= 300);
+    badge = { text: fmtDist(dist), bg: ok ? "#dcece2" : "#f6dcd8", fg: ok ? COL.green : COL.red };
+  }
   return (
     <>
       {place && <span style={{ color: COL.gray }}>{place}</span>}
@@ -192,12 +197,12 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
     <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
         <TimeText time={day.checkIn?.time} lat={day.checkIn?.lat} lng={day.checkIn?.lng} color={day.isLate ? COL.red : COL.black} bold={day.isLate} />
-        <PlaceDist note={day.checkIn?.note} workplaceName={workplaceName} dist={day.checkIn?.distanceM} />
+        <PlaceDist note={day.checkIn?.note} place={day.checkIn?.place} dist={day.checkIn?.distanceM} within={day.checkIn?.within} pending={!!day.checkIn && day.checkIn.distanceM == null && day.checkIn.within == null} />
       </span>
       {day.checkOut ? (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
           <TimeText time={day.checkOut.time} lat={day.checkOut.lat} lng={day.checkOut.lng} />
-          <PlaceDist note={day.checkOut.note} workplaceName={workplaceName} dist={day.checkOut.distanceM} />
+          <PlaceDist note={day.checkOut.note} place={day.checkOut.place} dist={day.checkOut.distanceM} within={day.checkOut.within} pending={day.checkOut.distanceM == null && day.checkOut.within == null} />
         </span>
       ) : (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: COL.red, fontWeight: 700 }}><WarnIcon /> 퇴근 누락</span>
