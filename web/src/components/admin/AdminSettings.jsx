@@ -89,6 +89,7 @@ function WorkplaceSection({ canEdit }) {
   const [openClient, setOpenClient] = useState(null); // 펼친 거래처명
   const [delMode, setDelMode] = useState(null);  // 지점 삭제모드인 거래처명
   const [sel, setSel] = useState({});            // 선택된 지점 id
+  const [query, setQuery] = useState("");        // 근무지 검색어
 
   const load = () => { setLoading(true); api.getWorkplaces().then((d) => setList(d.workplaces || [])).catch(() => {}).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
@@ -125,6 +126,17 @@ function WorkplaceSection({ canEdit }) {
     const multi = grp && grp.branches.length > 1;
     return multi && wp.branch_name ? `${c} ${wp.branch_name}` : c;
   };
+
+  // ── 검색(대소문자·띄어쓰기 무시, 거래처명/지점명/합친이름 부분일치) ──
+  const q = normTxt(query);
+  const clientHit = (g) => normTxt(g.clientName).includes(q);
+  const branchHit = (g, wp) => {
+    const bn = wp.branch_name || "";
+    return normTxt(bn).includes(q) || normTxt(g.clientName + bn).includes(q);
+  };
+  const groupVisible = (g) => !q || clientHit(g) || g.branches.some((wp) => branchHit(g, wp));
+  // 검색 중이고 거래처명이 안 맞으면 매칭된 지점만, 그 외엔 전체 지점
+  const visibleBranches = (g) => (!q || clientHit(g)) ? g.branches : g.branches.filter((wp) => branchHit(g, wp));
 
   const search = async () => {
     if (!rowForm?.address.trim()) { setMsg({ text: "주소를 입력한 뒤 검색하세요.", ok: false }); return; }
@@ -317,10 +329,24 @@ function WorkplaceSection({ canEdit }) {
         )}
       </div>
       <Msg msg={msg} />
+      {/* 근무지 검색 (대소문자·띄어쓰기 무시, 거래처명/지점명/합친이름 부분일치) */}
+      <div style={{ position: "relative", marginBottom: 12 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="근무지 검색 (예: 이마트 / 강릉점 / 이마트 강릉점)"
+          style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.lineAdmin}`, borderRadius: 10, padding: "10px 36px 10px 12px", fontSize: 14, color: C.ink, background: "#fff" }}
+        />
+        {query && (
+          <button onClick={() => setQuery("")} aria-label="지우기"
+            style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", border: "none", background: "none", fontSize: 16, color: COL.gray, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        )}
+      </div>
       {/* 새 근무지 추가 폼만 상단에 */}
       {rowForm && rowForm.kind === "add" && renderRowForm()}
 
-      {loading ? <div style={S.empty}>불러오는 중…</div> : !groups.length && !rowForm ? <div style={S.empty}>등록된 근무지가 없습니다.</div> : groups.map((g) => {
+      {loading ? <div style={S.empty}>불러오는 중…</div> : !groups.length && !rowForm ? <div style={S.empty}>등록된 근무지가 없습니다.</div> : (q && !groups.some(groupVisible)) ? <div style={S.empty}>검색 결과가 없습니다.</div> : groups.map((g) => {
+        if (!groupVisible(g)) return null;
         if (isSingle(g)) {
           const wp = g.branches[0];
           const editingThis = rowForm && rowForm.kind === "single" && rowForm.id === wp.id;
@@ -339,7 +365,8 @@ function WorkplaceSection({ canEdit }) {
             </div>
           );
         }
-        const open = openClient === g.clientName;
+        const open = !!q || openClient === g.clientName;
+        const vb = visibleBranches(g);
         return (
           <div key={g.clientName} style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", cursor: "pointer" }}
@@ -347,7 +374,7 @@ function WorkplaceSection({ canEdit }) {
               <span style={{ color: COL.blue, fontSize: 12, transform: open ? "rotate(90deg)" : "none", transition: ".15s" }}>▶</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: "0 0 2px" }}>{g.clientName} <span style={{ fontSize: 11, fontWeight: 800, color: COL.blue, background: COL.blueSoft || "#e3eef4", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>반경 {g.radius_m}m</span></p>
-                <p style={{ fontSize: 12.5, color: COL.gray, margin: 0 }}>{g.branches.length}개 점</p>
+                <p style={{ fontSize: 12.5, color: COL.gray, margin: 0 }}>{q ? `${vb.length}개 점 검색됨` : `${g.branches.length}개 점`}</p>
               </div>
               {canEdit && (
                 <div style={{ display: "flex", gap: 10, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
@@ -363,11 +390,11 @@ function WorkplaceSection({ canEdit }) {
             {open && (
               <div style={{ borderTop: `1px solid ${C.lineAdmin}`, background: COL.formBg || "#f3f9fc", padding: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 6px 8px" }}>
-                  <span style={{ fontSize: 12, color: COL.gray, fontWeight: 700 }}>지점 {g.branches.length}개</span>
+                  <span style={{ fontSize: 12, color: COL.gray, fontWeight: 700 }}>지점 {q ? `${vb.length}/${g.branches.length}` : g.branches.length}개</span>
                   {canEdit && <button style={delMode === g.clientName ? { ...miniBtn("#fff"), background: COL.blue, borderColor: COL.blue } : miniBtn(COL.red, "#fff5f5")}
                     onClick={() => toggleDel(g.clientName)} disabled={busy}>{delMode === g.clientName ? "확인" : "삭제"}</button>}
                 </div>
-                {g.branches.map((wp) => {
+                {vb.map((wp) => {
                   const editingBranch = rowForm && rowForm.kind === "branch" && rowForm.id === wp.id;
                   return (
                     <div key={wp.id}>
