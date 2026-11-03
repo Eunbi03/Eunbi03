@@ -288,8 +288,14 @@ router.put('/workplaces/:id', requireAdmin, permSettings, async (req: Request, r
   const radiusM = req.body.radiusM !== undefined ? (parseInt(req.body.radiusM, 10) || 500) : cur.radius_m;
   const { lat, lng, address, postalCode, detailAddress } = req.body;
   const name = wpFullName(clientName, branchName);
-  const dup = await workplaceDupCheck(name, address ?? cur.address, req.params.id);
-  if (dup.name || dup.address) { res.status(409).json({ error: '중복', dup }); return; }
+  // 중복 검사는 '이름/주소가 실제로 바뀐 경우'에만. (반경만 수정 등은 기존 값이 다른 근무지와
+  //  겹쳐도 막지 않는다 — 같은 건물/동일 주소의 근무지가 있어도 반경 수정 가능해야 함)
+  const nameChanged = name !== cur.name;
+  const addrChanged = address !== undefined && (address || '') !== (cur.address || '');
+  if (nameChanged || addrChanged) {
+    const dup = await workplaceDupCheck(name, address ?? cur.address, req.params.id);
+    if ((dup.name && nameChanged) || (dup.address && addrChanged)) { res.status(409).json({ error: '중복', dup }); return; }
+  }
   const { rows } = await pool.query(
     `UPDATE workplaces SET name=$1, client_name=$2, branch_name=$3, radius_m=$4,
        lat=COALESCE($5,lat), lng=COALESCE($6,lng), address=$7, postal_code=$8, detail_address=$9
