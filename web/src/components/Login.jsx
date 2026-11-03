@@ -78,15 +78,19 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const [teamsList, setTeamsList] = useState([]);
   const [reqName, setReqName] = useState("");
   const [reqPhone, setReqPhone] = useState("");
-  const [reqPerms, setReqPerms] = useState([]);   // 선택된 권한 키 배열
-  const [reqTeams, setReqTeams] = useState([]);   // 선택된 팀명 배열
+  const [reqPerms, setReqPerms] = useState([]);   // 선택된 쓰기 권한 키 배열
+  const [reqTeams, setReqTeams] = useState([]);   // 선택된 팀명 배열(팀장/일반)
+  const [reqRoles, setReqRoles] = useState([]);   // 선택된 역할 배열
+  const [reqDivs, setReqDivs] = useState([]);     // 담당 본부(본부장)
+  const [reqCorps, setReqCorps] = useState([]);   // 담당 법인(인적자원팀)
+  const [corpsList, setCorpsList] = useState([]); // 법인 목록
   const [reqDone, setReqDone] = useState("");      // 승인요청 완료 안내
 
   const t = THEMES[mode] || THEMES.worker;
 
   useEffect(() => {
     if (deviceStep && teamsList.length === 0) {
-      api.getPublicTeams().then((d) => setTeamsList(d.teams || [])).catch(() => {});
+      api.getPublicTeams().then((d) => { setTeamsList(d.teams || []); setCorpsList(d.corps || []); }).catch(() => {});
     }
   }, [deviceStep]);
 
@@ -125,7 +129,11 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const submitDeviceRequest = async (e) => {
     e.preventDefault();
     if (!reqName.trim() || !reqPhone.trim()) { setErr("관리자명과 업무용 전화번호를 입력해주세요."); return; }
-    if (reqTeams.length === 0) { setErr("권한 팀을 1개 이상 선택해주세요."); return; }
+    if (reqRoles.length === 0) { setErr("역할을 1개 이상 선택해주세요."); return; }
+    const isGen = reqRoles.includes("general");
+    if (reqRoles.includes("director") && reqDivs.length === 0) { setErr("본부장 역할은 담당 본부를 1개 이상 선택해주세요."); return; }
+    if ((reqRoles.includes("teamlead") || isGen) && reqTeams.length === 0) { setErr("담당 팀을 1개 이상 선택해주세요."); return; }
+    if (reqRoles.includes("hr") && reqCorps.length === 0) { setErr("인적자원팀 역할은 담당 법인을 1개 이상 선택해주세요."); return; }
     setBusy(true); setErr("");
     try {
       const deviceId = await getDeviceId();
@@ -133,7 +141,9 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
       await api.login({
         username, password, deviceId,
         managerName: reqName.trim(), phone: reqPhone.trim(),
-        permissions: reqPerms, teams: reqTeams,
+        roles: reqRoles,
+        permissions: isGen ? [] : reqPerms,
+        teams: reqTeams, scopeDivisions: reqDivs, scopeCorps: reqCorps,
       });
       // 정상 로그인으로 이어지지 않고 승인 대기 응답(403)이 오므로 아래 catch에서 처리됨
     } catch (e) {
@@ -186,29 +196,75 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
               <label style={labelStyle}>업무용 전화번호</label>
               <input style={inputStyle} type="tel" value={reqPhone} onChange={(e) => setReqPhone(e.target.value)} disabled={busy} placeholder="예: 01012345678" />
 
-              <label style={labelStyle}>권한 (복수 선택, 미선택 시 읽기 전용)</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {[["staff","근로자관리 쓰기"],["report_leave","개별리포트(연차)"],["report_full","개별리포트(전체)"],["settings","설정 쓰기"]].map(([k,label]) => (
-                  <span key={k} onClick={() => !busy && setReqPerms((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k])} style={chipStyle(reqPerms.includes(k))}>{label}</span>
-                ))}
-              </div>
+              {(() => {
+                const toggleArr = (setter) => (v) => !busy && setter((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]);
+                const toggleRoleLocal = (v) => {
+                  if (busy) return;
+                  setReqRoles((prev) => {
+                    if (v === "general") return prev.includes("general") ? [] : ["general"];
+                    const base = prev.filter((x) => x !== "general");
+                    return base.includes(v) ? base.filter((x) => x !== v) : [...base, v];
+                  });
+                };
+                const isGen = reqRoles.includes("general");
+                return (<>
+                  <label style={labelStyle}>역할 (복수 선택 · ‘일반’은 단독)</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {[["director","본부장"],["teamlead","팀장"],["hr","인적자원팀"],["general","일반"]].map(([k,label]) => (
+                      <span key={k} onClick={() => toggleRoleLocal(k)} style={chipStyle(reqRoles.includes(k))}>{label}</span>
+                    ))}
+                  </div>
 
-              <label style={labelStyle}>권한 팀 (복수 선택)</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 220, overflowY: "auto", padding: "4px 2px" }}>
-                {Object.keys(byDivision).length === 0 && (
-                  <span style={{ fontSize: 13, color: t.subColor }}>팀 목록을 불러오는 중…</span>
-                )}
-                {Object.entries(byDivision).map(([division, teams]) => (
-                  <div key={division}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: t.subColor, margin: "2px 0 6px" }}>{division}</div>
+                  {reqRoles.includes("director") && (<>
+                    <label style={labelStyle}>담당 본부 (본부장)</label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {teams.map((tm) => (
-                        <span key={tm} onClick={() => !busy && toggleTeam(tm)} style={chipStyle(reqTeams.includes(tm))}>{tm}</span>
+                      {Object.keys(byDivision).length === 0 && <span style={{ fontSize: 13, color: t.subColor }}>본부 목록을 불러오는 중…</span>}
+                      {Object.keys(byDivision).map((dv) => (
+                        <span key={dv} onClick={() => toggleArr(setReqDivs)(dv)} style={chipStyle(reqDivs.includes(dv))}>{dv}</span>
                       ))}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  </>)}
+
+                  {(reqRoles.includes("teamlead") || isGen) && (<>
+                    <label style={labelStyle}>담당 팀 {isGen ? "(일반)" : "(팀장)"}</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 220, overflowY: "auto", padding: "4px 2px" }}>
+                      {Object.keys(byDivision).length === 0 && <span style={{ fontSize: 13, color: t.subColor }}>팀 목록을 불러오는 중…</span>}
+                      {Object.entries(byDivision).map(([division, teams]) => (
+                        <div key={division}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: t.subColor, margin: "2px 0 6px" }}>{division}</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {teams.map((tm) => (
+                              <span key={tm} onClick={() => !busy && toggleTeam(tm)} style={chipStyle(reqTeams.includes(tm))}>{tm}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>)}
+
+                  {reqRoles.includes("hr") && (<>
+                    <label style={labelStyle}>담당 법인 (인적자원팀)</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {corpsList.length === 0 && <span style={{ fontSize: 13, color: t.subColor }}>법인 목록을 불러오는 중…</span>}
+                      {corpsList.map((c) => (
+                        <span key={c} onClick={() => toggleArr(setReqCorps)(c)} style={chipStyle(reqCorps.includes(c))}>{c}</span>
+                      ))}
+                    </div>
+                  </>)}
+
+                  {isGen ? (
+                    <div style={{ fontSize: 12.5, color: "#b9820f", background: "#f7edcf", borderRadius: 8, padding: "8px 11px", lineHeight: 1.5 }}>‘일반’은 읽기 전용입니다. 쓰기 권한이 부여되지 않습니다.</div>
+                  ) : (<>
+                    <label style={labelStyle}>쓰기 권한 (복수 선택, 미선택 시 읽기 전용)</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {[["staff","근로자관리"],["report","개별리포트"],["settings","설정"]].map(([k,label]) => {
+                        if (k === "settings" && !reqRoles.includes("hr")) return null;
+                        return <span key={k} onClick={() => toggleArr(setReqPerms)(k)} style={chipStyle(reqPerms.includes(k))}>{label}</span>;
+                      })}
+                    </div>
+                  </>)}
+                </>);
+              })()}
 
               {err && <div style={{ fontSize: 13, color: "#ff8e84", fontWeight: 600, whiteSpace: "pre-line" }}>{err}</div>}
 

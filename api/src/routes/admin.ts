@@ -9,7 +9,7 @@ import jwt from 'jsonwebtoken';
 import { buildIndividualReport } from '../services/reportBuilder';
 import { sendReportLink, sendAdminDeviceInvite, sendFreeMessage } from '../services/reportSender';
 import { invalidateTemplateCache } from '../services/messageTemplates';
-import { VALID_PERMS, normalizePerms } from '../utils/permissions';
+import { VALID_PERMS, VALID_ROLES, normalizePerms, normalizeRoles } from '../utils/permissions';
 import multer from 'multer';
 
 const router = Router();
@@ -26,10 +26,10 @@ const MIN_AUTHORITY_GROUPS = 3;
 // - 세부 쓰기 권한(permissions)은 엔드포인트별로 requirePerm으로 확인한다.
 router.use(async (req: Request, res: Response, next): Promise<void> => {
   // 구버전 토큰(기기정보 없음)은 권한 없이 읽기전용으로 제한(권한 상승 방지). 재로그인 시 정상 권한.
-  if (!req.user.deviceId) { (req as any).adminDevice = { isAuthority: false, permissions: [], teams: null }; next(); return; }
+  if (!req.user.deviceId) { (req as any).adminDevice = { isAuthority: false, permissions: [], roles: [], scopeTeams: [], scopeDivisions: [], scopeCorps: [] }; next(); return; }
   try {
     const { rows } = await pool.query(
-      'SELECT is_approved, is_authority, permissions, scope_teams, device_name FROM admin_devices WHERE user_id=$1 AND device_id=$2',
+      'SELECT is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, device_name FROM admin_devices WHERE user_id=$1 AND device_id=$2',
       [req.user.userId, req.user.deviceId]
     );
     const d = rows[0];
@@ -37,13 +37,18 @@ router.use(async (req: Request, res: Response, next): Promise<void> => {
       res.status(401).json({ error: '기기 등록이 해제되었습니다. 다시 로그인해주세요.' });
       return;
     }
-    const teams: string[] = d.scope_teams || [];
+    const roles: string[] = d.roles || [];
+    // 역할별로 해당 범위 컬럼만 유효하게 적용.
+    const rawTeams: string[] = (roles.includes('teamlead') || roles.includes('general')) ? (d.scope_teams || []) : [];
+    const scopeTeams = rawTeams.filter((t) => t && t !== '전체');
+    const scopeDivisions = roles.includes('director') ? (d.scope_divisions || []) : [];
+    const scopeCorps = roles.includes('hr') ? (d.scope_corps || []) : [];
     (req as any).adminDevice = {
       isAuthority: !!d.is_authority,
       permissions: d.permissions || [],
+      roles,
       deviceName: d.device_name || null,
-      // null = 전체 열람(권한자 / 권한팀 '전체')
-      teams: (d.is_authority || teams.length === 0 || teams.includes('전체')) ? null : teams,
+      scopeTeams, scopeDivisions, scopeCorps,
     };
     next();
   } catch (e) { next(e as any); }
@@ -65,14 +70,25 @@ async function reqIsAuthority(req: Request): Promise<boolean> {
   return !!(req as any).adminDevice?.isAuthority;
 }
 
-// 세부 권한 보유 여부. 권한자는 전부 허용. report_leave는 report_full이 있으면 포함.
+// 세부 "쓰기" 권한 보유 여부. 권한자는 전부 허용.
+//  - 'general'(일반) 역할은 읽기 전용 → 모든 쓰기 차단.
+//  - 'settings'(설정) 쓰기는 hr 역할 또는 권한자만 유효.
 function hasPerm(req: Request, key: string): boolean {
   const ad = (req as any).adminDevice;
   if (!ad) return false;
   if (ad.isAuthority) return true;
+  const roles: string[] = ad.roles || [];
+  if (roles.includes('general')) return false; // 일반 = 읽기 전용
   const p: string[] = ad.permissions || [];
-  if (key === 'report_leave') return p.includes('report_leave') || p.includes('report_full');
+  if (key === 'settings') return roles.includes('hr') && p.includes('settings');
   return p.includes(key);
+}
+
+// 리포트 발송 권한: hr(인적자원팀) 역할 또는 권한자만. (쓰기 권한 키와 무관한 별도 규칙)
+function canSendReport(req: Request): boolean {
+  const ad = (req as any).adminDevice;
+  if (!ad) return false;
+  return !!ad.isAuthority || (ad.roles || []).includes('hr');
 }
 // 권한 없으면 403 응답 후 false 반환.
 function requirePerm(req: Request, res: Response, key: string): boolean {
@@ -90,17 +106,48 @@ function needPerm(key: string) {
 const permStaff = needPerm('staff');
 const permSettings = needPerm('settings');
 
-// 로그인한 관리자 기기의 열람 범위(권한 팀). null = 전체 열람, 배열 = 해당 팀만.
-async function getReadScope(req: Request): Promise<string[] | null> {
-  return (req as any).adminDevice?.teams ?? null;
+// 로그인한 관리자 기기의 열람 범위.
+//  all=true  → 전체 열람(권한자).
+//  all=false → teams(팀)·divisions(본부)·corps(법인)의 합집합. 모두 비면 아무것도 보지 못함(보류).
+function getScope(req: Request): { all: boolean; teams: string[]; divisions: string[]; corps: string[] } {
+  const ad = (req as any).adminDevice;
+  if (ad?.isAuthority) return { all: true, teams: [], divisions: [], corps: [] };
+  return {
+    all: false,
+    teams: ad?.scopeTeams || [],
+    divisions: ad?.scopeDivisions || [],
+    corps: ad?.scopeCorps || [],
+  };
 }
 
-// 대상 직원이 권한 범위(권한 팀) 안인지 확인. 범위 밖이면 403 응답 후 false 반환.
+// 열람 범위를 SQL 조건으로. alias는 users 테이블 별칭(예: 'u'). params에 값을 push하고 조건 문자열 반환.
+//  전체 열람 = 'TRUE', 범위 없음(보류) = 'FALSE'.
+function scopeClause(req: Request, alias: string, params: any[]): string {
+  const s = getScope(req);
+  if (s.all) return 'TRUE';
+  const ors: string[] = [];
+  if (s.teams.length)     { params.push(s.teams);     ors.push(`${alias}.team = ANY($${params.length})`); }
+  if (s.divisions.length) { params.push(s.divisions); ors.push(`${alias}.division = ANY($${params.length})`); }
+  if (s.corps.length)     { params.push(s.corps);     ors.push(`${alias}.corp = ANY($${params.length})`); }
+  return ors.length ? '(' + ors.join(' OR ') + ')' : 'FALSE';
+}
+
+// 근로자 한 명(행)이 열람 범위 안인지 판정.
+function workerRowInScope(req: Request, row: { team?: string | null; division?: string | null; corp?: string | null }): boolean {
+  const s = getScope(req);
+  if (s.all) return true;
+  if (row.team && s.teams.includes(row.team)) return true;
+  if (row.division && s.divisions.includes(row.division)) return true;
+  if (row.corp && s.corps.includes(row.corp)) return true;
+  return false;
+}
+
+// 대상 직원이 권한 범위 안인지 확인. 범위 밖이면 403 응답 후 false 반환.
 async function assertWorkerInScope(req: Request, res: Response, workerId: string): Promise<boolean> {
-  const scope = (req as any).adminDevice?.teams;
-  if (!scope) return true; // 권한자/전체 → 제한 없음
-  const { rows } = await pool.query('SELECT team FROM users WHERE id=$1', [workerId]);
-  if (!rows[0] || !scope.includes(rows[0].team)) {
+  const s = getScope(req);
+  if (s.all) return true; // 권한자/전체 → 제한 없음
+  const { rows } = await pool.query('SELECT team, division, corp FROM users WHERE id=$1', [workerId]);
+  if (!rows[0] || !workerRowInScope(req, rows[0])) {
     res.status(403).json({ error: '권한 범위 밖 근로자입니다.' }); return false;
   }
   return true;
@@ -343,9 +390,8 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
   if (needsAttention === 'true') {
     conditions.push(`u.role='worker' AND (u.device_id IS NULL OR u.must_change_password=TRUE)`);
   }
-  // 권한 범위(권한 팀) 적용: 권한자/최고관리자/'전체'가 아니면 해당 팀 직원만 열람
-  const scope = await getReadScope(req);
-  if (scope) { params.push(scope); conditions.push(`u.team = ANY($${params.length})`); }
+  // 권한 범위 적용: 권한자=전체, 그 외 역할별 팀/본부/법인 합집합(범위 없으면 아무것도 못 봄)
+  conditions.push(scopeClause(req, 'u', params));
 
   const where = `WHERE ${conditions.join(' AND ')}`;
   const { rows: countRows } = await pool.query(`SELECT COUNT(*) as count FROM users u ${where}`, params);
@@ -575,14 +621,14 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
   const workdays = workdaysBetween(fromDate, toDate);
   const workdayCount = workdays.length;
 
-  // 직원 전체 (권한 범위가 있으면 해당 팀만)
-  const scope = await getReadScope(req);
+  // 직원 전체 (권한 범위 적용)
+  const wParams: any[] = [];
+  const wScope = scopeClause(req, 'u', wParams);
   const { rows: workers } = await pool.query(
-    `SELECT id, name, corp, division, team, job_title, scheduled_start, note_exempt, irregular_worker
-     FROM users WHERE role='worker' AND is_active=TRUE
-       ${scope ? 'AND team = ANY($1)' : ''}
-     ORDER BY corp, division, team, name`,
-    scope ? [scope] : []
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.job_title, u.scheduled_start, u.note_exempt, u.irregular_worker
+     FROM users u WHERE u.role='worker' AND u.is_active=TRUE AND ${wScope}
+     ORDER BY u.corp, u.division, u.team, u.name`,
+    wParams
   );
   if (workers.length === 0) { res.json({ teams: [], period: { from: fromDate, to: toDate, workdays: workdayCount } }); return; }
 
@@ -668,8 +714,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   if (!userRows[0]) { res.status(404).json({ error: '근로자를 찾을 수 없습니다.' }); return; }
   const user = userRows[0];
   // 권한 범위 밖 직원 리포트 열람 차단
-  const scope = await getReadScope(req);
-  if (scope && !scope.includes(user.team)) { res.status(403).json({ error: '열람 권한이 없는 근로자입니다.' }); return; }
+  if (!workerRowInScope(req, user)) { res.status(403).json({ error: '열람 권한이 없는 근로자입니다.' }); return; }
   const noteExempt = !!user.note_exempt;
   const irregular = !!user.irregular_worker;
 
@@ -784,11 +829,11 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
   const workdays = workdaysBetween(from as string, to as string);
   const workdaySet = new Set(workdays);
 
-  const scope = await getReadScope(req);
+  const sParams: any[] = [];
+  const sScope = scopeClause(req, 'u', sParams);
   const { rows: users } = await pool.query(
-    `SELECT id, note_exempt, irregular_worker FROM users WHERE role='worker' AND is_active=TRUE
-       ${scope ? 'AND team = ANY($1)' : ''}`,
-    scope ? [scope] : []
+    `SELECT u.id, u.note_exempt, u.irregular_worker FROM users u WHERE u.role='worker' AND u.is_active=TRUE AND ${sScope}`,
+    sParams
   );
   const ids = users.map((u: any) => u.id);
   const noteExemptById: Record<string, boolean> = {};
@@ -876,9 +921,8 @@ router.post('/send-message', permStaff, async (req: Request, res: Response): Pro
        FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id
       WHERE u.id = ANY($1) AND u.is_active=TRUE AND u.role='worker'`, [userIds]
   );
-  const scope = await getReadScope(req);
-  if (scope) {
-    const outOfScope = targets.filter((t: any) => !scope.includes(t.team));
+  {
+    const outOfScope = targets.filter((t: any) => !workerRowInScope(req, t));
     if (outOfScope.length) { res.status(403).json({ error: '권한 범위 밖 근로자가 포함되어 있습니다.' }); return; }
   }
   const manual = 'https://timecard-neon.vercel.app/';
@@ -911,7 +955,8 @@ router.post('/send-message', permStaff, async (req: Request, res: Response): Pro
 });
 
 router.post('/send-report', async (req: Request, res: Response): Promise<void> => {
-  if (!requirePerm(req, res, 'report_leave')) return; // 개별리포트 쓰기 권한 필요
+  // 리포트 발송은 인적자원팀(hr) 역할 또는 권한자만 가능 (별도 규칙)
+  if (!canSendReport(req)) { res.status(403).json({ error: '리포트 발송 권한이 없습니다. 인적자원팀 또는 권한자만 발송할 수 있습니다.' }); return; }
   const { userIds, from, to } = req.body;
   if (!Array.isArray(userIds) || !userIds.length || !from || !to) { res.status(400).json({ error: '발송 대상과 기간이 필요합니다.' }); return; }
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -965,8 +1010,8 @@ router.post('/send-report', async (req: Request, res: Response): Promise<void> =
 router.post('/attendance/set-leave-day', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { userId, date, leaveType } = req.body;
   if (!userId || !date) { res.status(400).json({ error: 'userId, date가 필요합니다.' }); return; }
-  // 연차 인정·해제 → report_leave, 출근/퇴근/노트 인정 → report_full
-  if (!requirePerm(req, res, (leaveType && leaveType !== '연차') ? 'report_full' : 'report_leave')) return;
+  // 연차·출퇴근·근무노트 인정 → 개별리포트(report) 쓰기 권한
+  if (!requirePerm(req, res, 'report')) return;
   // 권한 범위(권한 팀) 밖 근로자에 대한 인정/해제 차단
   if (!(await assertWorkerInScope(req, res, userId))) return;
 
@@ -1029,7 +1074,7 @@ router.post('/users/:id/unlock', requireAdmin, permStaff, async (req: Request, r
 // ── 퇴근 시간 변경 승인 ───────────────────────────────────────
 
 router.post('/attendance/:recordId/approve-time-change', async (req: Request, res: Response): Promise<void> => {
-  if (!requirePerm(req, res, 'report_full')) return; // 출퇴근 시간변경 승인
+  if (!requirePerm(req, res, 'report')) return; // 출퇴근 시간변경 승인 → 개별리포트 쓰기
   const { approve } = req.body;
   const { rows } = await pool.query(
     `UPDATE attendance_records SET temp_time_change_status=$1, temp_time_change_approved_by=$2
@@ -1046,7 +1091,7 @@ router.post('/attendance/:recordId/approve-time-change', async (req: Request, re
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
   const isHolder = await reqIsAuthority(req); // 권한자만 대기 기기(승인 대상) 목록 조회
   const { rows: myDevices } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, scope_teams, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
   );
   let pendingDevices: any[] = [];
@@ -1064,7 +1109,7 @@ router.get('/my-devices', async (req: Request, res: Response): Promise<void> => 
 // 특정 관리자의 기기 목록 (모든 관리자 조회 가능 — 편집 권한은 별도)
 router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, scope_teams, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.params.userId]
   );
   res.json({ devices: rows });
@@ -1132,18 +1177,33 @@ function normalizeTeams(input: any): string[] {
   else arr = [];
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const t of arr) { if (t && !seen.has(t)) { seen.add(t); out.push(t); } }
-  return out.length ? out : ['전체'];
+  for (const t of arr) { if (t && t !== '전체' && !seen.has(t)) { seen.add(t); out.push(t); } }
+  return out; // 빈 배열 허용(역할에 따라 담당 팀이 없을 수 있음)
+}
+// 담당 본부/법인 등 일반 문자열 배열 정규화(공백 제거·중복 제거, 빈 배열 허용)
+function normalizeStrArr(input: any): string[] {
+  let arr: string[];
+  if (Array.isArray(input)) arr = input.map((x) => String(x).trim());
+  else if (typeof input === 'string') arr = input.split(',').map((x) => x.trim());
+  else arr = [];
+  return Array.from(new Set(arr.filter(Boolean)));
 }
 
 // 권한 키/정규화는 공용 모듈(utils/permissions) 사용 (admin·auth 간 드리프트 방지)
 // 로그 비고용: 권한 키 배열 → 사람이 읽는 라벨
 const PERM_LABEL: Record<string, string> = {
-  staff: '근로자 관리 쓰기', report_leave: '개별리포트(연차)', report_full: '개별리포트(전체)', settings: '설정 쓰기',
+  staff: '근로자관리 쓰기', report: '개별리포트 쓰기', settings: '설정 쓰기',
 };
 function permLabel(perms: string[]): string {
   const list = (perms || []).filter((k) => VALID_PERMS.includes(k)).map((k) => PERM_LABEL[k]);
   return list.length ? '읽기+' + list.join('+') : '읽기 전용';
+}
+const ROLE_LABEL: Record<string, string> = {
+  director: '본부장', teamlead: '팀장', hr: '인적자원팀', general: '일반',
+};
+function rolesLabel(roles: string[]): string {
+  const list = (roles || []).filter((k) => VALID_ROLES.includes(k)).map((k) => ROLE_LABEL[k]);
+  return list.length ? list.join('·') : '(없음·보류)';
 }
 // 'YYYY-MM-DD' → 'MM/DD'
 const mmdd = (d?: string) => (d ? d.slice(5).replace('-', '/') : '');
@@ -1162,16 +1222,23 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   const corp = (req.body.corp ?? '').trim() || null;   // 담당 법인(월간 리포트 발신담당 매핑에 사용)
   const newName = (req.body.deviceName ?? '').trim();
   if (!newName) { res.status(400).json({ error: '관리자명을 입력해주세요.' }); return; }
-  const permissions = normalizePerms(req.body.permissions);
+  const roles = normalizeRoles(req.body.roles);
+  // 일반(general)은 읽기 전용 → 쓰기 권한 저장 안 함
+  const permissions = roles.includes('general') ? [] : normalizePerms(req.body.permissions);
   const teams = normalizeTeams(req.body.teams);
+  const divisions = normalizeStrArr(req.body.scopeDivisions);
+  const corps = normalizeStrArr(req.body.scopeCorps);
 
-  const { rows: cur } = await pool.query('SELECT device_name, permissions, phone AS p, corp AS cp, scope_teams FROM admin_devices WHERE id=$1', [req.params.id]);
+  const { rows: cur } = await pool.query('SELECT device_name, permissions, roles, phone AS p, corp AS cp, scope_teams, scope_divisions, scope_corps FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!cur[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
   const oldName: string = (cur[0].device_name ?? '').trim();
   const oldPerms: string[] = cur[0].permissions || [];
+  const oldRoles: string[] = cur[0].roles || [];
   const oldPhone: string = cur[0].p || '';
   const oldCorp: string = cur[0].cp || '';
   const oldTeams: string[] = cur[0].scope_teams || [];
+  const oldDivisions: string[] = cur[0].scope_divisions || [];
+  const oldCorps: string[] = cur[0].scope_corps || [];
 
   // 이름이 바뀌었고, 바꾸려는 이름을 가진 '다른 그룹' 기기가 이미 있는지
   const isRename = newName !== oldName;
@@ -1204,32 +1271,45 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
 
   let appliedPerms: string[] = permissions;   // 로그 비고용(적용된 최종 권한)
   let appliedTeams: string[] = teams;
+  let appliedRoles: string[] = roles;
+  let appliedDivs: string[] = divisions;
+  let appliedCorps: string[] = corps;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     if (collision) {
-      // 병합: oldName 그룹 + newName 그룹의 권한(키·팀)을 합집합으로
+      // 병합: oldName 그룹 + newName 그룹의 역할·권한·범위를 합집합으로
       const { rows: others } = await client.query(
-        'SELECT permissions, scope_teams FROM admin_devices WHERE device_name=$1', [newName]
+        'SELECT permissions, roles, scope_teams, scope_divisions, scope_corps FROM admin_devices WHERE device_name=$1', [newName]
       );
       const permSet = new Set<string>(permissions);
+      const roleSet = new Set<string>(roles);
       const teamSet = new Set<string>(teams);
+      const divSet = new Set<string>(divisions);
+      const corpSet = new Set<string>(corps);
       for (const o of others) {
         for (const p of (o.permissions || [])) permSet.add(p);
-        for (const t of (o.scope_teams || [])) teamSet.add(t);
+        for (const r of (o.roles || [])) roleSet.add(r);
+        for (const t of (o.scope_teams || [])) { if (t && t !== '전체') teamSet.add(t); }
+        for (const d of (o.scope_divisions || [])) divSet.add(d);
+        for (const c of (o.scope_corps || [])) corpSet.add(c);
       }
-      const mergedPerms = VALID_PERMS.filter((k) => permSet.has(k));
+      // 'general'이 섞이면 단독 규칙상 제거(다른 역할과 공존 불가)
+      let mergedRoles = VALID_ROLES.filter((k) => roleSet.has(k));
+      if (mergedRoles.length > 1) mergedRoles = mergedRoles.filter((r) => r !== 'general');
+      appliedRoles = mergedRoles;
+      const mergedPerms = mergedRoles.includes('general') ? [] : VALID_PERMS.filter((k) => permSet.has(k));
       appliedPerms = mergedPerms;
-      const mergedTeams = Array.from(teamSet);
-      appliedTeams = mergedTeams;
+      const mergedTeams = Array.from(teamSet); appliedTeams = mergedTeams;
+      const mergedDivs = Array.from(divSet); appliedDivs = mergedDivs;
+      const mergedCorps = Array.from(corpSet); appliedCorps = mergedCorps;
       const names = oldName ? [oldName, newName] : [newName];
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, scope_teams=$5
-         WHERE device_name = ANY($6) OR id=$7`,
-        [newName, corp, phone || null, mergedPerms, mergedTeams, names, req.params.id]
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8
+         WHERE device_name = ANY($9) OR id=$10`,
+        [newName, corp, phone || null, mergedPerms, mergedRoles, mergedTeams, mergedDivs, mergedCorps, names, req.params.id]
       );
       // 병합된 그룹의 권한자 여부를 하나로 통일(둘 중 하나라도 권한자였으면 그룹 전체 권한자).
-      // 로그인한 기기에 따라 권한자 여부가 달라지는 불일치 방지.
       await client.query(
         `UPDATE admin_devices SET is_authority = (SELECT bool_or(is_authority) FROM admin_devices WHERE device_name=$1)
          WHERE device_name=$1`, [newName]
@@ -1237,15 +1317,15 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
     } else if (oldName) {
       // 같은 관리자명 그룹 전체에 동기화 (이름 변경 포함)
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, scope_teams=$5
-         WHERE device_name=$6 OR id=$7`,
-        [newName, corp, phone || null, permissions, teams, oldName, req.params.id]
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8
+         WHERE device_name=$9 OR id=$10`,
+        [newName, corp, phone || null, permissions, roles, teams, divisions, corps, oldName, req.params.id]
       );
     } else {
       // 기존 이름이 비어 있으면 이 기기 1개만 설정
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, scope_teams=$5 WHERE id=$6`,
-        [newName, corp, phone || null, permissions, teams, req.params.id]
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8 WHERE id=$9`,
+        [newName, corp, phone || null, permissions, roles, teams, divisions, corps, req.params.id]
       );
     }
     await client.query('COMMIT');
@@ -1262,10 +1342,14 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   }
   const newCorp = corp || '';
   if (oldCorp !== newCorp) parts.push(oldCorp ? `(담당 법인)${oldCorp}->${newCorp}` : `(담당 법인)${newCorp}`);
+  const oldRL = rolesLabel(oldRoles), newRL = rolesLabel(appliedRoles);
+  if (oldRL !== newRL) parts.push(`(역할)${oldRL}->${newRL}`);
   const oldPL = permLabel(oldPerms), newPL = permLabel(appliedPerms);
-  if (oldPL !== newPL) parts.push(`(권한)${oldPL}->${newPL}`);
-  const oldTL = (oldTeams.length ? oldTeams.join(', ') : '전체'), newTL = (appliedTeams.length ? appliedTeams.join(', ') : '전체');
-  if (oldTL !== newTL) parts.push(`(권한 팀)${oldTL}->${newTL}`);
+  if (oldPL !== newPL) parts.push(`(쓰기 권한)${oldPL}->${newPL}`);
+  const joinOr = (a: string[]) => (a.length ? a.join(', ') : '-');
+  if (joinOr(oldTeams.filter((t) => t !== '전체')) !== joinOr(appliedTeams)) parts.push(`(담당 팀)${joinOr(oldTeams.filter((t) => t !== '전체'))}->${joinOr(appliedTeams)}`);
+  if (joinOr(oldDivisions) !== joinOr(appliedDivs)) parts.push(`(담당 본부)${joinOr(oldDivisions)}->${joinOr(appliedDivs)}`);
+  if (joinOr(oldCorps) !== joinOr(appliedCorps)) parts.push(`(담당 법인)${joinOr(oldCorps)}->${joinOr(appliedCorps)}`);
   await logAudit(req, '수정', '관리자', newName, parts.join(', ') || null);
   res.json({ success: true, merged: collision });
 });
@@ -1280,8 +1364,11 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
   const corp = (req.body.corp ?? '').trim() || null;
   if (!managerName) { res.status(400).json({ error: '관리자명을 입력해주세요.' }); return; }
   if (!email && !phone) { res.status(400).json({ error: '이메일 또는 전화번호를 입력해주세요.' }); return; }
-  const permissions = normalizePerms(req.body.permissions);
+  const roles = normalizeRoles(req.body.roles);
+  const permissions = roles.includes('general') ? [] : normalizePerms(req.body.permissions);
   const teams = normalizeTeams(req.body.teams);
+  const scopeDivisions = normalizeStrArr(req.body.scopeDivisions);
+  const scopeCorps = normalizeStrArr(req.body.scopeCorps);
 
   // 이미 존재하는 관리자명이면 확인 필요(등록 시 기존 권한을 상속 → 입력한 권한범위는 무시됨)
   if (req.body.confirmMerge !== true) {
@@ -1298,7 +1385,7 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
   // nonce: 1회용 링크 식별자(한 초대로 기기 하나만 등록)
   const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
   const token = jwt.sign(
-    { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, corp, permissions, teams, nonce },
+    { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, corp, permissions, roles, teams, scopeDivisions, scopeCorps, nonce },
     process.env.JWT_SECRET as string, { expiresIn: '7d' }
   );
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -1467,6 +1554,8 @@ router.put('/corporations/:id', requireAdmin, permSettings, async (req: Request,
         await pool.query('UPDATE admin_devices SET corp=$1 WHERE id=$2', [nt.join(', '), ad.id]);
       }
     }
+    // 인적자원팀 담당 법인(scope_corps) 토큰 치환
+    await pool.query('UPDATE admin_devices SET scope_corps = array_replace(scope_corps, $1, $2) WHERE $1 = ANY(scope_corps)', [oldName, newName]);
   }
   await logAudit(req, '수정', '법인', newName, oldName !== newName ? `(법인명)${oldName}->${newName}` : null);
   res.json({ success: true });
@@ -1512,7 +1601,11 @@ router.put('/divisions/:id', requireAdmin, permSettings, async (req: Request, re
   try {
     await pool.query('UPDATE divisions SET name=$1 WHERE id=$2', [newName, req.params.id]);
   } catch (e: any) { if (e.code === '23505') { res.status(400).json({ error: '이미 등록된 본부명입니다.' }); return; } throw e; }
-  if (oldName !== newName) await pool.query('UPDATE users SET division=$1 WHERE division=$2', [newName, oldName]);
+  if (oldName !== newName) {
+    await pool.query('UPDATE users SET division=$1 WHERE division=$2', [newName, oldName]);
+    // 본부장 담당 본부(scope_divisions) 토큰 치환
+    await pool.query('UPDATE admin_devices SET scope_divisions = array_replace(scope_divisions, $1, $2) WHERE $1 = ANY(scope_divisions)', [oldName, newName]);
+  }
   await logAudit(req, '수정', '본부', newName, oldName !== newName ? `(본부명)${oldName}->${newName}` : null);
   res.json({ success: true });
 });
@@ -1797,15 +1890,13 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
 router.get('/worker-search', async (req: Request, res: Response): Promise<void> => {
   const name = ((req.query.name as string) || '').trim();
   if (!name) { res.json({ workers: [] }); return; }
-  // 권한 범위(권한 팀) 밖 근로자는 검색 결과에서 제외 (법인/본부/팀/근무지 노출 방지)
-  const scope = await getReadScope(req);
+  // 권한 범위 밖 근로자는 검색 결과에서 제외 (법인/본부/팀/근무지 노출 방지)
   const params: unknown[] = [name];
-  let scopeClause = '';
-  if (scope) { params.push(scope); scopeClause = ` AND u.team = ANY($${params.length})`; }
+  const scopeCl = scopeClause(req, 'u', params);
   const { rows } = await pool.query(
     `SELECT u.id, u.name, u.corp, u.division, u.team, w.name AS workplace_name
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id
-     WHERE u.is_active=TRUE AND u.role='worker' AND u.name=$1${scopeClause}
+     WHERE u.is_active=TRUE AND u.role='worker' AND u.name=$1 AND ${scopeCl}
      ORDER BY u.corp NULLS LAST, u.division NULLS LAST, u.team NULLS LAST`,
     params
   );
@@ -1817,21 +1908,30 @@ router.get('/worker-search', async (req: Request, res: Response): Promise<void> 
 router.get('/worker-access-check', async (req: Request, res: Response): Promise<void> => {
   const name = ((req.query.name as string) || '').trim();
   if (!name) { res.json({ blocked: [] }); return; }
-  const scope = await getReadScope(req);
-  if (!scope) { res.json({ blocked: [] }); return; }   // 권한자/전체는 제한 없음
+  if (getScope(req).all) { res.json({ blocked: [] }); return; }   // 권한자/전체는 제한 없음
   const { rows } = await pool.query(
-    `SELECT DISTINCT u.name FROM users u
-      WHERE u.is_active=TRUE AND u.role='worker' AND u.name ILIKE $1
-        AND (u.team IS NULL OR NOT (u.team = ANY($2)))`,
-    [`%${name}%`, scope]
+    `SELECT u.name, u.team, u.division, u.corp FROM users u
+      WHERE u.is_active=TRUE AND u.role='worker' AND u.name ILIKE $1`,
+    [`%${name}%`]
   );
-  res.json({ blocked: rows.map((r: any) => r.name) });
+  const blocked = Array.from(new Set(rows.filter((r: any) => !workerRowInScope(req, r)).map((r: any) => r.name)));
+  res.json({ blocked });
 });
 
 // 현재 로그인 기기의 최신 권한(권한자/세부권한) — 재로그인 없이 새로고침으로 반영하기 위함
 router.get('/me', async (req: Request, res: Response): Promise<void> => {
   const ad = (req as any).adminDevice || {};
-  res.json({ isAuthorityHolder: !!ad.isAuthority, permissions: ad.permissions || [] });
+  res.json({
+    isAuthorityHolder: !!ad.isAuthority,
+    permissions: ad.permissions || [],
+    roles: ad.roles || [],
+    canSendReport: canSendReport(req),
+    // 프론트 편의 플래그
+    canWriteSettings: hasPerm(req, 'settings'),
+    canWriteStaff: hasPerm(req, 'staff'),
+    canWriteReport: hasPerm(req, 'report'),
+    readOnly: !ad.isAuthority && (ad.roles || []).includes('general'),
+  });
 });
 
 // ── 작업 기록(감사 로그) 조회 — 권한자만 ───────────────────────────────────────
@@ -1888,9 +1988,8 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
     if (team)     { params.push(team);     conds.push(`u.team=$${params.length}`); }
     if (position) { params.push(position); conds.push(`u.position=$${params.length}`); }
   }
-  // 권한 범위(권한 팀) 적용 — 전체현황도 직원관리/개별리포트와 동일하게 필터
-  const scope = await getReadScope(req);
-  if (scope) { params.push(scope); conds.push(`u.team = ANY($${params.length})`); }
+  // 권한 범위 적용 — 전체현황도 직원관리/개별리포트와 동일하게 필터
+  conds.push(scopeClause(req, 'u', params));
   const full = req.query.full === '1'; // 다운로드용: 페이지네이션 없이 전체 + 출퇴근지·비고 포함
   const { rows: allWorkers } = await pool.query(
     `SELECT u.id, u.name, u.corp, u.division, u.team, u.position, u.remark, u.note_exempt, u.irregular_worker,

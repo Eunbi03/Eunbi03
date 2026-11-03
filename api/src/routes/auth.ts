@@ -5,18 +5,18 @@ import { body, validationResult } from 'express-validator';
 import { pool } from '../db/pool';
 import { generateAccessToken, generateRefreshToken, hashToken, getRefreshTokenExpiry } from '../utils/authTokens';
 import { requireAuth } from '../middleware/auth';
-import { normalizePerms } from '../utils/permissions';
+import { normalizePerms, normalizeRoles } from '../utils/permissions';
 
 const router = Router();
 const MAX_FAILED = parseInt(process.env.MAX_FAILED_LOGIN_ATTEMPTS || '5', 10);
 
 // 이 기기(admin_devices)의 권한(권한자 여부·쓰기 권한)을 한 번에 조회
-async function getDevicePerms(userId: string, deviceId: string): Promise<{ isAuthority: boolean; permissions: string[] }> {
+async function getDevicePerms(userId: string, deviceId: string): Promise<{ isAuthority: boolean; permissions: string[]; roles: string[] }> {
   const { rows } = await pool.query(
-    'SELECT is_authority, permissions FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
+    'SELECT is_authority, permissions, roles FROM admin_devices WHERE user_id=$1 AND device_id=$2', [userId, deviceId]
   );
   const r = rows[0];
-  return { isAuthority: !!r?.is_authority, permissions: r?.permissions || [] };
+  return { isAuthority: !!r?.is_authority, permissions: r?.permissions || [], roles: r?.roles || [] };
 }
 
 async function logAttempt(data: {
@@ -37,7 +37,13 @@ router.get('/teams', async (_req: Request, res: Response): Promise<void> => {
        FROM teams t JOIN divisions d ON d.id = t.division_id
       ORDER BY d.name, t.name`
   );
-  res.json({ teams: rows });
+  // 관리자 승인요청(역할 선택)용: 법인 목록도 함께 제공
+  let corps: string[] = [];
+  try {
+    const { rows: cr } = await pool.query('SELECT name FROM corporations ORDER BY name');
+    corps = cr.map((r: any) => r.name);
+  } catch { /* corporations 테이블 없거나 조회 실패 시 빈 배열 */ }
+  res.json({ teams: rows, corps });
 });
 
 // POST /api/auth/register-device-link — 기기 추가 초대 링크로 '이 기기'를 관리자 기기로 등록
@@ -66,25 +72,32 @@ router.post('/register-device-link',
     }
     // 같은 관리자명이 이미 있으면 권한 공유(기존 그룹 권한 상속). 그룹이 권한자면 새 기기도 권한자.
     const { rows: grp } = await pool.query(
-      'SELECT permissions, scope_teams, corp, phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
+      'SELECT permissions, roles, scope_teams, scope_divisions, scope_corps, corp, phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
     );
     const { rows: authRows } = await pool.query(
       'SELECT 1 FROM admin_devices WHERE device_name=$1 AND is_authority=TRUE LIMIT 1', [p.managerName]
     );
     let permissions = Array.isArray(p.permissions) ? p.permissions : [];
-    let teams = Array.isArray(p.teams) && p.teams.length ? p.teams : ['전체'];
+    let roles = Array.isArray(p.roles) ? p.roles : [];
+    let teams = Array.isArray(p.teams) ? p.teams.filter((t: any) => t && t !== '전체') : [];
+    let scopeDivisions = Array.isArray(p.scopeDivisions) ? p.scopeDivisions : [];
+    let scopeCorps = Array.isArray(p.scopeCorps) ? p.scopeCorps : [];
     let corp = p.corp || null;
     let phone = p.phone || null;
     let isAuthority = authRows.length > 0;   // 권한자 그룹이면 새 기기도 권한자
     if (grp[0]) {
+      // 기존 그룹이 있으면 그룹 권한·역할·범위를 상속(그룹 동기화 유지)
       permissions = grp[0].permissions || permissions;
-      teams = (Array.isArray(grp[0].scope_teams) && grp[0].scope_teams.length) ? grp[0].scope_teams : teams;
+      roles = grp[0].roles || roles;
+      teams = (Array.isArray(grp[0].scope_teams) ? grp[0].scope_teams.filter((t: any) => t && t !== '전체') : teams);
+      scopeDivisions = grp[0].scope_divisions || scopeDivisions;
+      scopeCorps = grp[0].scope_corps || scopeCorps;
       corp = grp[0].corp || corp; phone = grp[0].phone || phone;
     }
     await pool.query(
-      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, permissions, scope_teams, is_authority)
-       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8) ON CONFLICT (user_id, device_id) DO NOTHING`,
-      [p.uid, deviceId, p.managerName, corp, phone, permissions, teams, isAuthority]
+      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, permissions, roles, scope_teams, scope_divisions, scope_corps, is_authority)
+       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8,$9,$10,$11) ON CONFLICT (user_id, device_id) DO NOTHING`,
+      [p.uid, deviceId, p.managerName, corp, phone, permissions, roles, teams, scopeDivisions, scopeCorps, isAuthority]
     );
     // 작업 기록: 해당 관리자의 등록 기기 수 변화
     try {
@@ -217,12 +230,15 @@ router.post('/login',
             await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'DUPLICATE_MANAGER', req });
             res.status(409).json({ error: '이미 등록된 관리자입니다. 새로운 기기 등록을 원한다면 최고 관리자에게 요청해주세요.', duplicateManager: true }); return;
           }
-          const permissions = normalizePerms(req.body.permissions);
-          const teams = Array.isArray(req.body.teams) && req.body.teams.length ? req.body.teams : ['전체'];
+          const roles = normalizeRoles(req.body.roles);
+          const permissions = roles.includes('general') ? [] : normalizePerms(req.body.permissions);
+          const teams = (Array.isArray(req.body.teams) ? req.body.teams : []).filter((t: any) => t && t !== '전체');
+          const scopeDivisions = Array.isArray(req.body.scopeDivisions) ? req.body.scopeDivisions.filter(Boolean) : [];
+          const scopeCorps = Array.isArray(req.body.scopeCorps) ? req.body.scopeCorps.filter(Boolean) : [];
           await pool.query(
-            `INSERT INTO admin_devices (user_id, device_id, device_name, phone, is_approved, permissions, scope_teams)
-             VALUES ($1,$2,$3,$4,FALSE,$5,$6) ON CONFLICT (user_id, device_id) DO NOTHING`,
-            [user.id, deviceId, managerName, phone, permissions, teams]
+            `INSERT INTO admin_devices (user_id, device_id, device_name, phone, is_approved, permissions, roles, scope_teams, scope_divisions, scope_corps)
+             VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7,$8,$9) ON CONFLICT (user_id, device_id) DO NOTHING`,
+            [user.id, deviceId, managerName, phone, permissions, roles, teams, scopeDivisions, scopeCorps]
           );
           await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_PENDING', req });
           res.status(403).json({ error: '승인 요청이 전송되었습니다. 권한자의 승인 후 로그인할 수 있습니다.', pendingApproval: true }); return;
@@ -243,9 +259,10 @@ router.post('/login',
     }
 
     // 권한자/세부권한은 '이 기기(admin_devices)' 기준으로 판단
-    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, permissions: [] };
+    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, permissions: [], roles: [] };
     const isAuthority = perms.isAuthority;
     const permissions = perms.permissions;
+    const roles = perms.roles;
 
     const { plainToken, tokenHash } = generateRefreshToken();
     const refreshExpiry = getRefreshTokenExpiry();
@@ -274,6 +291,7 @@ router.post('/login',
         locationConsentGiven: user.location_consent_given,
         isAuthorityHolder: isAuthority,
         permissions,
+        roles,
       },
     });
   }
@@ -318,9 +336,10 @@ router.post('/auto-login',
       res.status(403).json({ error: '로그인 세션이 만료되었습니다.' }); return;
     }
 
-    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, permissions: [] };
+    const perms = isAdminUser ? await getDevicePerms(user.id, deviceId) : { isAuthority: false, permissions: [], roles: [] };
     const isAuthority = perms.isAuthority;
     const permissions = perms.permissions;
+    const roles = perms.roles;
     res.json({
       accessToken: generateAccessToken({ userId: user.id, role: user.role, deviceId, isAuthority }),
       user: {
@@ -329,6 +348,7 @@ router.post('/auto-login',
         locationConsentGiven: user.location_consent_given,
         isAuthorityHolder: isAuthority,
         permissions,
+        roles,
       },
     });
   }

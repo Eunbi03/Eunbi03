@@ -39,14 +39,14 @@ function FilterSelect({ disabled, value, onChange, isMobile, children }) {
 export default function AdminApp({ user }) {
   const isMobile = useIsMobile();
   // 최신 권한을 서버에서 받아 반영(재로그인 없이 새로고침만으로 권한 변경 적용)
-  const [perm, setPerm] = useState({ isAuthorityHolder: !!user?.isAuthorityHolder, permissions: user?.permissions || [] });
+  const [perm, setPerm] = useState({ isAuthorityHolder: !!user?.isAuthorityHolder, permissions: user?.permissions || [], roles: user?.roles || [] });
   useEffect(() => {
-    api.getMyPerms().then((d) => setPerm({ isAuthorityHolder: !!d.isAuthorityHolder, permissions: d.permissions || [] })).catch(() => {});
+    api.getMyPerms().then((d) => setPerm({ isAuthorityHolder: !!d.isAuthorityHolder, permissions: d.permissions || [], roles: d.roles || [] })).catch(() => {});
   }, []);
-  const effUser = { ...user, isAuthorityHolder: perm.isAuthorityHolder, permissions: perm.permissions };
+  const effUser = { ...user, isAuthorityHolder: perm.isAuthorityHolder, permissions: perm.permissions, roles: perm.roles };
   const isAuthority = perm.isAuthorityHolder;
-  // 자율 메시지 발송: 근로자관리 쓰기(staff) 또는 권한자
-  const canMsg = isAuthority || (perm.permissions || []).includes("staff");
+  // 자율 메시지 발송: 근로자관리 쓰기(staff) 또는 권한자 (일반은 읽기 전용이라 불가)
+  const canMsg = isAuthority || (!(perm.roles || []).includes("general") && (perm.permissions || []).includes("staff"));
   // 로그 페이지는 권한자만
   const TABS = isAuthority ? [...BASE_TABS, { key: "log", label: "로그" }] : BASE_TABS;
   const [tab, setTab] = useState("overall");

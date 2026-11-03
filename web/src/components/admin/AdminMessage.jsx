@@ -12,7 +12,8 @@ const COL = {
 export default function AdminMessage({ filters, currentUser }) {
   const isMobile = useIsMobile(760);
   const _perms = currentUser?.permissions || [];
-  const canWrite = !!currentUser?.isAuthorityHolder || _perms.includes("staff");
+  const _roles = currentUser?.roles || [];
+  const canWrite = !!currentUser?.isAuthorityHolder || (!_roles.includes("general") && _perms.includes("staff"));
 
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);

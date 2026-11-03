@@ -818,7 +818,9 @@ const CATEGORIES = [
 export default function AdminSettings({ currentUser }) {
   const [cat, setCat] = useState("workplace");
   const [catFocus, setCatFocus] = useState(false);
-  const canEdit = !!currentUser?.isAuthorityHolder || (currentUser?.permissions || []).includes("settings");
+  // 설정 쓰기 = 인적자원팀(hr) 역할 + 설정 권한, 또는 권한자
+  const canEdit = !!currentUser?.isAuthorityHolder
+    || ((currentUser?.roles || []).includes("hr") && (currentUser?.permissions || []).includes("settings"));
   return (
     <div>
       {/* 상단 공통 필터와 동일한 높이·테두리·포커스(#0e6ca5) */}

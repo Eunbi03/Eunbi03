@@ -287,7 +287,7 @@ function LeavePopup({ day, onSelect, onClose, canFull }) {
   const [noteOn, setNoteOn] = useState(init.noteOn);
   useEffect(() => { const p = parseLt(day.leaveType); setPrimary(p.primary); setNoteOn(p.noteOn); }, [day.leaveType]);
 
-  // 연차만 가능(report_leave)이면 '연차'만, 전체(report_full)면 출퇴근/노트 인정까지
+  // 개별리포트 쓰기 권한이 있으면 연차·출퇴근·근무노트 인정 모두 가능
   const ALL_OPTIONS = [
     { key: "연차", label: "연차", sub: "하루 전체 인정" },
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
@@ -344,11 +344,16 @@ function Kpi({ label, v, color }) {
 
 export default function AdminIndividual({ filters, currentUser }) {
   const isMobile = useIsMobile(760);
-  // 개별리포트 세부 권한: 발송·연차 인정 = report_leave|report_full|권한자, 출퇴근·노트 인정 = report_full|권한자
+  // 개별리포트 권한(신규 모델):
+  //   인정(연차·출퇴근·근무노트) = 개별리포트 쓰기(report) 또는 권한자. 일반(general)은 읽기 전용.
+  //   발송 = 인적자원팀(hr) 역할 또는 권한자만(별도 규칙).
   const _perms = currentUser?.permissions || [];
   const _auth = !!currentUser?.isAuthorityHolder;
-  const canReportFull = _auth || _perms.includes("report_full");
-  const canReportLeave = canReportFull || _perms.includes("report_leave");
+  const _roles = currentUser?.roles || [];
+  const canRecognize = _auth || (!_roles.includes("general") && _perms.includes("report"));
+  const canReportFull = canRecognize;   // 출퇴근·노트 인정
+  const canReportLeave = canRecognize;  // 연차 인정
+  const canSendReport = _auth || _roles.includes("hr");
   const today = todayStr();
   const monthRef = useRef(null);
   const [ym, setYm] = useState(() => { const [y, m] = todayStr().split("-").map(Number); return { year: y, month: m }; });
@@ -508,8 +513,8 @@ export default function AdminIndividual({ filters, currentUser }) {
         </div>
         ); })()}
 
-        {/* 리포트 발송 (현재 보이는 인원 대상) — 발송 권한자만 */}
-        {canReportLeave && (
+        {/* 리포트 발송 (현재 보이는 인원 대상) — 인적자원팀·권한자만 */}
+        {canSendReport && (
           <button onClick={sendReports} disabled={sending}
             style={{ border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, background: COL.blue, color: "#fff", cursor: "pointer", opacity: sending ? 0.6 : 1, whiteSpace: "nowrap" }}>
             {sending ? "발송 중…" : "리포트 발송"}
