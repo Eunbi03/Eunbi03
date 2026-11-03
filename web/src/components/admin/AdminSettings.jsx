@@ -160,8 +160,8 @@ function WorkplaceSection({ canEdit }) {
       // 1) 띄어쓰기·대소문자 무시하고 동일 거래처면 → 지점으로 추가 (add일 때만)
       let matchedClient = groups.find((g) => normTxt(g.clientName) === normTxt(typedClient)) || null;
       if (f.kind === "add" && matchedClient) {
-        if (!typedBranch) { setMsg({ text: "이미 있는 거래처입니다. 지점명을 입력해 지점으로 추가하세요.", ok: false }); return; }
-        if (!window.confirm("동일한 거래처가 존재합니다. 지점으로 추가하시겠습니까?")) return;
+        if (!typedBranch) { setMsg({ text: `이미 있는 거래처입니다 (거래처명: ${matchedClient.clientName}). 지점명을 입력해 지점으로 추가하세요.`, ok: false }); return; }
+        if (!window.confirm(`동일한 거래처가 존재합니다. 지점으로 추가하시겠습니까?\n\n거래처명: ${matchedClient.clientName}`)) return;
         f.clientName = matchedClient.clientName; // 기존 표기(철자)로 통일해 그룹 유지
       }
       // 3) 동일 주소(도로명 기준, 상세주소 제외)의 근무지가 있으면 경고
