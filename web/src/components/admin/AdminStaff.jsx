@@ -1030,12 +1030,20 @@ export default function AdminStaff({ filters, currentUser }) {
   // 근로자/관리자 카드 1개
   const workerCard = (w) => {
     const isAdminRole = w.role !== "worker";
+    // 관리자(본부장/팀장)와 매칭된 근로자 → 행 배경 파란색 + 본부·팀 대신 역할 직함 표기
+    const mgrTitles = Array.isArray(w.mgr_titles) ? w.mgr_titles : [];
+    const isManagerMatch = !isAdminRole && mgrTitles.length > 0;
     const flags = [w.note_exempt && "근무노트제외", w.irregular_worker && "비정기적 근무"].filter(Boolean).join(", ");
     const fsMain = isMobile ? 14 : 16;
     const fsSub = isMobile ? 13 : 15;
     const fsBody = isMobile ? 12 : 14;
+    const highlight = isAdminRole || isManagerMatch;
+    // 매칭 근로자: 직무 / 법인 / OO본부장 / ㅁㅁ팀장  (본부·팀은 직함으로 대체)
+    const metaText = isManagerMatch
+      ? [w.position, w.corp, ...mgrTitles].filter(Boolean).join(" / ")
+      : [w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ");
     return (
-      <div key={w.id} style={{ ...S.hrRow, alignItems: "flex-start", padding: "12px 14px 8px", background: isAdminRole ? "#eef4f9" : "#fff", borderColor: isAdminRole ? C.blue : C.lineAdmin }}>
+      <div key={w.id} style={{ ...S.hrRow, alignItems: "flex-start", padding: "12px 14px 8px", background: highlight ? "#eef4f9" : "#fff", borderColor: highlight ? C.blue : C.lineAdmin }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 800, color: C.ink, fontSize: fsMain, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
             {w.name}
@@ -1043,7 +1051,7 @@ export default function AdminStaff({ filters, currentUser }) {
               <span style={{ ...S.badge, background: "#dcebe1", color: "#468161", fontSize: fsSub - 2 }}>관리자</span>
             ) : (
               <span style={{ fontWeight: 400, color: C.inkSoft, fontSize: fsBody }}>
-                {[w.position, [w.corp, w.division, w.team].filter(Boolean).join(" · ")].filter(Boolean).join(" / ")}
+                {metaText}
               </span>
             )}
           </div>

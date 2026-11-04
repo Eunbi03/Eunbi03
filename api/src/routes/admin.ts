@@ -420,6 +420,33 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
+
+  // 관리자 ↔ 근로자 매칭: 이름(공백무시)+전화(숫자만) 일치하는 관리자가 '본부장/팀장'이면
+  // 그 근로자 행에 역할 직함(OO본부장/ㅁㅁ팀장)을 붙여 표시한다. (표시 전용)
+  try {
+    const norm = (s: any) => String(s || '').replace(/\s+/g, '').toLowerCase();
+    const digits = (s: any) => String(s || '').replace(/\D/g, '');
+    const { rows: mgrs } = await pool.query(
+      `SELECT DISTINCT device_name, phone, roles, scope_divisions, scope_teams
+         FROM admin_devices
+        WHERE device_name IS NOT NULL AND device_name<>'' AND phone IS NOT NULL AND phone<>''
+          AND roles && ARRAY['director','teamlead']::text[]`
+    );
+    const mgrMap: Record<string, string[]> = {};
+    for (const m of mgrs) {
+      const roles: string[] = m.roles || [];
+      const titles: string[] = [];
+      if (roles.includes('director')) for (const d of (m.scope_divisions || [])) if (d) titles.push(d.endsWith('장') ? d : d + '장');
+      if (roles.includes('teamlead')) for (const t of (m.scope_teams || [])) if (t && t !== '전체') titles.push(t.endsWith('장') ? t : t + '장');
+      if (titles.length) mgrMap[`${norm(m.device_name)}|${digits(m.phone)}`] = titles;
+    }
+    for (const r of rows) {
+      if (r.role !== 'worker') continue;
+      const hit = mgrMap[`${norm(r.name)}|${digits(r.phone)}`];
+      if (hit) r.mgr_titles = hit; // 예: ['MS본부장','영업1팀장']
+    }
+  } catch (e: any) { console.error('[관리자-근로자 매칭 실패]', e.message); }
+
   res.json({ workers: rows, pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) } });
 });
 
