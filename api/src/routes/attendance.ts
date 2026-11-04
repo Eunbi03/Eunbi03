@@ -485,4 +485,82 @@ router.post('/time-change-request', requireAuth,
   }
 );
 
+// ── 연장 근무 신청 (근로자) ─────────────────────────────────────────
+// 규칙: 신청·삭제 = 연장일 '당일 이전'만, 수정 = 연장일 +2일까지(수정 시 재승인 → pending)
+const OT_TIME = /^\d{2}:\d{2}$/;
+function daysBetweenKST(dateStr: string): number {
+  // (work_date - today) in days, KST 자정 기준
+  const today = todayKST();
+  const a = new Date(today + 'T00:00:00Z').getTime();
+  const b = new Date(dateStr + 'T00:00:00Z').getTime();
+  return Math.round((b - a) / 86400000);
+}
+
+// GET /api/attendance/overtime — 내 연장근무 신청 목록(예정·최근)
+router.get('/overtime', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { rows } = await pool.query(
+    `SELECT id, work_date::text AS work_date, to_char(start_time,'HH24:MI') AS start_time,
+            to_char(end_time,'HH24:MI') AS end_time, place, workplace_id, purpose, status, reject_reason
+       FROM overtime_requests WHERE user_id=$1
+      ORDER BY work_date DESC, start_time`,
+    [req.user.userId]
+  );
+  res.json({ overtime: rows });
+});
+
+// POST /api/attendance/overtime — 신청 (연장일 당일 이전만)
+router.post('/overtime', requireAuth,
+  [body('workDate').matches(/^\d{4}-\d{2}-\d{2}$/), body('startTime').matches(OT_TIME),
+   body('endTime').matches(OT_TIME), body('place').notEmpty(), body('purpose').notEmpty()],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
+    const { workDate, startTime, endTime, place, purpose, workplaceId } = req.body;
+    if (daysBetweenKST(workDate) < 1) { res.status(400).json({ error: '연장 근무 신청은 연장일 전날까지만 가능합니다.' }); return; }
+    if (endTime <= startTime) { res.status(400).json({ error: '종료 시간이 시작 시간보다 늦어야 합니다.' }); return; }
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO overtime_requests (user_id, work_date, start_time, end_time, place, workplace_id, purpose)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [req.user.userId, workDate, startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim()]
+      );
+      res.status(201).json({ success: true, id: rows[0].id });
+    } catch (e: any) {
+      if (e.code === '23505') { res.status(409).json({ error: '해당 날짜에 이미 연장 근무 신청이 있습니다.' }); return; }
+      throw e;
+    }
+  }
+);
+
+// PUT /api/attendance/overtime/:id — 수정 (연장일 +2일까지, 수정 시 재승인)
+router.put('/overtime/:id', requireAuth,
+  [body('startTime').matches(OT_TIME), body('endTime').matches(OT_TIME), body('place').notEmpty(), body('purpose').notEmpty()],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
+    const { startTime, endTime, place, purpose, workplaceId } = req.body;
+    if (endTime <= startTime) { res.status(400).json({ error: '종료 시간이 시작 시간보다 늦어야 합니다.' }); return; }
+    const { rows: cur } = await pool.query('SELECT work_date::text AS work_date FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
+    if (!cur[0]) { res.status(404).json({ error: '신청 내역을 찾을 수 없습니다.' }); return; }
+    if (daysBetweenKST(cur[0].work_date) < -2) { res.status(400).json({ error: '수정은 연장일 +2일까지만 가능합니다.' }); return; }
+    await pool.query(
+      `UPDATE overtime_requests
+         SET start_time=$1, end_time=$2, place=$3, workplace_id=$4, purpose=$5,
+             status='pending', reject_reason=NULL, decided_by=NULL, decided_by_name=NULL, decided_at=NULL, updated_at=now()
+       WHERE id=$6 AND user_id=$7`,
+      [startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim(), req.params.id, req.user.userId]
+    );
+    res.json({ success: true });
+  }
+);
+
+// DELETE /api/attendance/overtime/:id — 삭제 (연장일 당일 이전만)
+router.delete('/overtime/:id', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { rows: cur } = await pool.query('SELECT work_date::text AS work_date FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
+  if (!cur[0]) { res.status(404).json({ error: '신청 내역을 찾을 수 없습니다.' }); return; }
+  if (daysBetweenKST(cur[0].work_date) < 1) { res.status(400).json({ error: '삭제는 연장일 전날까지만 가능합니다.' }); return; }
+  await pool.query('DELETE FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
+  res.json({ success: true });
+});
+
 export default router;

@@ -134,6 +134,22 @@ async function sendRandomCheckAlerts() {
   }
 }
 
+// 연장근무 승인 마감(연장일 당일 '본래 근무 시작시간' 전) 초과 시 자동 반려
+async function autoRejectOvertime() {
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE overtime_requests o
+          SET status='rejected',
+              reject_reason='승인 마감(연장일 근무 시작 전) 초과로 자동 반려',
+              decided_at=now(), updated_at=now()
+         FROM users u
+        WHERE o.user_id=u.id AND o.status='pending'
+          AND ((o.work_date + COALESCE(u.scheduled_start,'09:00'::time)) AT TIME ZONE 'Asia/Seoul') <= now()`
+    );
+    if (rowCount) console.log(`[연장근무] 마감 초과 ${rowCount}건 자동 반려`);
+  } catch (e: any) { console.error('[연장근무 자동반려 실패]', e.message); }
+}
+
 async function finalizeAbsentees() {
   const date = todayKST();
   // 공휴일 판정 캐시를 다시 로드. 실패하면 결근 오처리를 막기 위해 마감을 건너뛴다(fail-safe).
@@ -237,6 +253,7 @@ export function startScheduler() {
   // cron.schedule('* * * * *', sendRandomCheckAlerts, { timezone: 'Asia/Seoul' });
   cron.schedule('55 23 * * *', finalizeAbsentees, { timezone: 'Asia/Seoul' });
   cron.schedule('* * * * *', sendDailyReminders, { timezone: 'Asia/Seoul' });
+  cron.schedule('* * * * *', autoRejectOvertime, { timezone: 'Asia/Seoul' }); // 연장근무 승인 마감 자동 반려
   cron.schedule('10 4 * * *', purgeOldAuditLogs, { timezone: 'Asia/Seoul' }); // 매일 04:10 1년 지난 작업기록 삭제
   cron.schedule('15 4 * * *', purgeOldAttachments, { timezone: 'Asia/Seoul' }); // 매일 04:15 30일 지난 첨부파일 삭제
   console.log('[스케줄러] 모든 정기 작업 등록 완료');

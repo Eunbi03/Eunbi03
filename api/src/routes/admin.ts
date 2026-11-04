@@ -804,6 +804,15 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     [userId, from, to]
   );
 
+  // 승인된 연장근무 (날짜별)
+  const { rows: overtimeRows } = await pool.query(
+    `SELECT work_date::text AS d, to_char(start_time,'HH24:MI') AS start_time, to_char(end_time,'HH24:MI') AS end_time, place, purpose
+       FROM overtime_requests WHERE user_id=$1 AND status='approved' AND work_date>=$2 AND work_date<=$3`,
+    [userId, from, to]
+  );
+  const otByDate: Record<string, any> = {};
+  for (const o of overtimeRows) otByDate[o.d] = { startTime: o.start_time, endTime: o.end_time, place: o.place, purpose: o.purpose };
+
   const recByDate: Record<string, any> = {};
   for (const r of records) recByDate[r.date] = r;
   const outByRecId: Record<string, any[]> = {};
@@ -867,6 +876,7 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
       noteToday: r.work_note_today || r.daily_report,
       timeChangeReason: r.temp_time_change_reason || undefined,
       outings: (outByRecId[r.id] || []),
+      overtime: otByDate[day] || null,
       randomChecks: (rcByDate[day] || []),
     };
   };
@@ -1159,6 +1169,56 @@ router.post('/attendance/:recordId/approve-time-change', async (req: Request, re
     [approve ? 'approved' : 'rejected', req.user.userId, req.params.recordId]
   );
   if (!rows[0]) { res.status(404).json({ error: '대기 중인 요청을 찾을 수 없습니다.' }); return; }
+  res.json({ success: true });
+});
+
+// ── 연장 근무 승인 관리 (팀장·본부장만) ─────────────────────────────
+// 승인 권한: 담당 팀(팀장)/담당 본부(본부장) 범위. 권한자/인적자원팀은 접근 불가.
+function canApproveOvertime(req: Request): boolean {
+  const ad = (req as any).adminDevice;
+  if (!ad) return false;
+  const roles: string[] = ad.roles || [];
+  return roles.includes('director') || roles.includes('teamlead');
+}
+
+// GET /admin/overtime-requests?status=pending|all — 담당 범위 근로자의 연장근무 신청
+router.get('/overtime-requests', async (req: Request, res: Response): Promise<void> => {
+  if (!canApproveOvertime(req)) { res.status(403).json({ error: '팀장·본부장만 연장근무를 승인할 수 있습니다.' }); return; }
+  const params: any[] = [];
+  const scope = scopeClause(req, 'u', params);
+  const onlyPending = (req.query.status || 'pending') !== 'all';
+  const { rows } = await pool.query(
+    `SELECT o.id, o.work_date::text AS work_date, to_char(o.start_time,'HH24:MI') AS start_time,
+            to_char(o.end_time,'HH24:MI') AS end_time, o.place, o.purpose, o.status, o.reject_reason,
+            u.name AS worker_name, u.corp, u.division, u.team, u.position
+       FROM overtime_requests o JOIN users u ON u.id=o.user_id
+      WHERE u.is_active=TRUE AND ${scope} ${onlyPending ? "AND o.status='pending'" : ''}
+      ORDER BY (o.status='pending') DESC, o.work_date DESC, o.start_time`,
+    params
+  );
+  res.json({ requests: rows });
+});
+
+// POST /admin/overtime-requests/:id/decision — 승인/반려
+router.post('/overtime-requests/:id/decision', async (req: Request, res: Response): Promise<void> => {
+  if (!canApproveOvertime(req)) { res.status(403).json({ error: '팀장·본부장만 연장근무를 승인할 수 있습니다.' }); return; }
+  const approve = req.body.approve === true || req.body.approve === 'true';
+  const reason = (req.body.reason ?? '').trim() || null;
+  const { rows: cur } = await pool.query(
+    `SELECT o.status, u.team, u.division, u.corp, u.name FROM overtime_requests o JOIN users u ON u.id=o.user_id WHERE o.id=$1`,
+    [req.params.id]
+  );
+  if (!cur[0]) { res.status(404).json({ error: '신청 내역을 찾을 수 없습니다.' }); return; }
+  if (!workerRowInScope(req, cur[0])) { res.status(403).json({ error: '담당 범위 밖 근로자입니다.' }); return; }
+  const ad = (req as any).adminDevice;
+  const { rows } = await pool.query(
+    `UPDATE overtime_requests
+       SET status=$1, reject_reason=$2, decided_by=$3, decided_by_name=$4, decided_at=now(), updated_at=now()
+     WHERE id=$5 AND status='pending' RETURNING id`,
+    [approve ? 'approved' : 'rejected', approve ? null : reason, req.user.userId, ad?.deviceName || null, req.params.id]
+  );
+  if (!rows[0]) { res.status(409).json({ error: '이미 처리된 신청입니다.' }); return; }
+  await logAudit(req, approve ? '승인' : '반려', '연장근무', cur[0].name);
   res.json({ success: true });
 });
 

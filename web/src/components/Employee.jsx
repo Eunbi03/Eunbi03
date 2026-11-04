@@ -6,6 +6,7 @@ import { ensureAlwaysLocation, openAppSettings } from "../utils/locationPerm.js"
 import { startIosBackgroundLocation, stopIosBackgroundLocation } from "../utils/iosLocation.js";
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
+import OvertimeView from "./OvertimeView.jsx";
 import Splash from "./Splash.jsx";
 import { scheduleDailyReminders, ensureNotifPermission } from "../utils/notify.js";
 import { Capacitor } from "@capacitor/core";
@@ -237,6 +238,7 @@ export default function Employee({ user }) {
       />
     );
 
+  if (view === "overtime") return <OvertimeView onClose={() => setView("main")} />;
   if (view === "outing") return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
       <MoveForm onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
@@ -328,6 +330,11 @@ export default function Employee({ user }) {
             <button style={{ flex: activeOuting ? 1 : 2, border: "none", borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, background: W.ink, color: "#fff", cursor: "pointer" }} onClick={() => setView("out")}>퇴근하기</button>
           </div>
         ) : null}
+      </div>
+
+      {/* ── 연장 근무 (근무노트 작성 위) ── */}
+      <div style={{ ...cardStyle, padding: "12px 18px" }}>
+        <button style={{ width: "100%", border: `1px solid ${W.border}`, background: W.card, borderRadius: 12, padding: "13px", fontSize: 15, fontWeight: 800, color: W.ink, cursor: "pointer" }} onClick={() => setView("overtime")}>연장 근무</button>
       </div>
 
       {/* ── 근무노트 작성 (출근 후) ── */}

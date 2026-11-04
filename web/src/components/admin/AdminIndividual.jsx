@@ -143,7 +143,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
 
   const Divider = <span style={{ width: 1, alignSelf: "stretch", background: C.lineAdmin, flexShrink: 0 }} />;
 
-  const hasOutingsOrNote = (day.outings && day.outings.length) || day.noteToday || day.timeChangeReason;
+  const hasOutingsOrNote = (day.outings && day.outings.length) || day.overtime || day.noteToday || day.timeChangeReason;
 
   // 근무일이 아닌 날(주말·공휴일 등, 아무 기록·인정 없음) — 회색 '근무일 X'
   // 인정 버튼으로 관리자가 무엇이든 인정하면 그날이 근무일로 전환된다.
@@ -216,6 +216,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
   const info = (
     <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
       <span style={{ color: COL.amber, fontWeight: 700 }}>외근 {outN}</span>
+      {day.overtime && <span style={{ color: COL.blue, fontWeight: 700 }}>연장</span>}
       {day.noteToday && <span style={{ color: COL.blue, fontWeight: 700 }}>근무노트</span>}
     </div>
   );
@@ -282,6 +283,14 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
                   </span>
                   );
                 })}
+              </div>
+            )}
+            {day.overtime && (
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                <span style={{ color: COL.blue, fontWeight: 700, marginRight: 4 }}>연장</span>
+                <span style={{ color: COL.black }}>{day.overtime.startTime}~{day.overtime.endTime}</span>
+                <span style={{ color: COL.gray }}>· {day.overtime.place}</span>
+                <span style={{ color: COL.gray }}>· {day.overtime.purpose}</span>
               </div>
             )}
             {day.noteToday && (

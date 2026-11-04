@@ -89,6 +89,11 @@ export const startOuting = (location, destination, reason, workplaceId) => reque
 });
 export const getOutingWorkplaces = () => request("/attendance/workplaces");
 export const endOuting = (outingId, body) => request(`/attendance/outing/${outingId}/end`, { method: "POST", body: body || {} });
+// 연장 근무 (근로자)
+export const getMyOvertime = () => request("/attendance/overtime");
+export const createOvertime = (body) => request("/attendance/overtime", { method: "POST", body });
+export const updateOvertime = (id, body) => request(`/attendance/overtime/${id}`, { method: "PUT", body });
+export const deleteOvertime = (id) => request(`/attendance/overtime/${id}`, { method: "DELETE" });
 export const checkOut = (location, { workNoteIn, workNoteOut, workNoteField, workNoteToday }) => request("/attendance/check-out", {
   method: "POST", body: { lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false, workNoteIn, workNoteOut, workNoteField, workNoteToday },
 });
@@ -190,6 +195,9 @@ export const deleteTeam = (id) => request(`/admin/teams/${id}`, { method: "DELET
 export const getPositions = () => request("/admin/positions");
 // 필터 선택지(법인/본부·팀/직책) — 본인 권한 범위로 제한(조직도 노출 방지)
 export const getFilterOptions = () => request("/admin/filter-options");
+// 연장 근무 승인 (관리자: 팀장·본부장)
+export const getOvertimeRequests = (status = "pending") => request(`/admin/overtime-requests?status=${status}`);
+export const decideOvertime = (id, approve, reason) => request(`/admin/overtime-requests/${id}/decision`, { method: "POST", body: { approve, reason } });
 export const createPositions = (names) => request("/admin/positions", { method: "POST", body: { names } });
 export const updatePosition = (id, name) => request(`/admin/positions/${id}`, { method: "PUT", body: { name } });
 export const deletePosition = (id) => request(`/admin/positions/${id}`, { method: "DELETE" });

@@ -7,6 +7,7 @@ import AdminIndividual from "./admin/AdminIndividual.jsx";
 import AdminSettings from "./admin/AdminSettings.jsx";
 import AdminLog from "./admin/AdminLog.jsx";
 import AdminMessage from "./admin/AdminMessage.jsx";
+import AdminApprovals from "./admin/AdminApprovals.jsx";
 import * as api from "../api/client.js";
 
 const BASE_TABS = [
@@ -47,8 +48,18 @@ export default function AdminApp({ user }) {
   const isAuthority = perm.isAuthorityHolder;
   // 자율 메시지 발송: 근로자관리 쓰기(staff) 또는 권한자 (일반은 읽기 전용이라 불가)
   const canMsg = isAuthority || (!(perm.roles || []).includes("general") && (perm.permissions || []).includes("staff"));
-  // 로그 페이지는 권한자만
-  const TABS = isAuthority ? [...BASE_TABS, { key: "log", label: "로그" }] : BASE_TABS;
+  // 연장근무 승인 관리: 팀장·본부장만
+  const canApprove = (perm.roles || []).includes("director") || (perm.roles || []).includes("teamlead");
+  // 탭 구성: 개별 리포트 오른쪽에 '승인 관리'(팀장·본부장), 맨 끝 '로그'(권한자)
+  const TABS = (() => {
+    const arr = [...BASE_TABS];
+    if (canApprove) {
+      const i = arr.findIndex((t) => t.key === "individual");
+      arr.splice(i + 1, 0, { key: "approvals", label: "승인 관리" });
+    }
+    if (isAuthority) arr.push({ key: "log", label: "로그" });
+    return arr;
+  })();
   const [tab, setTab] = useState("overall");
   // 같은 탭을 다시 누르면 해당 페이지를 리마운트(초기화)하기 위한 카운터
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -154,6 +165,7 @@ export default function AdminApp({ user }) {
       {tab === "overall"    && <AdminOverall    key={`overall-${reloadNonce}`}    filters={filters} onDirectActive={setDirectActive} />}
       {tab === "staff"      && <AdminStaff      key={`staff-${reloadNonce}`}      filters={filters} currentUser={effUser} />}
       {tab === "individual" && <AdminIndividual key={`individual-${reloadNonce}`} filters={filters} currentUser={effUser} />}
+      {tab === "approvals"  && <AdminApprovals  key={`approvals-${reloadNonce}`}  currentUser={effUser} />}
       {tab === "settings"   && <AdminSettings   key={`settings-${reloadNonce}`}   currentUser={effUser} />}
       {tab === "log"        && <AdminLog        key={`log-${reloadNonce}`} />}
       {tab === "message"    && <AdminMessage    key={`message-${reloadNonce}`}    filters={filters} currentUser={effUser} />}
