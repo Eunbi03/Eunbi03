@@ -10,6 +10,7 @@ import { buildIndividualReport } from '../services/reportBuilder';
 import { sendReportLink, sendAdminDeviceInvite, sendFreeMessage } from '../services/reportSender';
 import { invalidateTemplateCache } from '../services/messageTemplates';
 import { VALID_PERMS, VALID_ROLES, normalizePerms, normalizeRoles } from '../utils/permissions';
+import { haversineDistanceMeters } from '../utils/geo';
 import multer from 'multer';
 
 const router = Router();
@@ -745,6 +746,22 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     [userId, from, to]
   );
 
+  // 출퇴근 거리/인정/근무지명은 저장값 대신 '좌표 + 현재 등록 근무지(참고반경)'로 재계산한다.
+  // → 구버전 기록도 근무지 반경 기준으로 정확히 초록/빨강·근무지명이 표시된다.
+  const { rows: wpList } = await pool.query(
+    'SELECT name, lat, lng, radius_m FROM workplaces WHERE is_active=TRUE AND lat IS NOT NULL AND lng IS NOT NULL'
+  );
+  const nearestOf = (lat: any, lng: any): { distanceM: number | null; within: boolean | null; place: string | null } => {
+    if (lat == null || lng == null || !wpList.length) return { distanceM: null, within: null, place: null };
+    let best: any = null, bestD = Infinity, within = false;
+    for (const w of wpList) {
+      const d = haversineDistanceMeters(lat, lng, w.lat, w.lng);
+      if (d <= (w.radius_m || 300)) within = true;
+      if (d < bestD) { bestD = d; best = w; }
+    }
+    return { distanceM: Math.round(bestD * 10) / 10, within, place: best?.name ?? null };
+  };
+
   // 외근 기록
   const recIds = records.map((r: any) => r.id);
   const { rows: outings } = recIds.length ? await pool.query(
@@ -811,8 +828,8 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     return {
       date: day,
       leaveType: lt || undefined,
-      checkIn: hasIn ? { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: r.check_in_distance_m, within: r.check_in_location_verified, place: r.check_in_place, note: r.work_note_in } : null,
-      checkOut: r.check_out_time ? { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: r.check_out_distance_m, within: r.check_out_location_verified, place: r.check_out_place, isField: r.check_out_is_field, note: r.work_note_out } : null,
+      checkIn: hasIn ? (() => { const n = nearestOf(r.check_in_lat, r.check_in_lng); return { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: n.distanceM ?? r.check_in_distance_m, within: n.within, place: n.place ?? r.check_in_place, note: r.work_note_in }; })() : null,
+      checkOut: r.check_out_time ? (() => { const n = nearestOf(r.check_out_lat, r.check_out_lng); return { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: n.distanceM ?? r.check_out_distance_m, within: n.within, place: n.place ?? r.check_out_place, isField: r.check_out_is_field, note: r.work_note_out }; })() : null,
       status: r.status,
       workMinutes: r.work_minutes,
       isLate: k.isLate,
