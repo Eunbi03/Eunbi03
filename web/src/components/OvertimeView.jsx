@@ -36,7 +36,7 @@ export default function OvertimeView({ onClose }) {
     const f = form;
     if (!f.id && !f.workDate) { setMsg("연장 근무일을 선택해주세요."); return; }
     if (!f.place.trim() || !f.purpose.trim()) { setMsg("연장 근무지와 목적을 입력해주세요."); return; }
-    if (f.endTime <= f.startTime) { setMsg("종료 시간이 시작 시간보다 늦어야 합니다."); return; }
+    if (f.endTime === f.startTime) { setMsg("종료 시간과 시작 시간이 같을 수 없습니다."); return; }
     setBusy(true); setMsg("");
     try {
       const body = { startTime: f.startTime, endTime: f.endTime, place: f.place.trim(), workplaceId: f.workplaceId, purpose: f.purpose.trim() };
@@ -119,7 +119,7 @@ export default function OvertimeView({ onClose }) {
             <div key={o.id} onClick={() => editable && openEdit(o)}
               style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 8, display: "flex", justifyContent: "space-between", gap: 8, cursor: editable ? "pointer" : "default", background: "#fff" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: C.ink }}>{fmtDate(o.work_date)} · {o.start_time}~{o.end_time} · {o.place}</div>
+                <div style={{ fontWeight: 700, color: C.ink }}>{fmtDate(o.work_date)} · {o.start_time}~{o.end_time}{o.end_time <= o.start_time ? " (익일)" : ""} · {o.place}</div>
                 <div style={{ color: C.inkSoft, fontSize: 13, marginTop: 2 }}>{o.purpose}</div>
                 {o.status === "rejected" && o.reject_reason && <div style={{ color: C.seal, fontSize: 12, marginTop: 2 }}>사유: {o.reject_reason}</div>}
               </div>

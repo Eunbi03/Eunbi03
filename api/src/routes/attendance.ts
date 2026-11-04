@@ -570,7 +570,8 @@ router.post('/overtime', requireAuth,
       const se = (u[0]?.scheduled_end ? String(u[0].scheduled_end).slice(0, 5) : '18:00');
       if (nowHHMM() >= se) { res.status(400).json({ error: '연장 근무 신청은 본래 근무시간 이내(정규 퇴근 전)에만 가능합니다.' }); return; }
     }
-    if (endTime <= startTime) { res.status(400).json({ error: '종료 시간이 시작 시간보다 늦어야 합니다.' }); return; }
+    // 종료<시작은 자정을 넘긴 연장(허용). 같은 시각(0시간)만 차단.
+    if (endTime === startTime) { res.status(400).json({ error: '종료 시간과 시작 시간이 같을 수 없습니다.' }); return; }
     // 본부장(상위 없음) 신청은 자동 승인
     const lvl = await applicantLevel(req.user.userId);
     const autoApprove = lvl === 'director';
@@ -596,7 +597,8 @@ router.put('/overtime/:id', requireAuth,
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
     const { startTime, endTime, place, purpose, workplaceId } = req.body;
-    if (endTime <= startTime) { res.status(400).json({ error: '종료 시간이 시작 시간보다 늦어야 합니다.' }); return; }
+    // 종료<시작은 자정을 넘긴 연장(허용). 같은 시각(0시간)만 차단.
+    if (endTime === startTime) { res.status(400).json({ error: '종료 시간과 시작 시간이 같을 수 없습니다.' }); return; }
     const { rows: cur } = await pool.query('SELECT work_date::text AS work_date FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
     if (!cur[0]) { res.status(404).json({ error: '신청 내역을 찾을 수 없습니다.' }); return; }
     if (daysBetweenKST(cur[0].work_date) < -2) { res.status(400).json({ error: '수정은 연장일 +2일까지만 가능합니다.' }); return; }
