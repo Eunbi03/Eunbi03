@@ -103,9 +103,9 @@ export async function downloadAttendanceRegister({ year, month, daysInMonth, dow
         if (cell) {
           if (cell.leave) { inV = cell.leave; }
           else if (cell.off) { /* 비근무일 공란 */ }
-          else if (cell.bothMissing) { inV = "X"; }
+          else if (cell.bothMissing) { inV = "미출근"; }
           else {
-            inV = cell.checkIn || (cell.missingIn ? "누락" : "");
+            inV = cell.checkIn || (cell.missingIn ? "미출근" : "");
             inP = cell.checkInPlace || "";
             outV = cell.checkOut || (cell.missingOut ? "누락" : "");
             outP = cell.checkOutPlace || "";

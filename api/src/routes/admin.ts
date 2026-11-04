@@ -697,11 +697,7 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
     for (const day of workdays) {
       const k = classifyDay(recByDate[day], !!w.note_exempt);
       if (k.isLeave) continue;
-      if (!k.present) {
-        // 비정기 근무자는 근무일이 특정되지 않으므로 결근(출근누락/노트누락) 집계에서 제외
-        if (!w.irregular_worker) { missingIn++; if (k.missingNote) missingNote++; }
-        continue;
-      }
+      if (!k.present) continue; // 근무일 미출근 → 집계 제외(중립 '미출근')
       if (k.missingOut) missingOut++;
       else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
@@ -712,15 +708,12 @@ router.get('/overview', async (req: Request, res: Response): Promise<void> => {
       if (!(r.check_in_time || r.leave_type)) continue; // 활성화되지 않은 비근무일은 제외
       const k = classifyDay(r, !!w.note_exempt);
       if (k.isLeave) continue;
-      if (!k.present) {
-        if (!w.irregular_worker) { missingIn++; if (k.missingNote) missingNote++; }
-        continue;
-      }
+      if (!k.present) continue; // 근무일 미출근 → 집계 제외(중립 '미출근')
       if (k.missingOut) missingOut++;
       else if (k.isLate) lateCount++;
       if (k.missingNote) missingNote++;
     }
-    const score = lateCount + missingIn + missingOut + missingNote;
+    const score = lateCount + missingOut + missingNote;
     return { ...w, lateCount, missingIn, missingOut, missingNote, score };
   });
 
@@ -848,10 +841,9 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     if (k.isLeave) return { date: day, leaveType: '연차' };
 
     if (!k.present) {
-      // 비정기 근무자는 결근(출근누락/노트누락) 집계에서 제외
-      const countAbsent = treatWorkday && !irregular;
-      if (countAbsent) { missingIn++; if (k.missingNote) missingNote++; }
-      return { date: day, missing: countAbsent, noNote: countAbsent && k.missingNote };
+      // 근무일 미출근 → '출근누락' 집계 제거. 정기 근무자는 중립 '미출근'으로 표시만.
+      const showAbsent = treatWorkday && !irregular;
+      return { date: day, absent: showAbsent };
     }
 
     const hasIn = Boolean(r.check_in_time);
@@ -939,18 +931,14 @@ router.get('/report-scores', async (req: Request, res: Response): Promise<void> 
       const treatWorkday = workdaySet.has(day) || Boolean(r?.check_in_time) || Boolean(r?.leave_type);
       const k = classifyDay(r, noteExemptById[uid]);
       if (k.isLeave) continue;
-      if (!k.present) {
-        // 비정기 근무자는 결근(출근누락/노트누락) 집계에서 제외
-        if (treatWorkday && !irregularById[uid]) { missingIn++; if (k.missingNote) missingNote++; }
-        continue;
-      }
+      if (!k.present) continue; // 근무일 미출근 → 집계 제외(중립 '미출근')
       if (treatWorkday || Boolean(r?.check_in_time)) {
         if (k.missingOut) missingOut++;
         else if (k.isLate) lateCount++;
         if (k.missingNote) missingNote++;
       }
     }
-    scores[uid] = { lateCount, missingIn, missingOut, missingNote, score: lateCount + missingIn + missingOut + missingNote };
+    scores[uid] = { lateCount, missingIn, missingOut, missingNote, score: lateCount + missingOut + missingNote };
   }
 
   res.json({ scores });
@@ -2292,11 +2280,13 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
       const noteMiss = !w.note_exempt && !leaveCountsAsNote(lt) && !r?.work_note_today && !r?.daily_report;
 
       if (present) workedDays++;
-      // 하루당 최대 1건: 출근누락 > 퇴근누락 > 지각 우선순위 (지각+퇴근누락은 퇴근누락으로 1건)
-      if (missingIn) lateMissing++;
-      else if (missingOut) lateMissing++;
-      else if (late) lateMissing++;
-      if (noteMiss) noteMissing++;
+      // 근무일 미출근은 더 이상 누락 집계에 넣지 않음(중립 '미출근'). 출근한 날만 집계.
+      // 하루당 최대 1건: 퇴근누락 > 지각 우선순위 (지각+퇴근누락은 퇴근누락으로 1건)
+      if (present) {
+        if (missingOut) lateMissing++;
+        else if (late) lateMissing++;
+        if (noteMiss) noteMissing++;
+      }
 
       const bothMissing = !hasIn && !hasOutRec && !r?.work_note_today && !r?.daily_report; // 출퇴근·노트 모두 없음 → 'X'
       days.push({

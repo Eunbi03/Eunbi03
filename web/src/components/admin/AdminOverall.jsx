@@ -69,7 +69,7 @@ function Cell({ cell, isMobile, over, height }) {
     <td style={td}>
       <div style={inner}>
         <div style={{ color: cell.late ? COL.red : COL.black, fontWeight: cell.late ? 700 : 400, fontVariantNumeric: "tabular-nums" }}>
-          {cell.missingIn ? <WarnIcon /> : (cell.checkIn || "")}
+          {cell.missingIn ? <span style={{ color: COL.gray, fontWeight: 400 }}>미출근</span> : (cell.checkIn || "")}
         </div>
         <div style={{ color: COL.black, fontVariantNumeric: "tabular-nums" }}>
           {cell.missingOut ? <WarnIcon /> : (cell.checkOut || "")}

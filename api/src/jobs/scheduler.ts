@@ -203,14 +203,16 @@ async function sendDailyReminders() {
   const nowMin = nowMinutesKST();
   const WINDOW = 15; // 목표 시각 이후 15분 이내면 발송(지연·재시작 대비)
 
-  // 정기 근무자 + 오늘 근태/노트 상태
+  // 전체 근무자(정기·비정기) + 오늘 근태/노트 상태
+  //  출근 알림은 근무일이 특정되는 정기 근무자만, 퇴근·노트 알림은 양쪽 동일 규칙으로 발송한다.
   const { rows } = await pool.query(
     `SELECT u.id, u.scheduled_start, u.scheduled_end, u.fcm_token, u.note_exempt,
+            COALESCE(u.irregular_worker,FALSE) AS irregular_worker,
             ar.check_in_time, ar.check_out_time, ar.leave_type,
             COALESCE(ar.work_note_today, ar.daily_report) AS note
      FROM users u
      LEFT JOIN attendance_records ar ON ar.user_id=u.id AND ar.date=$1
-     WHERE u.role='worker' AND u.is_active=TRUE AND COALESCE(u.irregular_worker,FALSE)=FALSE
+     WHERE u.role='worker' AND u.is_active=TRUE
        AND u.fcm_token IS NOT NULL`,
     [date]
   );
@@ -224,8 +226,8 @@ async function sendDailyReminders() {
     const hasNote = !!(r.note && String(r.note).trim());
 
     const due: Array<{ type: string; title: string; body: string }> = [];
-    // 출근 5분 전 — 근무일이고 아직 출근 안 함
-    if (workday && !hasIn && nowMin >= startMin - 5 && nowMin < startMin - 5 + WINDOW)
+    // 출근 5분 전 — 근무일이고 아직 출근 안 함 (근무일이 특정되는 정기 근무자만)
+    if (workday && !r.irregular_worker && !hasIn && nowMin >= startMin - 5 && nowMin < startMin - 5 + WINDOW)
       due.push({ type: 'checkIn', title: 'TimeCard', body: '출근 체크 잊지 마세요!' });
     // 퇴근 5분 전 — 출근했고 아직 퇴근 안 함
     if (hasIn && !hasOut && nowMin >= endMin - 5 && nowMin < endMin - 5 + WINDOW)

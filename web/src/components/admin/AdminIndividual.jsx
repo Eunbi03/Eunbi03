@@ -121,7 +121,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
   const [leavePopup, setLeavePopup] = useState(false);
   const dow = dayOfWeek(day.date);
   const isWeekend = dow === "토" || dow === "일";
-  const isAlert = day.missing || day.isLate || day.noOut || day.noNote;
+  const isAlert = day.isLate || day.noOut || day.noNote;
   const { primary: ltP, noteOn: ltN } = parseLt(day.leaveType);
   const isLeaveFull = day.leaveType === "연차" || ltP === "출퇴근";
   const rowBg = isLeaveFull ? "#fff" : isAlert ? COL.lred : "#fff";
@@ -178,15 +178,16 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
     );
   }
 
-  // 출근 누락 (기록 없음)
-  if (day.missing) {
+  // 미출근 (근무일인데 출근 기록 없음) — 출근누락으로 집계하지 않고 비근무일과 같은 중립색으로 표시
+  if (day.absent) {
     return (
       <>{popup}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderBottom: `1px solid ${C.lineAdmin}`, background: COL.lred }}>
-          {DateCell}
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: COL.red, fontWeight: 700, fontSize: 13 }}>
-            <WarnIcon /> 출근 누락
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderBottom: `1px solid ${C.lineAdmin}`, background: "#fafafa" }}>
+          <div style={{ width: 42, flexShrink: 0, textAlign: "center", lineHeight: 1.3 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: COL.gray }}>{day.date.slice(5)}</div>
+            <div style={{ fontSize: 11, color: COL.gray }}>{dow}</div>
+          </div>
+          <span style={{ ...S.badge, background: "#ececec", color: COL.gray, fontSize: 12 }}>미출근</span>
           <div style={{ marginLeft: "auto" }}>{leaveBtn}</div>
         </div>
       </>
@@ -316,7 +317,7 @@ function LeavePopup({ day, onSelect, onClose, canFull }) {
   const ALL_OPTIONS = [
     { key: "연차", label: "연차", sub: "하루 전체 인정" },
     { key: "출퇴근", label: "출퇴근 인정", sub: "출퇴근 누락 모두 해소" },
-    { key: "출근", label: "출근 인정", sub: "출근 누락·지각 해소" },
+    { key: "출근", label: "출근 인정", sub: "미출근·지각 해소" },
     { key: "퇴근", label: "퇴근 인정", sub: "퇴근 누락 해소" },
   ];
   const OPTIONS = canFull ? ALL_OPTIONS : ALL_OPTIONS.filter((o) => o.key === "연차");
@@ -572,7 +573,6 @@ export default function AdminIndividual({ filters, currentUser }) {
                             {isOpen && sc && !isMobile && (
                               <div style={{ display: "flex", gap: 12, fontSize: 15, flexShrink: 0 }}>
                                 <Kpi label="지각" v={sc.lateCount} color={COL.amber} />
-                                <Kpi label="출근누락" v={sc.missingIn} color={COL.red} />
                                 <Kpi label="퇴근누락" v={sc.missingOut} color={COL.red} />
                                 <Kpi label="노트누락" v={sc.missingNote} color={COL.blue} />
                               </div>
@@ -586,7 +586,6 @@ export default function AdminIndividual({ filters, currentUser }) {
                           {isOpen && sc && isMobile && (
                             <div style={{ display: "flex", gap: 12, fontSize: 13, padding: "0 14px 10px", flexWrap: "wrap" }}>
                               <Kpi label="지각" v={sc.lateCount} color={COL.amber} />
-                              <Kpi label="출근누락" v={sc.missingIn} color={COL.red} />
                               <Kpi label="퇴근누락" v={sc.missingOut} color={COL.red} />
                               <Kpi label="노트누락" v={sc.missingNote} color={COL.blue} />
                             </div>

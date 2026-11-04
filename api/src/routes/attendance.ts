@@ -414,9 +414,8 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
     if (k.isLeave) { leaveDays++; return { ...base, leave: true }; }
 
     if (!k.present) {
-      // 근무일인데 미출근 → 출근누락 (미래/비근무일은 집계 제외). 노트 없으면 노트누락도 집계.
-      if (isWorkday && !isFuture) { missingIn++; if (k.missingNote) missingNote++; }
-      return { ...base, present: false, missing: isWorkday && !isFuture, noteMiss: isWorkday && !isFuture && k.missingNote };
+      // 근무일 미출근 → 더 이상 '출근누락'으로 집계하지 않음(중립 '미출근'). 노트누락도 집계 안 함.
+      return { ...base, present: false, missing: false, absent: isWorkday && !isFuture, noteMiss: false };
     }
 
     const m = r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
@@ -458,7 +457,7 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
     const r = recByDate[day];
     const k = classifyDay(r, noteExempt);
     if (k.isLeave) { leaveDays++; continue; }
-    if (!k.present) { missingIn++; if (k.missingNote) missingNote++; continue; }
+    if (!k.present) { continue; } // 근무일 미출근 → 집계 제외(중립 '미출근')
     workedDays++;
     totalWorkMinutes += r.work_minutes ? Math.round(Number(r.work_minutes)) : 0;
     if (k.isLate) lateDays++;

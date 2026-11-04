@@ -1,6 +1,7 @@
 import { BuiltReport, ReportDay } from './reportBuilder';
 
 const INK = '#333333';
+const GRAY = '#9aa0a6';
 const RED = '#cb6156';
 const BLUE = '#2f6d8f';
 const LINE = '#d8d8d8';
@@ -18,7 +19,7 @@ function dayNumColor(d: ReportDay): string {
 
 function dayBody(d: ReportDay): string {
   if (d.leaveType === '연차') return `<div style="color:${BLUE};font-weight:600;">연차</div>`;
-  if (d.missing) return `<div style="color:${RED};font-weight:600;">&#9888; 출근누락</div>`;
+  if (d.absent) return `<div style="color:${GRAY};">미출근</div>`;
   if (d.leaveType) return `<div style="color:${INK};">${esc(d.leaveType.replace('+', ' + '))} 인정</div>`;
 
   const lines: string[] = [];
@@ -92,7 +93,7 @@ export function renderReportHtml(r: BuiltReport, sentDate?: string): string {
   <h1 style="text-align:center;font-size:28px;font-weight:800;margin:0 0 18px;color:${INK};">${monthLabel} 근태관리 리포트</h1>
   <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;margin-bottom:12px;">
     <div style="font-size:15px;color:${INK};"><span style="font-weight:700;">${esc(r.user.name)}</span> <span style="font-size:14px;">${esc(org)}</span></div>
-    <div style="font-size:14px;">${kpi('지각', r.kpi.lateCount)}${kpi('출근누락', r.kpi.missingIn)}${kpi('퇴근누락', r.kpi.missingOut)}${kpi('노트누락', r.kpi.missingNote)}</div>
+    <div style="font-size:14px;">${kpi('지각', r.kpi.lateCount)}${kpi('퇴근누락', r.kpi.missingOut)}${kpi('노트누락', r.kpi.missingNote)}</div>
   </div>
   <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
     <thead><tr>${headRow}</tr></thead>

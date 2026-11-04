@@ -7,7 +7,7 @@ const dowOf = (d: string) => { const [y, m, dd] = d.split('-').map(Number); retu
 
 export interface ReportDay {
   date: string; dow: number; isWeekend: boolean; isHol: boolean; holidayName?: string | null;
-  leaveType?: string | null; missing?: boolean; late?: boolean; noOut?: boolean; noNote?: boolean;
+  leaveType?: string | null; missing?: boolean; absent?: boolean; late?: boolean; noOut?: boolean; noNote?: boolean;
   checkIn?: { time: string | null; place: string } | null;
   checkOut?: { time: string | null; place: string } | null;
   outings: { time: string | null; place: string }[];
@@ -84,11 +84,8 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     if (k.isLeave) { day.leaveType = '연차'; days.push(day); continue; }
 
     if (!k.present) {
-      // 비정기 근무자는 근무일이 특정되지 않으므로 결근(출근누락/노트누락) 집계에서 제외
-      if (treatWorkday && !irregular) {
-        missingIn++; day.missing = true;
-        if (k.missingNote) { missingNote++; noteMissDates.push(date); }
-      }
+      // 근무일 미출근 → '출근누락/노트누락' 집계 제거. 정기 근무자는 중립 '미출근' 표시만.
+      if (treatWorkday && !irregular) day.absent = true;
       days.push(day);
       continue;
     }
@@ -116,7 +113,7 @@ export async function buildIndividualReport(userId: string, from: string, to: st
     days.push(day);
   }
 
-  const score = lateCount + missingIn + missingOut + missingNote;
+  const score = lateCount + missingOut + missingNote;
   return {
     user: { id: u.id, name: u.name, corp: u.corp || '', division: u.division || '', team: u.team || '', email: u.email, phone: u.phone, workplaceName },
     from, to,

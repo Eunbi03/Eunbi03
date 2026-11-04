@@ -432,13 +432,13 @@ function WeeklyGrid({ days }) {
   return (
     <div style={{ display: "flex", gap: 4 }}>
       {days.map((d, i) => {
-        const isAlert = d.late || d.missing;
+        const isAlert = d.late;
         const bg = d.isToday ? W.cellBlue : isAlert ? W.redBg : W.cellBg;
         let content;
         if (d.leave) content = <span style={{ fontSize: 12, fontWeight: 700, color: W.green }}>연차</span>;
         else if (d.off) content = <span style={{ color: W.sub }}>X</span>;
         else if (d.isFuture) content = <span style={{ color: W.sub }}>-</span>;
-        else if (d.missing) content = <WarnIcon />;
+        else if (d.absent) content = <span style={{ fontSize: 11, fontWeight: 700, color: W.sub }}>미출근</span>;
         else if (d.present) content = (
           <div style={{ fontVariantNumeric: "tabular-nums", color: d.late ? W.red : W.ink, fontWeight: d.late ? 700 : 400, fontSize: 12, lineHeight: 1.5 }}>
             <div>{d.checkInTime ? fmtTime(d.checkInTime) : ""}</div>
@@ -463,7 +463,6 @@ function WeeklyGrid({ days }) {
 function MonthlyGrid({ monthly }) {
   const items = [
     { label: "지각", v: monthly.lateDays ?? 0 },
-    { label: "출근누락", v: monthly.missingIn ?? 0 },
     { label: "퇴근누락", v: monthly.missingOut ?? 0 },
     { label: "근무노트", v: monthly.missingNote ?? 0 },
   ];
@@ -578,7 +577,7 @@ function HistoryView({ onBack }) {
                       {r.workMinutes != null && <div style={{ fontSize: 11, color: W.sub, marginTop: 2 }}>{fmtDur(r.workMinutes)}</div>}
                     </div>
                   ) : (
-                    <span style={{ fontSize: 14, color: W.red }}>출근 누락</span>
+                    <span style={{ fontSize: 14, color: W.sub }}>미출근</span>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 120 }}>
