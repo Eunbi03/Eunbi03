@@ -48,8 +48,8 @@ export default function AdminApp({ user }) {
   const isAuthority = perm.isAuthorityHolder;
   // 자율 메시지 발송: 근로자관리 쓰기(staff) 또는 권한자 (일반은 읽기 전용이라 불가)
   const canMsg = isAuthority || (!(perm.roles || []).includes("general") && (perm.permissions || []).includes("staff"));
-  // 연장근무 승인 관리: 팀장·본부장만
-  const canApprove = (perm.roles || []).includes("director") || (perm.roles || []).includes("teamlead");
+  // 연장근무 승인 관리: 팀장·본부장 또는 권한자
+  const canApprove = isAuthority || (perm.roles || []).includes("director") || (perm.roles || []).includes("teamlead");
   // 탭 구성: 개별 리포트 오른쪽에 '승인 관리'(팀장·본부장), 맨 끝 '로그'(권한자)
   const TABS = (() => {
     const arr = [...BASE_TABS];

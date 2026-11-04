@@ -1177,6 +1177,7 @@ router.post('/attendance/:recordId/approve-time-change', async (req: Request, re
 function canApproveOvertime(req: Request): boolean {
   const ad = (req as any).adminDevice;
   if (!ad) return false;
+  if (ad.isAuthority) return true; // 권한자는 전체 승인 가능
   const roles: string[] = ad.roles || [];
   return roles.includes('director') || roles.includes('teamlead');
 }
@@ -1211,6 +1212,7 @@ function levelOf(map: Record<string, 'director' | 'teamlead'>, worker: any): 'di
 //  - 팀장 신청 → 본부장(담당 본부 일치)
 function canApproveThis(req: Request, lvl: 'director' | 'teamlead' | 'worker', worker: any): boolean {
   const ad = (req as any).adminDevice; if (!ad) return false;
+  if (ad.isAuthority) return true; // 권한자는 전체 신청 승인 가능
   const roles: string[] = ad.roles || [];
   const teams: string[] = ad.scopeTeams || [];
   const divs: string[] = ad.scopeDivisions || [];
