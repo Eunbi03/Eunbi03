@@ -173,7 +173,7 @@ router.post('/outing/:outingId/end', requireAuth, async (req: Request, res: Resp
           await pool.query(
             `INSERT INTO outing_records (attendance_record_id, user_id, start_time, end_time, start_lat, start_lng, destination, workplace_id, distance_m)
              VALUES ($1,$2,now(),now(),$3,$4,$5,$6,$7)`,
-            [arId, userId, lat, lng, `복귀 · ${ci.wpName}`, ci.wpId, d]
+            [arId, userId, lat, lng, `${ci.wpName} 복귀`, ci.wpId, d]
           );
         }
       }
