@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 import { readWorkerSheet } from "../../utils/excelUpload.js";
+import { downloadWorkerTemplate } from "../../utils/excelTemplate.js";
 import { fmtPhone } from "../../utils/format.js";
 import { useIsMobile } from "../../utils/useIsMobile.js";
 
@@ -1132,6 +1133,9 @@ export default function AdminStaff({ filters, currentUser }) {
           {canWrite && (
             <>
               <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
+              <button style={{ ...S.toolbarBtn, background: "#fff", border: `1px solid ${C.blueSoft}`, color: C.blue }} title="현재 재직 인원이 채워진 최신 양식을 내려받습니다" onClick={() => downloadWorkerTemplate(workers)}>
+                양식 다운로드
+              </button>
               <button style={{ ...S.toolbarBtn, background: "#fff", border: `1px solid ${C.blueSoft}`, color: C.blue }} disabled={uploading} onClick={() => fileRef.current?.click()}>
                 {uploading ? "업로드 중…" : "엑셀 업로드"}
               </button>

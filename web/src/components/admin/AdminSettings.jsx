@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
 import { readHolidaySheet, readWorkplaceSheet } from "../../utils/excelUpload.js";
+import { downloadWorkplaceTemplate, downloadHolidayTemplate } from "../../utils/excelTemplate.js";
 
 // 지정 색상 팔레트
 const COL = {
@@ -322,6 +323,8 @@ function WorkplaceSection({ canEdit }) {
         {canEdit && !rowForm && !clientForm && (
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
+            <button onClick={() => downloadWorkplaceTemplate(list)} title="현재 등록 근무지가 채워진 최신 양식을 내려받습니다"
+              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>양식 다운로드</button>
             <button onClick={() => fileRef.current?.click()} disabled={busy}
               style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>엑셀 업로드</button>
             <AddButton onClick={openRowAdd}>+ 근무지 추가</AddButton>
@@ -759,6 +762,8 @@ function HolidaySection({ canEdit }) {
         {canEdit && !adding && (
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
+            <button onClick={() => downloadHolidayTemplate(all)} title="현재 등록 공휴일이 채워진 최신 양식을 내려받습니다"
+              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>양식 다운로드</button>
             <button onClick={() => fileRef.current?.click()} disabled={busy}
               style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>엑셀 업로드</button>
             <AddButton onClick={() => { setForm({ date: "", name: "" }); setAdding(true); setMsg(null); }}>+ 공휴일 추가</AddButton>
