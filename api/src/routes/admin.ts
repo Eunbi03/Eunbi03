@@ -1181,22 +1181,59 @@ function canApproveOvertime(req: Request): boolean {
   return roles.includes('director') || roles.includes('teamlead');
 }
 
-// GET /admin/overtime-requests?status=pending|all — 담당 범위 근로자의 연장근무 신청
+// 신청자(근로자) 매칭 레벨 맵: 이름(공백무시)+본인휴대(숫자만) → 'director'|'teamlead'
+async function buildApplicantLevelMap(): Promise<Record<string, 'director' | 'teamlead'>> {
+  const { rows } = await pool.query(
+    `SELECT device_name, personal_phone, roles FROM admin_devices
+      WHERE device_name IS NOT NULL AND device_name<>'' AND personal_phone IS NOT NULL AND personal_phone<>''
+        AND roles && ARRAY['director','teamlead']::text[]`
+  );
+  const norm = (s: any) => String(s || '').replace(/\s/g, '');
+  const digits = (s: any) => String(s || '').replace(/\D/g, '');
+  const map: Record<string, 'director' | 'teamlead'> = {};
+  for (const m of rows) {
+    const roles: string[] = m.roles || [];
+    const key = `${norm(m.device_name)}|${digits(m.personal_phone)}`;
+    const lvl = roles.includes('director') ? 'director' : 'teamlead';
+    // director 우선
+    if (map[key] !== 'director') map[key] = lvl;
+  }
+  return map;
+}
+// 신청자 레벨 판정(매칭 없으면 worker)
+function levelOf(map: Record<string, 'director' | 'teamlead'>, worker: any): 'director' | 'teamlead' | 'worker' {
+  const norm = (s: any) => String(s || '').replace(/\s/g, '');
+  const digits = (s: any) => String(s || '').replace(/\D/g, '');
+  return map[`${norm(worker.worker_name ?? worker.name)}|${digits(worker.phone)}`] || 'worker';
+}
+// 이 승인자가 해당 신청(신청자 레벨+소속)을 승인할 수 있는가
+//  - 일반 근로자 신청 → 팀장(담당 팀 일치)
+//  - 팀장 신청 → 본부장(담당 본부 일치)
+function canApproveThis(req: Request, lvl: 'director' | 'teamlead' | 'worker', worker: any): boolean {
+  const ad = (req as any).adminDevice; if (!ad) return false;
+  const roles: string[] = ad.roles || [];
+  const teams: string[] = ad.scopeTeams || [];
+  const divs: string[] = ad.scopeDivisions || [];
+  if (lvl === 'worker') return roles.includes('teamlead') && !!worker.team && teams.includes(worker.team);
+  if (lvl === 'teamlead') return roles.includes('director') && !!worker.division && divs.includes(worker.division);
+  return false; // director 신청은 자동승인(승인 대상 아님)
+}
+
+// GET /admin/overtime-requests?status=pending|all — 승인 라우팅에 맞는 신청만
 router.get('/overtime-requests', async (req: Request, res: Response): Promise<void> => {
   if (!canApproveOvertime(req)) { res.status(403).json({ error: '팀장·본부장만 연장근무를 승인할 수 있습니다.' }); return; }
-  const params: any[] = [];
-  const scope = scopeClause(req, 'u', params);
   const onlyPending = (req.query.status || 'pending') !== 'all';
   const { rows } = await pool.query(
     `SELECT o.id, o.work_date::text AS work_date, to_char(o.start_time,'HH24:MI') AS start_time,
             to_char(o.end_time,'HH24:MI') AS end_time, o.place, o.purpose, o.status, o.reject_reason,
-            u.name AS worker_name, u.corp, u.division, u.team, u.position
+            u.name AS worker_name, u.phone, u.corp, u.division, u.team, u.position
        FROM overtime_requests o JOIN users u ON u.id=o.user_id
-      WHERE u.is_active=TRUE AND ${scope} ${onlyPending ? "AND o.status='pending'" : ''}
-      ORDER BY (o.status='pending') DESC, o.work_date DESC, o.start_time`,
-    params
+      WHERE u.is_active=TRUE ${onlyPending ? "AND o.status='pending'" : ''}
+      ORDER BY (o.status='pending') DESC, o.work_date DESC, o.start_time`
   );
-  res.json({ requests: rows });
+  const map = await buildApplicantLevelMap();
+  const filtered = rows.filter((r: any) => canApproveThis(req, levelOf(map, r), r));
+  res.json({ requests: filtered });
 });
 
 // POST /admin/overtime-requests/:id/decision — 승인/반려
@@ -1205,11 +1242,12 @@ router.post('/overtime-requests/:id/decision', async (req: Request, res: Respons
   const approve = req.body.approve === true || req.body.approve === 'true';
   const reason = (req.body.reason ?? '').trim() || null;
   const { rows: cur } = await pool.query(
-    `SELECT o.status, u.team, u.division, u.corp, u.name FROM overtime_requests o JOIN users u ON u.id=o.user_id WHERE o.id=$1`,
+    `SELECT o.status, u.team, u.division, u.corp, u.name AS worker_name, u.phone FROM overtime_requests o JOIN users u ON u.id=o.user_id WHERE o.id=$1`,
     [req.params.id]
   );
   if (!cur[0]) { res.status(404).json({ error: '신청 내역을 찾을 수 없습니다.' }); return; }
-  if (!workerRowInScope(req, cur[0])) { res.status(403).json({ error: '담당 범위 밖 근로자입니다.' }); return; }
+  const map = await buildApplicantLevelMap();
+  if (!canApproveThis(req, levelOf(map, cur[0]), cur[0])) { res.status(403).json({ error: '이 신청의 승인 권한이 없습니다.' }); return; }
   const ad = (req as any).adminDevice;
   const { rows } = await pool.query(
     `UPDATE overtime_requests
@@ -1218,7 +1256,7 @@ router.post('/overtime-requests/:id/decision', async (req: Request, res: Respons
     [approve ? 'approved' : 'rejected', approve ? null : reason, req.user.userId, ad?.deviceName || null, req.params.id]
   );
   if (!rows[0]) { res.status(409).json({ error: '이미 처리된 신청입니다.' }); return; }
-  await logAudit(req, approve ? '승인' : '반려', '연장근무', cur[0].name);
+  await logAudit(req, approve ? '승인' : '반려', '연장근무', cur[0].worker_name);
   res.json({ success: true });
 });
 

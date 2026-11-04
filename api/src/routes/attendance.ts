@@ -19,6 +19,53 @@ function nowHHMM(): string {
   const s = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false }).slice(0, 5);
   return s === '24:00' ? '00:00' : s; // 일부 환경에서 자정이 24:00으로 나오는 경우 방어
 }
+function yesterdayKST(): string {
+  const d = new Date(todayKST() + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// 신청자(근로자)의 관리자 레벨: 이름(공백무시)+본인휴대(숫자만) 매칭으로 판정
+//  director(본부장) > teamlead(팀장) > worker(일반)
+async function applicantLevel(userId: string): Promise<'director' | 'teamlead' | 'worker'> {
+  const { rows: u } = await pool.query('SELECT name, phone FROM users WHERE id=$1', [userId]);
+  if (!u[0]) return 'worker';
+  const name = String(u[0].name || '').replace(/\s/g, '');
+  const ph = String(u[0].phone || '').replace(/\D/g, '');
+  if (!ph) return 'worker';
+  const { rows } = await pool.query(
+    `SELECT roles FROM admin_devices
+      WHERE replace(device_name,' ','')=$1
+        AND regexp_replace(COALESCE(personal_phone,''),'\\D','','g')=$2`,
+    [name, ph]
+  );
+  let director = false, teamlead = false;
+  for (const r of rows) { const roles: string[] = r.roles || []; if (roles.includes('director')) director = true; if (roles.includes('teamlead')) teamlead = true; }
+  if (director) return 'director';
+  if (teamlead) return 'teamlead';
+  return 'worker';
+}
+
+// 현재 '활성' 근무일: 오늘 출근했고 미퇴근이면 오늘. 아니면 어제 미퇴근 + 승인된 '자정 넘긴' 연장이
+//  (연장종료+1시간) 창 안이면 어제(연장근무일). 그 외엔 오늘.
+async function resolveActiveDate(userId: string): Promise<string> {
+  const today = todayKST();
+  const { rows: t } = await pool.query('SELECT check_in_time, check_out_time FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, today]);
+  if (t[0]?.check_in_time && !t[0]?.check_out_time) return today;
+  const y = yesterdayKST();
+  const { rows: yr } = await pool.query('SELECT check_in_time, check_out_time FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, y]);
+  if (yr[0]?.check_in_time && !yr[0]?.check_out_time) {
+    const { rows: ot } = await pool.query(
+      `SELECT to_char(start_time,'HH24:MI') AS s, to_char(end_time,'HH24:MI') AS e
+         FROM overtime_requests WHERE user_id=$1 AND work_date=$2 AND status='approved'`, [userId, y]);
+    if (ot[0] && ot[0].e <= ot[0].s) { // 종료<=시작 → 자정 넘김
+      const { rows: w } = await pool.query(
+        `SELECT (($1::date + interval '1 day' + $2::time + interval '1 hour') AT TIME ZONE 'Asia/Seoul') > now() AS ok`,
+        [y, ot[0].e]);
+      if (w[0]?.ok) return y;
+    }
+  }
+  return today;
+}
 
 // POST /api/attendance/fcm-token — 근로자 기기의 푸시 토큰 등록/갱신
 router.post('/fcm-token', requireAuth,
@@ -193,7 +240,7 @@ router.post('/check-out', requireAuth,
 
     const { lat, lng, accuracyM, isMocked, workNoteIn, workNoteOut, workNoteField, workNoteToday } = req.body;
     const userId = req.user.userId;
-    const date = todayKST();
+    const date = await resolveActiveDate(userId); // 자정 넘긴 연장 시 어제(연장근무일) 기록으로
 
     const gps = validateGpsReport({ lat, lng, accuracyM, isMocked, maxAccuracyM: GPS_MAX_ACCURACY_M });
     if (!gps.isValid) { res.status(403).json({ error: '위치 정보 검증에 실패했습니다.', reasons: gps.reasons }); return; }
@@ -245,7 +292,7 @@ router.put('/work-note', requireAuth,
 
     const { workNoteToday, workNoteField } = req.body;
     const userId = req.user.userId;
-    const date = todayKST();
+    const date = await resolveActiveDate(userId); // 자정 넘긴 연장 시 어제 기록
 
     const { rows: attRows } = await pool.query('SELECT id, check_in_time FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, date]);
     if (!attRows[0]?.check_in_time) { res.status(409).json({ error: '출근 기록이 없습니다.' }); return; }
@@ -263,7 +310,7 @@ router.put('/work-note', requireAuth,
 
 // GET /api/attendance/today
 router.get('/today', requireAuth, async (req: Request, res: Response): Promise<void> => {
-  const date = todayKST();
+  const date = await resolveActiveDate(req.user.userId); // 자정 넘긴 연장 시 어제 기록을 활성으로
   const [{ rows: attRows }, { rows: userRows }] = await Promise.all([
     pool.query(`SELECT * FROM attendance_records WHERE user_id=$1 AND date=$2`, [req.user.userId, date]),
     pool.query(`SELECT u.scheduled_start, u.scheduled_end, u.irregular_worker, w.name AS workplace_name, w.radius_m
@@ -525,13 +572,17 @@ router.post('/overtime', requireAuth,
       if (nowHHMM() >= se) { res.status(400).json({ error: '연장 근무 신청은 본래 근무시간 이내(정규 퇴근 전)에만 가능합니다.' }); return; }
     }
     if (endTime <= startTime) { res.status(400).json({ error: '종료 시간이 시작 시간보다 늦어야 합니다.' }); return; }
+    // 본부장(상위 없음) 신청은 자동 승인
+    const lvl = await applicantLevel(req.user.userId);
+    const autoApprove = lvl === 'director';
     try {
       const { rows } = await pool.query(
-        `INSERT INTO overtime_requests (user_id, work_date, start_time, end_time, place, workplace_id, purpose)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [req.user.userId, workDate, startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim()]
+        `INSERT INTO overtime_requests (user_id, work_date, start_time, end_time, place, workplace_id, purpose, status, decided_by_name, decided_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+        [req.user.userId, workDate, startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim(),
+         autoApprove ? 'approved' : 'pending', autoApprove ? '자동 승인' : null, autoApprove ? new Date() : null]
       );
-      res.status(201).json({ success: true, id: rows[0].id });
+      res.status(201).json({ success: true, id: rows[0].id, autoApproved: autoApprove });
     } catch (e: any) {
       if (e.code === '23505') { res.status(409).json({ error: '해당 날짜에 이미 연장 근무 신청이 있습니다.' }); return; }
       throw e;
@@ -550,12 +601,15 @@ router.put('/overtime/:id', requireAuth,
     const { rows: cur } = await pool.query('SELECT work_date::text AS work_date FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
     if (!cur[0]) { res.status(404).json({ error: '신청 내역을 찾을 수 없습니다.' }); return; }
     if (daysBetweenKST(cur[0].work_date) < -2) { res.status(400).json({ error: '수정은 연장일 +2일까지만 가능합니다.' }); return; }
+    const lvl = await applicantLevel(req.user.userId);
+    const autoApprove = lvl === 'director';
     await pool.query(
       `UPDATE overtime_requests
          SET start_time=$1, end_time=$2, place=$3, workplace_id=$4, purpose=$5,
-             status='pending', reject_reason=NULL, decided_by=NULL, decided_by_name=NULL, decided_at=NULL, updated_at=now()
+             status=$8, reject_reason=NULL, decided_by=NULL, decided_by_name=$9, decided_at=$10, updated_at=now()
        WHERE id=$6 AND user_id=$7`,
-      [startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim(), req.params.id, req.user.userId]
+      [startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim(), req.params.id, req.user.userId,
+       autoApprove ? 'approved' : 'pending', autoApprove ? '자동 승인' : null, autoApprove ? new Date() : null]
     );
     res.json({ success: true });
   }
