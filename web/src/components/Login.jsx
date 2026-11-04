@@ -77,7 +77,8 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
   const [deviceStep, setDeviceStep] = useState(false);
   const [teamsList, setTeamsList] = useState([]);
   const [reqName, setReqName] = useState("");
-  const [reqPhone, setReqPhone] = useState("");
+  const [reqPhone, setReqPhone] = useState("");                 // 업무용 전화
+  const [reqPersonalPhone, setReqPersonalPhone] = useState(""); // 본인 휴대전화(매칭용, 필수)
   const [reqPerms, setReqPerms] = useState([]);   // 선택된 쓰기 권한 키 배열
   const [reqTeams, setReqTeams] = useState([]);   // 선택된 팀명 배열(팀장/일반)
   const [reqRoles, setReqRoles] = useState([]);   // 선택된 역할 배열
@@ -128,19 +129,21 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
 
   const submitDeviceRequest = async (e) => {
     e.preventDefault();
-    if (!reqName.trim() || !reqPhone.trim()) { setErr("관리자명과 업무용 전화번호를 입력해주세요."); return; }
+    if (!reqName.trim()) { setErr("관리자명을 입력해주세요."); return; }
+    if (!reqPersonalPhone.trim()) { setErr("본인 휴대전화 번호를 입력해주세요."); return; }
     if (reqRoles.length === 0) { setErr("역할을 1개 이상 선택해주세요."); return; }
     const isGen = reqRoles.includes("general");
     if (reqRoles.includes("director") && reqDivs.length === 0) { setErr("본부장 역할은 담당 본부를 1개 이상 선택해주세요."); return; }
     if ((reqRoles.includes("teamlead") || isGen) && reqTeams.length === 0) { setErr("담당 팀을 1개 이상 선택해주세요."); return; }
     if (reqRoles.includes("hr") && reqCorps.length === 0) { setErr("인적자원팀 역할은 담당 법인을 1개 이상 선택해주세요."); return; }
+    if (reqRoles.includes("hr") && !reqPhone.trim()) { setErr("인적자원팀은 업무용 전화번호도 입력해야 합니다."); return; }
     setBusy(true); setErr("");
     try {
       const deviceId = await getDeviceId();
       const username = email.trim().toLowerCase();
       await api.login({
         username, password, deviceId,
-        managerName: reqName.trim(), phone: reqPhone.trim(),
+        managerName: reqName.trim(), phone: reqPhone.trim(), personalPhone: reqPersonalPhone.trim(),
         roles: reqRoles,
         permissions: isGen ? [] : reqPerms,
         teams: reqTeams, scopeDivisions: reqDivs, scopeCorps: reqCorps,
@@ -193,8 +196,10 @@ export default function Login({ onLogin, mode = "worker", extraError = "" }) {
             <>
               <label style={labelStyle}>관리자명</label>
               <input style={inputStyle} value={reqName} onChange={(e) => setReqName(e.target.value)} disabled={busy} placeholder="이름" />
-              <label style={labelStyle}>업무용 전화번호</label>
-              <input style={inputStyle} type="tel" value={reqPhone} onChange={(e) => setReqPhone(e.target.value)} disabled={busy} placeholder="예: 01012345678" />
+              <label style={labelStyle}>본인 휴대전화 <span style={{ fontWeight: 400, color: "#9aa5b5" }}>(매칭용, 필수)</span></label>
+              <input style={inputStyle} type="tel" value={reqPersonalPhone} onChange={(e) => setReqPersonalPhone(e.target.value)} disabled={busy} placeholder="예: 01012345678" />
+              <label style={labelStyle}>업무용 전화번호 <span style={{ fontWeight: 400, color: "#9aa5b5" }}>{reqRoles.includes("hr") ? "(인적자원팀 필수)" : "(리포트 노출용, 선택)"}</span></label>
+              <input style={inputStyle} type="tel" value={reqPhone} onChange={(e) => setReqPhone(e.target.value)} disabled={busy} placeholder="예: 0212345678" />
 
               {(() => {
                 const toggleArr = (setter) => (v) => !busy && setter((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]);

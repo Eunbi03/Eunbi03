@@ -279,7 +279,8 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
   const [detail, setDetail] = useState(false);
   const [nm, setNm] = useState(name || "");
   const [corpSel, setCorpSel] = useState(rep.corp ? rep.corp.split(/[,·]/).map((s) => s.trim()).filter(Boolean) : []);
-  const [phone, setPhone] = useState(rep.phone || "");
+  const [phone, setPhone] = useState(rep.phone || "");               // 업무용 전화
+  const [personalPhone, setPersonalPhone] = useState(rep.personal_phone || ""); // 본인 휴대전화
   const [permSel, setPermSel] = useState(Array.isArray(rep.permissions) ? rep.permissions : []);
   const [teamSel, setTeamSel] = useState(Array.isArray(rep.scope_teams) ? rep.scope_teams.filter((t) => t !== "전체") : []);
   const [roleSel, setRoleSel] = useState(Array.isArray(rep.roles) ? rep.roles : []);
@@ -308,13 +309,16 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
   };
 
   const buildPayload = (confirmMerge) => ({
-    deviceName: nm.trim(), corp: corpSel.join(", "), phone: phone.trim(),
+    deviceName: nm.trim(), corp: corpSel.join(", "), phone: phone.trim(), personalPhone: personalPhone.trim(),
     roles: roleSel,
     permissions: isGeneral ? [] : permSel,
     teams: teamSel, scopeDivisions: divSel, scopeCorps: corpSel,
     ...(confirmMerge ? { confirmMerge: true } : {}),
   });
   const save = async (confirmMerge = false) => {
+    // 본인 휴대 필수, 인적자원팀이면 업무용도 필수
+    if (!personalPhone.trim()) { alert("본인 휴대전화 번호를 입력해주세요."); return; }
+    if (roleSel.includes("hr") && !phone.trim()) { alert("인적자원팀은 업무용 전화번호도 입력해야 합니다."); return; }
     setSaving(true);
     try {
       await onSaveInfo(rep.id, buildPayload(confirmMerge));  // 서버가 같은 관리자명 그룹 전체에 동기화
@@ -380,6 +384,7 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
           {(rep.roles || []).includes("director") && <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 본부 · </span>{teamsText(rep.scope_divisions)}</div>}
           {((rep.roles || []).includes("teamlead") || (rep.roles || []).includes("general")) && <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 팀 · </span>{teamsText(rep.scope_teams)}</div>}
           {(rep.roles || []).includes("hr") && <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>담당 법인 · </span>{rep.corp || "-"}</div>}
+          <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>본인 휴대전화 · </span>{fmtPhone(rep.personal_phone) || "-"}</div>
           <div><span style={{ color: C.inkSoft, fontWeight: 700 }}>업무용 전화번호 · </span>{fmtPhone(rep.phone) || "-"}</div>
         </div>
       )}
@@ -387,7 +392,8 @@ function ManagerCard({ name, devices, isHolder, authorityGroupCount = 0, corpLis
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
           <input style={inp} placeholder="관리자명" value={nm} onChange={(e) => setNm(e.target.value)} />
-          <input style={inp} placeholder="업무용 전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input style={inp} placeholder="본인 휴대전화 (매칭용, 필수)" value={personalPhone} onChange={(e) => setPersonalPhone(e.target.value)} />
+          <input style={inp} placeholder={"업무용 전화번호" + (roleSel.includes("hr") ? " (인적자원팀 필수)" : " (리포트 노출용, 선택)")} value={phone} onChange={(e) => setPhone(e.target.value)} />
 
           {/* 역할 (복수 선택, 일반은 단독) */}
           <FieldLabel main="역할" hint="(복수 선택 · ‘일반’은 단독)" />
@@ -484,7 +490,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
   // 기기 추가(+버튼) — 권한자만
   const canInvite = !!currentUser?.isAuthorityHolder;
   const [showInvite, setShowInvite] = useState(false);
-  const [inv, setInv] = useState({ managerName: "", email: "", phone: "", corps: [], permSel: [], teamSel: [], roleSel: [], divSel: [] });
+  const [inv, setInv] = useState({ managerName: "", email: "", phone: "", personalPhone: "", corps: [], permSel: [], teamSel: [], roleSel: [], divSel: [] });
   // 등록된 법인·팀 목록 (복수 선택용)
   const [corpList, setCorpList] = useState([]);
   const [teamList, setTeamList] = useState([]);
@@ -502,11 +508,12 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
 
   const submitInvite = async (confirmMerge = false) => {
     if (!inv.managerName.trim()) { setInvMsg({ text: "관리자명을 입력해주세요.", ok: false }); return; }
-    if (!inv.email.trim() && !inv.phone.trim()) { setInvMsg({ text: "이메일 또는 전화번호를 입력해주세요.", ok: false }); return; }
+    if (!inv.personalPhone.trim()) { setInvMsg({ text: "본인 휴대전화 번호를 입력해주세요.", ok: false }); return; }
+    if (inv.roleSel.includes("hr") && !inv.phone.trim()) { setInvMsg({ text: "인적자원팀은 업무용 전화번호도 입력해야 합니다.", ok: false }); return; }
     setBusy(true); setInvMsg({ text: "", ok: true });
     try {
       const r = await api.inviteAdminDevice({
-        managerName: inv.managerName.trim(), email: inv.email.trim(), phone: inv.phone.trim(), corp: inv.corps.join(", "),
+        managerName: inv.managerName.trim(), email: inv.email.trim(), phone: inv.phone.trim(), personalPhone: inv.personalPhone.trim(), corp: inv.corps.join(", "),
         roles: inv.roleSel,
         permissions: inv.roleSel.includes("general") ? [] : inv.permSel,
         teams: inv.teamSel, scopeDivisions: inv.divSel, scopeCorps: inv.corps,
@@ -514,7 +521,7 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
       });
       const ch = [r.sent?.email && "이메일", r.sent?.sms && "문자"].filter(Boolean).join("·") || "링크";
       setInvMsg({ text: `등록 링크를 ${ch}(으)로 보냈습니다.`, ok: true });
-      setInv({ managerName: "", email: "", phone: "", corps: [], permSel: [], teamSel: [], roleSel: [], divSel: [] });
+      setInv({ managerName: "", email: "", phone: "", personalPhone: "", corps: [], permSel: [], teamSel: [], roleSel: [], divSel: [] });
       setInviteAsk("");
     } catch (e) {
       if (e.payload?.needConfirm) { setInviteAsk(e.message); }   // 중복 관리자명 → 확인 팝업
@@ -644,7 +651,8 @@ function AdminProfileModal({ worker, currentUser, adminDevices, loadingDevices, 
               <div style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5 }}>관리자 정보를 입력하면 등록 링크를 이메일·문자로 보냅니다. 받은 사람이 <b>등록할 기기</b>에서 링크를 열면 등록됩니다.</div>
               <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="관리자명" value={inv.managerName} onChange={(e) => setInv({ ...inv, managerName: e.target.value })} />
               <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="이메일" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
-              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="전화번호" value={inv.phone} onChange={(e) => setInv({ ...inv, phone: e.target.value })} />
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder="본인 휴대전화 (매칭용, 필수)" value={inv.personalPhone} onChange={(e) => setInv({ ...inv, personalPhone: e.target.value })} />
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 13 }} placeholder={"업무용 전화번호" + (inv.roleSel.includes("hr") ? " (인적자원팀 필수)" : " (리포트 노출용, 선택)")} value={inv.phone} onChange={(e) => setInv({ ...inv, phone: e.target.value })} />
               {(() => {
                 const invChip = (on) => ({ padding: "5px 11px", borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? C.blue : C.line}`, background: on ? C.blue : "#fff", color: on ? "#fff" : C.inkSoft });
                 const invGeneral = inv.roleSel.includes("general");

@@ -427,9 +427,9 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
     const norm = (s: any) => String(s || '').replace(/\s+/g, '').toLowerCase();
     const digits = (s: any) => String(s || '').replace(/\D/g, '');
     const { rows: mgrs } = await pool.query(
-      `SELECT DISTINCT device_name, phone, roles, scope_divisions, scope_teams
+      `SELECT DISTINCT device_name, personal_phone, roles, scope_divisions, scope_teams
          FROM admin_devices
-        WHERE device_name IS NOT NULL AND device_name<>'' AND phone IS NOT NULL AND phone<>''
+        WHERE device_name IS NOT NULL AND device_name<>'' AND personal_phone IS NOT NULL AND personal_phone<>''
           AND roles && ARRAY['director','teamlead']::text[]`
     );
     const mgrMap: Record<string, string[]> = {};
@@ -438,7 +438,8 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
       const titles: string[] = [];
       if (roles.includes('director')) for (const d of (m.scope_divisions || [])) if (d) titles.push(d.endsWith('장') ? d : d + '장');
       if (roles.includes('teamlead')) for (const t of (m.scope_teams || [])) if (t && t !== '전체') titles.push(t.endsWith('장') ? t : t + '장');
-      if (titles.length) mgrMap[`${norm(m.device_name)}|${digits(m.phone)}`] = titles;
+      // 매칭은 본인 휴대전화(personal_phone) ↔ 근로자 전화
+      if (titles.length) mgrMap[`${norm(m.device_name)}|${digits(m.personal_phone)}`] = titles;
     }
     for (const r of rows) {
       if (r.role !== 'worker') continue;
@@ -985,13 +986,13 @@ router.post('/send-message', permStaff, async (req: Request, res: Response): Pro
     if (outOfScope.length) { res.status(403).json({ error: '권한 범위 밖 근로자가 포함되어 있습니다.' }); return; }
   }
   const manual = 'https://timecard-neon.vercel.app/';
-  // 문의처({managers}): 관리자 기기의 담당 법인·전화 → '이름 (담당법인) | 전화'
+  // 문의처({managers}): 인적자원팀(hr) 관리자 중 담당 법인이 근로자 법인과 일치하는 사람의 '업무용 전화'만 노출
   const { rows: mgrRows } = await pool.query(
     `SELECT DISTINCT device_name, corp, phone FROM admin_devices
-      WHERE corp IS NOT NULL AND corp<>'' AND phone IS NOT NULL AND phone<>''`
+      WHERE corp IS NOT NULL AND corp<>'' AND phone IS NOT NULL AND phone<>''
+        AND roles && ARRAY['hr']::text[]`
   );
   const mgrLine = (m: any) => `${m.device_name} (${m.corp}) | ${m.phone}`;
-  const allMgrs = mgrRows.map(mgrLine);
   const mgrByCorp: Record<string, string[]> = {};
   for (const m of mgrRows) {
     for (const c of String(m.corp).split(/[,·]/).map((s: string) => s.trim()).filter(Boolean)) {
@@ -1000,7 +1001,8 @@ router.post('/send-message', permStaff, async (req: Request, res: Response): Pro
   }
   const results: { name: string; via: string }[] = [];
   for (const t of targets) {
-    const managers = ((t.corp && mgrByCorp[t.corp]) ? mgrByCorp[t.corp] : allMgrs).join('\n');
+    // 담당 법인이 일치하는 인적자원팀 관리자만(일치 없으면 표시 안 함)
+    const managers = ((t.corp && mgrByCorp[t.corp]) ? mgrByCorp[t.corp] : []).join('\n');
     const via = await sendFreeMessage({
       email: t.email, phone: t.phone, channel: ch, attachments,
       vars: { name: t.name || '', phone: t.phone || '', email: t.email || '', corp: t.corp || '',
@@ -1032,9 +1034,10 @@ router.post('/send-report', async (req: Request, res: Response): Promise<void> =
   const sentStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
   const dl = new Date(sentStr + 'T00:00:00Z'); dl.setUTCDate(dl.getUTCDate() + 7);
   const deadlineText = `${dl.getUTCMonth() + 1}월 ${dl.getUTCDate()}일`;
-  // 법인별 담당자 매핑 (등록 기기에 담당 법인·전화·담당자명이 설정된 경우)
+  // 법인별 담당자 매핑: 인적자원팀(hr) 관리자 중 담당 법인·업무용 전화가 있는 사람만
   const { rows: mgrRows } = await pool.query(
-    `SELECT corp, device_name, phone FROM admin_devices WHERE corp IS NOT NULL AND corp<>''`
+    `SELECT corp, device_name, phone FROM admin_devices
+      WHERE corp IS NOT NULL AND corp<>'' AND roles && ARRAY['hr']::text[]`
   );
   // 법인별 담당자 목록 (한 담당자가 여러 법인, 한 법인에 여러 담당자 모두 지원)
   const managersByCorp: Record<string, { name: string; phone: string }[]> = {};
@@ -1165,7 +1168,7 @@ router.post('/attendance/:recordId/approve-time-change', async (req: Request, re
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
   const isHolder = await reqIsAuthority(req); // 권한자만 대기 기기(승인 대상) 목록 조회
   const { rows: myDevices } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, personal_phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.user.userId]
   );
   let pendingDevices: any[] = [];
@@ -1183,7 +1186,7 @@ router.get('/my-devices', async (req: Request, res: Response): Promise<void> => 
 // 특정 관리자의 기기 목록 (모든 관리자 조회 가능 — 편집 권한은 별도)
 router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
+    'SELECT id, device_id, device_name, corp, phone, personal_phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.params.userId]
   );
   res.json({ devices: rows });
@@ -1293,22 +1296,27 @@ const hhmm = (t?: string | null) => (t ? String(t).slice(0, 5) : '');
 router.put('/devices/:id/info', async (req: Request, res: Response): Promise<void> => {
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 수정할 수 있습니다.' }); return; }
   const { phone, confirmMerge } = req.body;
+  const personalPhone = (req.body.personalPhone ?? '').trim() || null; // 본인 휴대전화(매칭용)
   const corp = (req.body.corp ?? '').trim() || null;   // 담당 법인(월간 리포트 발신담당 매핑에 사용)
   const newName = (req.body.deviceName ?? '').trim();
   if (!newName) { res.status(400).json({ error: '관리자명을 입력해주세요.' }); return; }
   const roles = normalizeRoles(req.body.roles);
+  // 전화번호 필수 규칙: 본인 휴대 필수, 역할이 인적자원팀(hr)이면 업무용도 필수
+  if (!personalPhone) { res.status(400).json({ error: '본인 휴대전화 번호를 입력해주세요.' }); return; }
+  if (roles.includes('hr') && !(phone && String(phone).trim())) { res.status(400).json({ error: '인적자원팀은 업무용 전화번호도 입력해야 합니다.' }); return; }
   // 일반(general)은 읽기 전용 → 쓰기 권한 저장 안 함
   const permissions = roles.includes('general') ? [] : normalizePerms(req.body.permissions);
   const teams = normalizeTeams(req.body.teams);
   const divisions = normalizeStrArr(req.body.scopeDivisions);
   const corps = normalizeStrArr(req.body.scopeCorps);
 
-  const { rows: cur } = await pool.query('SELECT device_name, permissions, roles, phone AS p, corp AS cp, scope_teams, scope_divisions, scope_corps FROM admin_devices WHERE id=$1', [req.params.id]);
+  const { rows: cur } = await pool.query('SELECT device_name, permissions, roles, phone AS p, personal_phone AS pp, corp AS cp, scope_teams, scope_divisions, scope_corps FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!cur[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
   const oldName: string = (cur[0].device_name ?? '').trim();
   const oldPerms: string[] = cur[0].permissions || [];
   const oldRoles: string[] = cur[0].roles || [];
   const oldPhone: string = cur[0].p || '';
+  const oldPersonal: string = cur[0].pp || '';
   const oldCorp: string = cur[0].cp || '';
   const oldTeams: string[] = cur[0].scope_teams || [];
   const oldDivisions: string[] = cur[0].scope_divisions || [];
@@ -1379,9 +1387,9 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
       const mergedCorps = Array.from(corpSet); appliedCorps = mergedCorps;
       const names = oldName ? [oldName, newName] : [newName];
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, personal_phone=$11, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8
          WHERE device_name = ANY($9) OR id=$10`,
-        [newName, corp, phone || null, mergedPerms, mergedRoles, mergedTeams, mergedDivs, mergedCorps, names, req.params.id]
+        [newName, corp, phone || null, mergedPerms, mergedRoles, mergedTeams, mergedDivs, mergedCorps, names, req.params.id, personalPhone]
       );
       // 병합된 그룹의 권한자 여부를 하나로 통일(둘 중 하나라도 권한자였으면 그룹 전체 권한자).
       await client.query(
@@ -1391,15 +1399,15 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
     } else if (oldName) {
       // 같은 관리자명 그룹 전체에 동기화 (이름 변경 포함)
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, personal_phone=$11, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8
          WHERE device_name=$9 OR id=$10`,
-        [newName, corp, phone || null, permissions, roles, teams, divisions, corps, oldName, req.params.id]
+        [newName, corp, phone || null, permissions, roles, teams, divisions, corps, oldName, req.params.id, personalPhone]
       );
     } else {
       // 기존 이름이 비어 있으면 이 기기 1개만 설정
       await client.query(
-        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8 WHERE id=$9`,
-        [newName, corp, phone || null, permissions, roles, teams, divisions, corps, req.params.id]
+        `UPDATE admin_devices SET device_name=$1, corp=$2, phone=$3, personal_phone=$10, permissions=$4, roles=$5, scope_teams=$6, scope_divisions=$7, scope_corps=$8 WHERE id=$9`,
+        [newName, corp, phone || null, permissions, roles, teams, divisions, corps, req.params.id, personalPhone]
       );
     }
     await client.query('COMMIT');
@@ -1413,6 +1421,9 @@ router.put('/devices/:id/info', async (req: Request, res: Response): Promise<voi
   if (oldName && newName !== oldName) parts.push(`(이름)${oldName}->${newName}`);
   if (fmtPhoneLog(oldPhone) !== fmtPhoneLog(phone || '')) {
     parts.push(oldPhone ? `(업무용 전화번호)${fmtPhoneLog(oldPhone)}->${fmtPhoneLog(phone || '')}` : `(업무용 전화번호)${fmtPhoneLog(phone || '')}`);
+  }
+  if (fmtPhoneLog(oldPersonal) !== fmtPhoneLog(personalPhone || '')) {
+    parts.push(oldPersonal ? `(본인 휴대전화)${fmtPhoneLog(oldPersonal)}->${fmtPhoneLog(personalPhone || '')}` : `(본인 휴대전화)${fmtPhoneLog(personalPhone || '')}`);
   }
   const newCorp = corp || '';
   if (oldCorp !== newCorp) parts.push(oldCorp ? `(담당 법인)${oldCorp}->${newCorp}` : `(담당 법인)${newCorp}`);
@@ -1434,32 +1445,36 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 기기를 추가할 수 있습니다.' }); return; }
   const managerName = (req.body.managerName ?? '').trim();
   const email = (req.body.email ?? '').trim() || null;
-  const phone = (req.body.phone ?? '').trim() || null;
+  const phone = (req.body.phone ?? '').trim() || null;            // 업무용 전화
+  const personalPhone = (req.body.personalPhone ?? '').trim() || null; // 본인 휴대전화
   const corp = (req.body.corp ?? '').trim() || null;
   if (!managerName) { res.status(400).json({ error: '관리자명을 입력해주세요.' }); return; }
-  if (!email && !phone) { res.status(400).json({ error: '이메일 또는 전화번호를 입력해주세요.' }); return; }
   const roles = normalizeRoles(req.body.roles);
   const permissions = roles.includes('general') ? [] : normalizePerms(req.body.permissions);
   const teams = normalizeTeams(req.body.teams);
   const scopeDivisions = normalizeStrArr(req.body.scopeDivisions);
   const scopeCorps = normalizeStrArr(req.body.scopeCorps);
 
-  // 이미 존재하는 관리자명이면 확인 필요(등록 시 기존 권한을 상속 → 입력한 권한범위는 무시됨)
-  if (req.body.confirmMerge !== true) {
-    const { rows: dup } = await pool.query('SELECT 1 FROM admin_devices WHERE device_name=$1 LIMIT 1', [managerName]);
-    if (dup.length > 0) {
-      res.status(409).json({
-        needConfirm: true,
-        error: '해당 관리자명은 이미 존재하여, 계속 진행할 경우 권한 범위가 변경됩니다. 계속 진행하시겠습니까?',
-      });
-      return;
-    }
+  // 이미 존재하는 관리자명(그룹)인지 — 기존 그룹이면 전화/권한을 상속하므로 전화 필수검증 생략
+  const { rows: dup } = await pool.query('SELECT 1 FROM admin_devices WHERE device_name=$1 LIMIT 1', [managerName]);
+  const existingGroup = dup.length > 0;
+  if (existingGroup && req.body.confirmMerge !== true) {
+    res.status(409).json({
+      needConfirm: true,
+      error: '해당 관리자명은 이미 존재하여, 계속 진행할 경우 권한 범위가 변경됩니다. 계속 진행하시겠습니까?',
+    });
+    return;
+  }
+  // 신규 관리자일 때만 전화 필수(기존 그룹은 상속)
+  if (!existingGroup) {
+    if (!personalPhone) { res.status(400).json({ error: '본인 휴대전화 번호를 입력해주세요.' }); return; }
+    if (roles.includes('hr') && !phone) { res.status(400).json({ error: '인적자원팀은 업무용 전화번호도 입력해야 합니다.' }); return; }
   }
 
   // nonce: 1회용 링크 식별자(한 초대로 기기 하나만 등록)
   const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
   const token = jwt.sign(
-    { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, corp, permissions, roles, teams, scopeDivisions, scopeCorps, nonce },
+    { purpose: 'admin-device-invite', uid: req.user.userId, managerName, email, phone, personalPhone, corp, permissions, roles, teams, scopeDivisions, scopeCorps, nonce },
     process.env.JWT_SECRET as string, { expiresIn: '7d' }
   );
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -1467,7 +1482,8 @@ router.post('/devices/invite', async (req: Request, res: Response): Promise<void
   // 발신번호: 033-340-0024 (SMS_SENDER 미설정 시에도 고정)
   const senderPhone = process.env.SMS_SENDER || '0333400024';
   try {
-    const sent = await sendAdminDeviceInvite({ name: managerName, email, phone, link, senderPhone });
+    // 등록 링크 SMS는 본인 휴대로 발송(기기추가 등 본인 휴대 미입력 시 입력된 전화로, 둘 다 없으면 이메일)
+    const sent = await sendAdminDeviceInvite({ name: managerName, email, phone: personalPhone || phone, link, senderPhone });
     if (!sent.email && !sent.sms) { res.status(502).json({ error: '이메일/문자 발송에 실패했습니다. 발송 설정을 확인하세요.' }); return; }
     await logAudit(req, '초대', '관리자', managerName, '기기 등록 링크 발송');
     res.json({ success: true, sent });

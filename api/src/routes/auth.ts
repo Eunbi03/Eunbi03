@@ -72,7 +72,7 @@ router.post('/register-device-link',
     }
     // 같은 관리자명이 이미 있으면 권한 공유(기존 그룹 권한 상속). 그룹이 권한자면 새 기기도 권한자.
     const { rows: grp } = await pool.query(
-      'SELECT permissions, roles, scope_teams, scope_divisions, scope_corps, corp, phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
+      'SELECT permissions, roles, scope_teams, scope_divisions, scope_corps, corp, phone, personal_phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
     );
     const { rows: authRows } = await pool.query(
       'SELECT 1 FROM admin_devices WHERE device_name=$1 AND is_authority=TRUE LIMIT 1', [p.managerName]
@@ -84,6 +84,7 @@ router.post('/register-device-link',
     let scopeCorps = Array.isArray(p.scopeCorps) ? p.scopeCorps : [];
     let corp = p.corp || null;
     let phone = p.phone || null;
+    let personalPhone = p.personalPhone || null;
     let isAuthority = authRows.length > 0;   // 권한자 그룹이면 새 기기도 권한자
     if (grp[0]) {
       // 기존 그룹이 있으면 그룹 권한·역할·범위를 상속(그룹 동기화 유지)
@@ -93,11 +94,12 @@ router.post('/register-device-link',
       scopeDivisions = grp[0].scope_divisions || scopeDivisions;
       scopeCorps = grp[0].scope_corps || scopeCorps;
       corp = grp[0].corp || corp; phone = grp[0].phone || phone;
+      personalPhone = grp[0].personal_phone || personalPhone;
     }
     await pool.query(
-      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, is_approved, approved_at, permissions, roles, scope_teams, scope_divisions, scope_corps, is_authority)
-       VALUES ($1,$2,$3,$4,$5,TRUE,now(),$6,$7,$8,$9,$10,$11) ON CONFLICT (user_id, device_id) DO NOTHING`,
-      [p.uid, deviceId, p.managerName, corp, phone, permissions, roles, teams, scopeDivisions, scopeCorps, isAuthority]
+      `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, personal_phone, is_approved, approved_at, permissions, roles, scope_teams, scope_divisions, scope_corps, is_authority)
+       VALUES ($1,$2,$3,$4,$5,$6,TRUE,now(),$7,$8,$9,$10,$11,$12) ON CONFLICT (user_id, device_id) DO NOTHING`,
+      [p.uid, deviceId, p.managerName, corp, phone, personalPhone, permissions, roles, teams, scopeDivisions, scopeCorps, isAuthority]
     );
     // 작업 기록: 해당 관리자의 등록 기기 수 변화
     try {
@@ -216,10 +218,11 @@ router.post('/login',
             [user.id, deviceId, deviceName || '첫 번째 기기', anyAuth.length === 0]
           );
         } else {
-          // 추가 기기: 승인요청 화면에서 관리자명/업무용 전화번호/권한범위를 입력받아 등록한다.
+          // 추가 기기: 승인요청 화면에서 관리자명/전화번호(업무용·본인휴대)/권한범위를 입력받아 등록한다.
           const managerName = (req.body.managerName ?? '').trim();
-          const phone = (req.body.phone ?? '').trim();
-          if (!managerName || !phone) {
+          const phone = (req.body.phone ?? '').trim();                 // 업무용 전화
+          const personalPhone = (req.body.personalPhone ?? '').trim(); // 본인 휴대전화(매칭용, 필수)
+          if (!managerName || !personalPhone) {
             // 아직 정보 미입력 → 클라이언트에 승인요청 폼을 띄우도록 지시
             await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_FORM', req });
             res.status(403).json({ error: '등록되지 않은 기기입니다. 관리자 정보를 입력해 승인을 요청하세요.', needDeviceRequest: true }); return;
@@ -231,14 +234,18 @@ router.post('/login',
             res.status(409).json({ error: '이미 등록된 관리자입니다. 새로운 기기 등록을 원한다면 최고 관리자에게 요청해주세요.', duplicateManager: true }); return;
           }
           const roles = normalizeRoles(req.body.roles);
+          // 인적자원팀(hr)은 업무용 전화도 필수
+          if (roles.includes('hr') && !phone) {
+            res.status(400).json({ error: '인적자원팀은 업무용 전화번호도 입력해야 합니다.' }); return;
+          }
           const permissions = roles.includes('general') ? [] : normalizePerms(req.body.permissions);
           const teams = (Array.isArray(req.body.teams) ? req.body.teams : []).filter((t: any) => t && t !== '전체');
           const scopeDivisions = Array.isArray(req.body.scopeDivisions) ? req.body.scopeDivisions.filter(Boolean) : [];
           const scopeCorps = Array.isArray(req.body.scopeCorps) ? req.body.scopeCorps.filter(Boolean) : [];
           await pool.query(
-            `INSERT INTO admin_devices (user_id, device_id, device_name, phone, is_approved, permissions, roles, scope_teams, scope_divisions, scope_corps)
-             VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7,$8,$9) ON CONFLICT (user_id, device_id) DO NOTHING`,
-            [user.id, deviceId, managerName, phone, permissions, roles, teams, scopeDivisions, scopeCorps]
+            `INSERT INTO admin_devices (user_id, device_id, device_name, phone, personal_phone, is_approved, permissions, roles, scope_teams, scope_divisions, scope_corps)
+             VALUES ($1,$2,$3,$4,$5,FALSE,$6,$7,$8,$9,$10) ON CONFLICT (user_id, device_id) DO NOTHING`,
+            [user.id, deviceId, managerName, phone || null, personalPhone, permissions, roles, teams, scopeDivisions, scopeCorps]
           );
           await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_PENDING', req });
           res.status(403).json({ error: '승인 요청이 전송되었습니다. 권한자의 승인 후 로그인할 수 있습니다.', pendingApproval: true }); return;
