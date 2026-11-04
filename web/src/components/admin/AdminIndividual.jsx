@@ -73,10 +73,10 @@ function PlaceDist({ note, place: nearPlace, dist, within, pending }) {
   const place = nearPlace || noted || "";
   let badge = null;
   if (dist != null) {
-    // 거리가 계산됐으면 메모가 있어도 거리/인정을 표시 (가장 가까운 근무지 기준)
-    // 초록/빨강 = 서버 판정(어느 근무지든 반경 이내). 구버전 데이터는 거리 300m fallback.
-    const ok = within === true || (within == null && dist <= 300);
-    badge = { text: fmtDist(dist), bg: ok ? "#dcece2" : "#f6dcd8", fg: ok ? COL.green : COL.red };
+    // 초록/빨강 = 서버 판정(등록 근무지의 참고반경 이내). 판정값이 없는 구버전 기록은 중립(회색).
+    if (within === true) badge = { text: fmtDist(dist), bg: "#dcece2", fg: COL.green };
+    else if (within === false) badge = { text: fmtDist(dist), bg: "#f6dcd8", fg: COL.red };
+    else badge = { text: fmtDist(dist), bg: COL.lgray, fg: COL.gray };
   } else if (pending) {
     badge = { text: "계산 중", bg: COL.lgray, fg: COL.gray };
   } else if (noted) {
@@ -267,9 +267,14 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
                     {/* 복귀는 시간 텍스트를 '외근' 라벨과 같은 색으로 */}
                     <TimeText time={o.start_time} lat={o.start_lat} lng={o.start_lng} color={isReturn ? COL.amber : COL.blue} />
                     <span style={{ color: COL.black, fontWeight: 600 }}>{o.destination}</span>
-                    {o.distance_m != null ? (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 8, background: o.distance_m > 200 ? "#f6dcd8" : "#dcece2", color: o.distance_m > 200 ? COL.red : COL.green }}>{fmtDist(o.distance_m)}</span>
-                    ) : (
+                    {o.distance_m != null ? (() => {
+                      // 거리 판정 = 해당 근무지의 참고반경(wp_radius) 기준. 반경 정보 없으면 중립(회색).
+                      const canJudge = o.wp_radius != null;
+                      const ok = canJudge && o.distance_m <= o.wp_radius;
+                      const bg = canJudge ? (ok ? "#dcece2" : "#f6dcd8") : COL.lgray;
+                      const fg = canJudge ? (ok ? COL.green : COL.red) : COL.gray;
+                      return <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 8, background: bg, color: fg }}>{fmtDist(o.distance_m)}</span>;
+                    })() : (
                       <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 8, background: COL.lgray, color: COL.gray }}>?</span>
                     )}
                     {/* 복귀는 목적(reason) 없음 */}

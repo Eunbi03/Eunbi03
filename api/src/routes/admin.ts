@@ -748,7 +748,9 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   // 외근 기록
   const recIds = records.map((r: any) => r.id);
   const { rows: outings } = recIds.length ? await pool.query(
-    `SELECT * FROM outing_records WHERE attendance_record_id=ANY($1) ORDER BY start_time`, [recIds]
+    `SELECT o.*, w.radius_m AS wp_radius FROM outing_records o
+       LEFT JOIN workplaces w ON o.workplace_id=w.id
+      WHERE o.attendance_record_id=ANY($1) ORDER BY o.start_time`, [recIds]
   ) : { rows: [] };
 
   // 랜덤 위치 기록
