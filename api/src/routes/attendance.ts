@@ -516,7 +516,14 @@ router.post('/overtime', requireAuth,
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
     const { workDate, startTime, endTime, place, purpose, workplaceId } = req.body;
-    if (daysBetweenKST(workDate) < 1) { res.status(400).json({ error: '연장 근무 신청은 연장일 전날까지만 가능합니다.' }); return; }
+    const d0 = daysBetweenKST(workDate);
+    if (d0 < 0) { res.status(400).json({ error: '지난 날짜에는 신청할 수 없습니다.' }); return; }
+    if (d0 === 0) {
+      // 당일: 본래 근무 종료시간(정규 퇴근) 전까지만 신청 가능
+      const { rows: u } = await pool.query('SELECT scheduled_end FROM users WHERE id=$1', [req.user.userId]);
+      const se = (u[0]?.scheduled_end ? String(u[0].scheduled_end).slice(0, 5) : '18:00');
+      if (nowHHMM() >= se) { res.status(400).json({ error: '연장 근무 신청은 본래 근무시간 이내(정규 퇴근 전)에만 가능합니다.' }); return; }
+    }
     if (endTime <= startTime) { res.status(400).json({ error: '종료 시간이 시작 시간보다 늦어야 합니다.' }); return; }
     try {
       const { rows } = await pool.query(
@@ -558,7 +565,13 @@ router.put('/overtime/:id', requireAuth,
 router.delete('/overtime/:id', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { rows: cur } = await pool.query('SELECT work_date::text AS work_date FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
   if (!cur[0]) { res.status(404).json({ error: '신청 내역을 찾을 수 없습니다.' }); return; }
-  if (daysBetweenKST(cur[0].work_date) < 1) { res.status(400).json({ error: '삭제는 연장일 전날까지만 가능합니다.' }); return; }
+  const dd = daysBetweenKST(cur[0].work_date);
+  if (dd < 0) { res.status(400).json({ error: '연장 근무일이 지나 삭제할 수 없습니다.' }); return; }
+  if (dd === 0) {
+    const { rows: u } = await pool.query('SELECT scheduled_end FROM users WHERE id=$1', [req.user.userId]);
+    const se = (u[0]?.scheduled_end ? String(u[0].scheduled_end).slice(0, 5) : '18:00');
+    if (nowHHMM() >= se) { res.status(400).json({ error: '삭제는 본래 근무시간 이내(정규 퇴근 전)에만 가능합니다.' }); return; }
+  }
   await pool.query('DELETE FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
   res.json({ success: true });
 });

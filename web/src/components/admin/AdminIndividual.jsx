@@ -216,7 +216,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
   const info = (
     <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
       <span style={{ color: COL.amber, fontWeight: 700 }}>외근 {outN}</span>
-      {day.overtime && <span style={{ color: COL.blue, fontWeight: 700 }}>연장</span>}
+      {day.overtime && <span style={{ color: COL.amber, fontWeight: 700 }}>연장</span>}
       {day.noteToday && <span style={{ color: COL.blue, fontWeight: 700 }}>근무노트</span>}
     </div>
   );
@@ -287,7 +287,7 @@ function DayRow({ day, workplaceName, isMobile, onLeaveChange, canLeave, canFull
             )}
             {day.overtime && (
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                <span style={{ color: COL.blue, fontWeight: 700, marginRight: 4 }}>연장</span>
+                <span style={{ color: COL.amber, fontWeight: 700, marginRight: 4 }}>연장</span>
                 <span style={{ color: COL.black }}>{day.overtime.startTime}~{day.overtime.endTime}</span>
                 <span style={{ color: COL.gray }}>· {day.overtime.place}</span>
                 <span style={{ color: COL.gray }}>· {day.overtime.purpose}</span>

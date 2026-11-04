@@ -137,14 +137,22 @@ async function sendRandomCheckAlerts() {
 // 연장근무 승인 마감(연장일 당일 '본래 근무 시작시간' 전) 초과 시 자동 반려
 async function autoRejectOvertime() {
   try {
+    // 마감 기준:
+    //  - 원 신청(연장일 당일에 수정 안 됨): 연장일의 본래 근무 종료시간(정규 퇴근) 전까지
+    //  - 연장일이 지나 수정된 건: 연장일 +2일(그날 끝)까지
     const { rowCount } = await pool.query(
       `UPDATE overtime_requests o
           SET status='rejected',
-              reject_reason='승인 마감(연장일 근무 시작 전) 초과로 자동 반려',
+              reject_reason='승인 마감 초과로 자동 반려',
               decided_at=now(), updated_at=now()
          FROM users u
         WHERE o.user_id=u.id AND o.status='pending'
-          AND ((o.work_date + COALESCE(u.scheduled_start,'09:00'::time)) AT TIME ZONE 'Asia/Seoul') <= now()`
+          AND now() > (
+            CASE WHEN (o.updated_at AT TIME ZONE 'Asia/Seoul')::date > o.work_date
+              THEN ((o.work_date + INTERVAL '2 day' + TIME '23:59:59') AT TIME ZONE 'Asia/Seoul')
+              ELSE ((o.work_date + COALESCE(u.scheduled_end,'18:00'::time)) AT TIME ZONE 'Asia/Seoul')
+            END
+          )`
     );
     if (rowCount) console.log(`[연장근무] 마감 초과 ${rowCount}건 자동 반려`);
   } catch (e: any) { console.error('[연장근무 자동반려 실패]', e.message); }

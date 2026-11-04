@@ -77,7 +77,7 @@ export default function OvertimeView({ onClose }) {
           {form.id ? (
             <div style={{ ...inp, color: C.inkSoft, background: "#f5f6f8" }}>{fmtDate(form.workDate)}</div>
           ) : (
-            <input type="date" style={inp} value={form.workDate} min={new Date(Date.now() + 86400000).toLocaleDateString("en-CA")} onChange={(e) => setF("workDate", e.target.value)} />
+            <input type="date" style={inp} value={form.workDate} min={todayStr()} onChange={(e) => setF("workDate", e.target.value)} />
           )}
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{ flex: 1 }}><label style={lab}>시작 *</label><input type="time" style={inp} value={form.startTime} onChange={(e) => setF("startTime", e.target.value)} /></div>
@@ -101,11 +101,11 @@ export default function OvertimeView({ onClose }) {
           <input style={inp} value={form.purpose} placeholder="예: 재고 정리 지원" onChange={(e) => setF("purpose", e.target.value)} />
           {msg && <div style={{ ...S.err, marginTop: 8 }}>{msg}</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            {form.id && daysUntil(form.workDate) >= 1 && <button style={{ ...S.subGhost, color: C.seal, borderColor: C.seal }} onClick={() => del({ id: form.id, work_date: form.workDate })} disabled={busy}>삭제</button>}
+            {form.id && daysUntil(form.workDate) >= 0 && <button style={{ ...S.subGhost, color: C.seal, borderColor: C.seal }} onClick={() => del({ id: form.id, work_date: form.workDate })} disabled={busy}>삭제</button>}
             <button style={S.subGhost} onClick={() => setForm(null)} disabled={busy}>취소</button>
             <button style={{ ...S.subPrimary, background: C.blue, opacity: busy ? 0.6 : 1 }} onClick={save} disabled={busy}>{busy ? "처리 중…" : (form.id ? "저장(재승인)" : "신청")}</button>
           </div>
-          {form.id && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>수정 시 다시 '대기' 상태가 되어 재승인이 필요합니다. (수정은 연장일 +2일까지)</div>}
+          <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>신청·삭제: 연장근무일의 본래 근무시간 이내 · 수정: 연장근무일 +2일까지 (수정 시 다시 '대기')</div>
         </div>
       )}
 
