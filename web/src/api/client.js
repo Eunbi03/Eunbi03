@@ -88,7 +88,7 @@ export const startOuting = (location, destination, reason, workplaceId) => reque
   method: "POST", body: { lat: location.lat, lng: location.lng, destination, reason, workplaceId: workplaceId || null },
 });
 export const getOutingWorkplaces = () => request("/attendance/workplaces");
-export const endOuting = (outingId) => request(`/attendance/outing/${outingId}/end`, { method: "POST" });
+export const endOuting = (outingId, body) => request(`/attendance/outing/${outingId}/end`, { method: "POST", body: body || {} });
 export const checkOut = (location, { workNoteIn, workNoteOut, workNoteField, workNoteToday }) => request("/attendance/check-out", {
   method: "POST", body: { lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false, workNoteIn, workNoteOut, workNoteField, workNoteToday },
 });

@@ -195,12 +195,13 @@ export default function Employee({ user }) {
     finally { setBusy(false); }
   };
 
-  // 복귀 — 진행 중인 외근을 종료하고 기본 근무지 상태로 돌아온다.
+  // 복귀 — 진행 중인 외근을 종료하고, 현재 위치로 '그날 출근했던 근무지' 기준 거리를 기록한다.
   const returnToBase = async () => {
     if (!activeOuting) return;
     setBusy(true); setErr(""); setMsg("");
     try {
-      await api.endOuting(activeOuting.id);
+      const loc = await getLocation();  // 복귀 위치 (출근 근무지 기준 거리계산용)
+      await api.endOuting(activeOuting.id, loc ? { lat: loc.lat, lng: loc.lng } : undefined);
       await load(true);
       setMsg("복귀 처리되었습니다.");
     } catch (e) { setErr(e.message); }

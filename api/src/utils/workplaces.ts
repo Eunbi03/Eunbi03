@@ -6,6 +6,8 @@ export interface NearestResult {
   withinAny: boolean;         // 등록된 어느 근무지든 참고반경 이내인가(초록불 기준)
   wpName: string | null;      // 가장 가까운 근무지명
   wpId: string | null;
+  wpLat: number | null;       // 가장 가까운 근무지 좌표
+  wpLng: number | null;
 }
 
 // 등록된 모든(활성) 근무지 중 가장 가까운 곳을 찾고, 어느 반경이든 이내면 withinAny=true.
@@ -14,7 +16,7 @@ export async function nearestWorkplace(lat: number, lng: number): Promise<Neares
   const { rows } = await pool.query(
     'SELECT id, name, lat, lng, radius_m FROM workplaces WHERE is_active=TRUE AND lat IS NOT NULL AND lng IS NOT NULL'
   );
-  if (!rows.length) return { distanceM: null, withinAny: false, wpName: null, wpId: null };
+  if (!rows.length) return { distanceM: null, withinAny: false, wpName: null, wpId: null, wpLat: null, wpLng: null };
   let best: any = null, bestD = Infinity, within = false;
   for (const w of rows) {
     const d = haversineDistanceMeters(lat, lng, w.lat, w.lng);
@@ -26,5 +28,7 @@ export async function nearestWorkplace(lat: number, lng: number): Promise<Neares
     withinAny: within,
     wpName: best?.name ?? null,
     wpId: best?.id ?? null,
+    wpLat: best?.lat ?? null,
+    wpLng: best?.lng ?? null,
   };
 }

@@ -149,13 +149,36 @@ router.post('/outing/start', requireAuth,
   }
 );
 
-// POST /api/attendance/outing/:outingId/end
+// POST /api/attendance/outing/:outingId/end — 복귀(외근 종료)
+// 기본 근무지 개념 제거 후: 위치가 함께 오면 '그날 출근했던 근무지' 기준으로 거리를 계산해
+// 복귀 기록을 남긴다. (출근 근무지 = 출근 당시 가장 가까웠던 근무지)
 router.post('/outing/:outingId/end', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user.userId;
+  const { lat, lng } = req.body || {};
   const { rows } = await pool.query(
-    'UPDATE outing_records SET end_time=now() WHERE id=$1 AND user_id=$2 AND end_time IS NULL RETURNING id, end_time',
-    [req.params.outingId, req.user.userId]
+    'UPDATE outing_records SET end_time=now() WHERE id=$1 AND user_id=$2 AND end_time IS NULL RETURNING id, end_time, attendance_record_id',
+    [req.params.outingId, userId]
   );
   if (!rows[0]) { res.status(404).json({ error: '진행 중인 외근 기록을 찾을 수 없습니다.' }); return; }
+
+  // 위치가 오면 '출근했던 근무지'로 복귀 거리계산 후 복귀 기록 생성
+  if (typeof lat === 'number' && typeof lng === 'number') {
+    try {
+      const arId = rows[0].attendance_record_id;
+      const { rows: ar } = await pool.query('SELECT check_in_lat, check_in_lng FROM attendance_records WHERE id=$1', [arId]);
+      if (ar[0]?.check_in_lat != null) {
+        const ci = await nearestWorkplace(ar[0].check_in_lat, ar[0].check_in_lng); // 출근 당시 근무지
+        if (ci.wpId && ci.wpLat != null && ci.wpLng != null) {
+          const d = Math.round(haversineDistanceMeters(lat, lng, ci.wpLat, ci.wpLng) * 10) / 10;
+          await pool.query(
+            `INSERT INTO outing_records (attendance_record_id, user_id, start_time, end_time, start_lat, start_lng, destination, workplace_id, distance_m)
+             VALUES ($1,$2,now(),now(),$3,$4,$5,$6,$7)`,
+            [arId, userId, lat, lng, `복귀 · ${ci.wpName}`, ci.wpId, d]
+          );
+        }
+      }
+    } catch (e: any) { console.error('[복귀 거리계산 실패]', e.message); }
+  }
   res.json({ success: true, outing: rows[0] });
 });
 
