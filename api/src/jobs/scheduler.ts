@@ -9,6 +9,10 @@ import { renderTemplate } from '../services/messageTemplates';
 function todayKST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
 }
+function yesterdayKST(): string {
+  const d = new Date(todayKST() + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 async function generateDailyRandomCheckSlots() {
   const date = todayKST();
@@ -198,43 +202,75 @@ function hhmmToMin(hhmm: string): number {
 async function sendDailyReminders() {
   if (!fcmEnabled()) return;
   const date = todayKST();
+  const y = yesterdayKST();
   try { await loadHolidayCache(); } catch { /* 캐시 유지 */ }
   const workday = isWorkday(date);
   const nowMin = nowMinutesKST();
   const WINDOW = 15; // 목표 시각 이후 15분 이내면 발송(지연·재시작 대비)
+  const inWin = (t: number) => nowMin >= t && nowMin < t + WINDOW;
 
-  // 전체 근무자(정기·비정기) + 오늘 근태/노트 상태
-  //  출근 알림은 근무일이 특정되는 정기 근무자만, 퇴근·노트 알림은 양쪽 동일 규칙으로 발송한다.
+  // 전체 근무자(정기·비정기) + 오늘/어제 근태·노트 + 승인된 연장(오늘/어제)
+  //  출근 알림은 근무일이 특정되는 정기 근무자만. 퇴근·노트 알림은 양쪽 동일 규칙이며,
+  //  승인된 연장이 있으면 그날의 '퇴근시각'을 연장 종료시각으로 간주해 알림을 맞춘다.
+  //  연장이 자정을 넘기면(종료≤시작) 연장종료는 '다음날 새벽'이므로 그날 저녁엔 안 보내고
+  //  다음날 어제 연장 세션으로 처리한다.
   const { rows } = await pool.query(
     `SELECT u.id, u.scheduled_start, u.scheduled_end, u.fcm_token, u.note_exempt,
             COALESCE(u.irregular_worker,FALSE) AS irregular_worker,
-            ar.check_in_time, ar.check_out_time, ar.leave_type,
-            COALESCE(ar.work_note_today, ar.daily_report) AS note
+            ar.check_in_time AS ci, ar.check_out_time AS co, ar.leave_type AS lt,
+            COALESCE(ar.work_note_today, ar.daily_report) AS note,
+            to_char(ot.start_time,'HH24:MI') AS ot_s, to_char(ot.end_time,'HH24:MI') AS ot_e,
+            ary.check_in_time AS ci_y, ary.check_out_time AS co_y, ary.leave_type AS lt_y,
+            COALESCE(ary.work_note_today, ary.daily_report) AS note_y,
+            to_char(oty.start_time,'HH24:MI') AS oty_s, to_char(oty.end_time,'HH24:MI') AS oty_e
      FROM users u
-     LEFT JOIN attendance_records ar ON ar.user_id=u.id AND ar.date=$1
+     LEFT JOIN attendance_records ar  ON ar.user_id=u.id  AND ar.date=$1
+     LEFT JOIN attendance_records ary ON ary.user_id=u.id AND ary.date=$2
+     LEFT JOIN overtime_requests ot  ON ot.user_id=u.id  AND ot.work_date=$1 AND ot.status='approved'
+     LEFT JOIN overtime_requests oty ON oty.user_id=u.id AND oty.work_date=$2 AND oty.status='approved'
      WHERE u.role='worker' AND u.is_active=TRUE
        AND u.fcm_token IS NOT NULL`,
-    [date]
+    [date, y]
   );
 
   for (const r of rows) {
-    if (r.leave_type === '연차') continue; // 연차일은 알림 없음
     const startMin = hhmmToMin(r.scheduled_start || '09:00');
-    const endMin = hhmmToMin(r.scheduled_end || '18:00');
-    const hasIn = !!r.check_in_time;
-    const hasOut = !!r.check_out_time;
+    const schedEnd = hhmmToMin(r.scheduled_end || '18:00');
+    const hasIn = !!r.ci;
+    const hasOut = !!r.co;
     const hasNote = !!(r.note && String(r.note).trim());
 
     const due: Array<{ type: string; title: string; body: string }> = [];
-    // 출근 5분 전 — 근무일이고 아직 출근 안 함 (근무일이 특정되는 정기 근무자만)
-    if (workday && !r.irregular_worker && !hasIn && nowMin >= startMin - 5 && nowMin < startMin - 5 + WINDOW)
+
+    // (1) 출근 5분 전 — 근무일이고 아직 출근 안 함 (정기 근무자만, 연차 제외). 연장과 무관하게 평소대로.
+    if (r.lt !== '연차' && workday && !r.irregular_worker && !hasIn && inWin(startMin - 5))
       due.push({ type: 'checkIn', title: 'TimeCard', body: '출근 체크 잊지 마세요!' });
-    // 퇴근 5분 전 — 출근했고 아직 퇴근 안 함
-    if (hasIn && !hasOut && nowMin >= endMin - 5 && nowMin < endMin - 5 + WINDOW)
-      due.push({ type: 'checkOut', title: 'TimeCard', body: '퇴근 체크 잊지 마세요!' });
-    // 노트 미작성 — 출근했고 노트 없음, 퇴근시각부터 (근무노트 제외 대상은 알림 안 보냄)
-    if (hasIn && !hasNote && !r.note_exempt && nowMin >= endMin && nowMin < endMin + WINDOW)
-      due.push({ type: 'note', title: 'TimeCard', body: '근무노트가 아직 작성되지 않았어요!' });
+
+    // (2) 오늘 세션의 퇴근·노트 — 출근했고 미퇴근. 승인 연장이 있으면 퇴근시각을 연장 종료로 간주.
+    if (r.lt !== '연차' && hasIn && !hasOut) {
+      let endMin = schedEnd;
+      let sameDay = true;
+      if (r.ot_s && r.ot_e) {
+        const otS = hhmmToMin(r.ot_s), otE = hhmmToMin(r.ot_e);
+        if (otE > otS) endMin = otE;   // 당일 연장 → 종료시각으로 알림 이동
+        else sameDay = false;          // 자정 넘김 → 오늘 저녁엔 안 보냄(다음날 (3)에서 처리)
+      }
+      if (sameDay) {
+        if (inWin(endMin - 5)) due.push({ type: 'checkOut', title: 'TimeCard', body: '퇴근 체크 잊지 마세요!' });
+        if (!hasNote && !r.note_exempt && inWin(endMin)) due.push({ type: 'note', title: 'TimeCard', body: '근무노트가 아직 작성되지 않았어요!' });
+      }
+    }
+
+    // (3) 어제 '자정 넘긴' 연장 세션의 퇴근·노트 — 오늘 새벽에 발송 (어제 출근·미퇴근).
+    if (r.lt_y !== '연차' && r.oty_s && r.oty_e && !!r.ci_y && !r.co_y) {
+      const otS = hhmmToMin(r.oty_s), otE = hhmmToMin(r.oty_e);
+      if (otE <= otS) {                // 자정 넘김
+        const endMin = otE;            // 오늘 새벽 시각(예: 00:30 → 30)
+        const hasNoteY = !!(r.note_y && String(r.note_y).trim());
+        if (endMin - 5 >= 0 && inWin(endMin - 5)) due.push({ type: 'checkOutPrev', title: 'TimeCard', body: '퇴근 체크 잊지 마세요!' });
+        if (!hasNoteY && !r.note_exempt && inWin(endMin)) due.push({ type: 'notePrev', title: 'TimeCard', body: '근무노트가 아직 작성되지 않았어요!' });
+      }
+    }
 
     for (const d of due) {
       // 이미 보냈으면 skip
