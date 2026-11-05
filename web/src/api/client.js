@@ -10,20 +10,24 @@ const getStoredUserId = () => localStorage.getItem("att_user_id");
 const setStoredUserId = (id) => id ? localStorage.setItem("att_user_id", id) : localStorage.removeItem("att_user_id");
 
 // access 토큰 만료(401) 시 저장된 refresh 토큰으로 재발급. 동시 요청이 몰려도 갱신은 한 번만.
+//  반환: "ok"(재발급 성공) | "invalid"(세션 진짜 만료 → 로그아웃) | "transient"(네트워크·서버다운 등 일시 실패 → 토큰 보존) | "no-token"
 let refreshPromise = null;
 function refreshAccessToken() {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     const userId = getStoredUserId();
     const refreshToken = getStoredRefreshToken();
-    if (!userId || !refreshToken) return false;
+    if (!userId || !refreshToken) return "no-token";
     try {
       const deviceId = await getDeviceId();
       const data = await request("/auth/auto-login",
         { method: "POST", body: { userId, deviceId, refreshToken }, auth: false, retry: false });
       setAccessToken(data.accessToken);
-      return true;
-    } catch { return false; }
+      return "ok";
+    } catch (e) {
+      // 인증 거부(401/403)만 '세션 진짜 만료'로 간주. 네트워크 오류·서버 재배포(5xx) 등은 일시 실패.
+      return (e.status === 401 || e.status === 403) ? "invalid" : "transient";
+    }
   })();
   refreshPromise.finally(() => { refreshPromise = null; });
   return refreshPromise;
@@ -38,11 +42,13 @@ async function request(path, { method = "GET", body, auth = true, retry = true }
   if (!res.ok) {
     // 토큰 만료 → 자동 재발급 후 원 요청 1회 재시도
     if (res.status === 401 && auth && retry) {
-      const ok = getStoredRefreshToken() ? await refreshAccessToken() : false;
-      if (ok) return request(path, { method, body, auth, retry: false });
-      // 재발급 실패(세션 만료·기기 등록 해제 등) → 토큰 정리 후 로그인 화면으로
-      setAccessToken(null); setStoredRefreshToken(null); setStoredUserId(null);
-      if (typeof window !== "undefined") window.location.reload();
+      const r = getStoredRefreshToken() ? await refreshAccessToken() : "no-token";
+      if (r === "ok") return request(path, { method, body, auth, retry: false });
+      // 세션이 '진짜로' 무효(401/403)이거나 토큰이 아예 없을 때만 로그아웃. 일시 실패(서버 재배포 등)면 토큰 보존하고 원 에러만 반환.
+      if (r === "invalid" || r === "no-token") {
+        setAccessToken(null); setStoredRefreshToken(null); setStoredUserId(null);
+        if (typeof window !== "undefined") window.location.reload();
+      }
     }
     const message = data?.error || data?.errors?.[0]?.msg || "요청 처리 중 오류가 발생했습니다.";
     const err = new Error(message);
@@ -70,10 +76,19 @@ export const getPublicTeams = () => request("/auth/teams", { auth: false });
 export async function tryAutoLogin({ deviceId }) {
   const userId = getStoredUserId(); const refreshToken = getStoredRefreshToken();
   if (!userId || !refreshToken) return null;
-  try {
-    const data = await request("/auth/auto-login", { method: "POST", body: { userId, deviceId, refreshToken }, auth: false });
-    setAccessToken(data.accessToken); return data.user;
-  } catch { setStoredRefreshToken(null); setStoredUserId(null); return null; }
+  // 서버 재배포 다운타임(일시 실패)을 견디도록 최대 3회 재시도.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const data = await request("/auth/auto-login", { method: "POST", body: { userId, deviceId, refreshToken }, auth: false, retry: false });
+      setAccessToken(data.accessToken); return data.user;
+    } catch (e) {
+      // 세션이 '진짜로' 무효(401/403)일 때만 저장 토큰 정리 후 로그인 화면으로.
+      if (e.status === 401 || e.status === 403) { setStoredRefreshToken(null); setStoredUserId(null); return null; }
+      // 네트워크 오류·서버 재배포(5xx) 등 일시 실패면 토큰 보존하고 잠시 후 재시도.
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  return null; // 끝까지 일시 실패: 토큰은 보존됨 → 서버 복구 후 다음 실행에서 자동로그인 유지
 }
 export function logout() { setAccessToken(null); setStoredRefreshToken(null); setStoredUserId(null); }
 export const changePassword = (newPassword) => request("/auth/change-password", { method: "POST", body: { newPassword } });
