@@ -35,6 +35,7 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
     lunchEnd: worker?.lunch_end?.slice(0, 5) || "13:00",
     noteExempt: !!worker?.note_exempt,
     irregularWorker: !!worker?.irregular_worker,
+    flexSchedule: !!worker?.flex_schedule,
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -173,27 +174,40 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
               {jobSchedules.map((j) => <option key={j.name} value={j.name}>{j.name}</option>)}
             </select>
           </Field>
-          <Field label="출근 시간" half>
-            <input style={S.input} type="time" value={form.scheduledStart} onChange={(e) => set("scheduledStart", e.target.value)} />
-          </Field>
-          <Field label="퇴근 시간" half>
-            <input style={S.input} type="time" value={form.scheduledEnd} onChange={(e) => set("scheduledEnd", e.target.value)} />
-          </Field>
-          <Field label="휴게 시작 시간" half>
-            <input style={S.input} type="time" value={form.lunchStart} onChange={(e) => set("lunchStart", e.target.value)} />
-          </Field>
-          <Field label="휴게 종료 시간" half>
-            <input style={S.input} type="time" value={form.lunchEnd} onChange={(e) => set("lunchEnd", e.target.value)} />
-          </Field>
+          {/* 유동 근무시간이면 출퇴근·휴게 시간은 근로자가 직접 등록 → 고정 입력란 숨김 */}
+          {!form.flexSchedule && (
+            <>
+              <Field label="출근 시간" half>
+                <input style={S.input} type="time" value={form.scheduledStart} onChange={(e) => set("scheduledStart", e.target.value)} />
+              </Field>
+              <Field label="퇴근 시간" half>
+                <input style={S.input} type="time" value={form.scheduledEnd} onChange={(e) => set("scheduledEnd", e.target.value)} />
+              </Field>
+              <Field label="휴게 시작 시간" half>
+                <input style={S.input} type="time" value={form.lunchStart} onChange={(e) => set("lunchStart", e.target.value)} />
+              </Field>
+              <Field label="휴게 종료 시간" half>
+                <input style={S.input} type="time" value={form.lunchEnd} onChange={(e) => set("lunchEnd", e.target.value)} />
+              </Field>
+            </>
+          )}
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.ink, cursor: "pointer" }}>
-            <input type="checkbox" checked={form.noteExempt} onChange={(e) => set("noteExempt", e.target.checked)} /> 근무노트 제외 대상
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.ink, cursor: "pointer" }}>
-            <input type="checkbox" checked={form.irregularWorker} onChange={(e) => set("irregularWorker", e.target.checked)} /> 비정기적 근로자
-          </label>
+        {/* 왼쪽: 근무노트 제외·비정기적 / 오른쪽: 유동 근무시간 (상호배타) */}
+        <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.ink, cursor: "pointer" }}>
+              <input type="checkbox" checked={form.noteExempt} onChange={(e) => set("noteExempt", e.target.checked)} /> 근무노트 제외 대상
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.ink, cursor: "pointer" }}>
+              <input type="checkbox" checked={form.irregularWorker} onChange={(e) => setForm((f) => ({ ...f, irregularWorker: e.target.checked, flexSchedule: e.target.checked ? false : f.flexSchedule }))} /> 비정기적 근로자
+            </label>
+          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.ink, cursor: "pointer" }}>
+              <input type="checkbox" checked={form.flexSchedule} onChange={(e) => setForm((f) => ({ ...f, flexSchedule: e.target.checked, irregularWorker: e.target.checked ? false : f.irregularWorker }))} /> 유동 근무시간
+            </label>
+          </div>
         </div>
 
         {err && <div style={{ ...S.err, padding: "8px 10px", background: C.sealSoft, borderRadius: 8 }}>{err}</div>}

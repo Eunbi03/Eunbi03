@@ -109,6 +109,14 @@ export const getMyOvertime = () => request("/attendance/overtime");
 export const createOvertime = (body) => request("/attendance/overtime", { method: "POST", body });
 export const updateOvertime = (id, body) => request(`/attendance/overtime/${id}`, { method: "PUT", body });
 export const deleteOvertime = (id) => request(`/attendance/overtime/${id}`, { method: "DELETE" });
+// 근무 관리 (유동 근무시간 근로자)
+export const getMySchedules = ({ from, to } = {}) => {
+  const qs = new URLSearchParams(); if (from) qs.set("from", from); if (to) qs.set("to", to);
+  return request(`/attendance/schedules${qs.toString() ? `?${qs}` : ""}`);
+};
+export const bulkCreateSchedules = (schedules) => request("/attendance/schedules", { method: "POST", body: { schedules } });
+export const updateSchedule = (id, body) => request(`/attendance/schedules/${id}`, { method: "PUT", body });
+export const deleteSchedule = (id) => request(`/attendance/schedules/${id}`, { method: "DELETE" });
 export const checkOut = (location, { workNoteIn, workNoteOut, workNoteField, workNoteToday }) => request("/attendance/check-out", {
   method: "POST", body: { lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false, workNoteIn, workNoteOut, workNoteField, workNoteToday },
 });

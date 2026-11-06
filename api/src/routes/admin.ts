@@ -410,7 +410,7 @@ router.get('/workers', async (req: Request, res: Response): Promise<void> => {
     `SELECT u.id, u.employee_id, u.corp, u.division, u.team, u.position, u.job_title, u.name, u.phone,
             u.workplace_id, w.name AS workplace_name, w.lat AS wp_lat, w.lng AS wp_lng,
             u.scheduled_start, u.scheduled_end, u.lunch_start, u.lunch_end,
-            u.remark, u.note_exempt, u.irregular_worker,
+            u.remark, u.note_exempt, u.irregular_worker, u.flex_schedule,
             u.email, u.device_id, u.is_locked, u.must_change_password, u.role, u.created_at
      FROM users u LEFT JOIN workplaces w ON u.workplace_id = w.id
      ${where}
@@ -455,7 +455,10 @@ router.post('/workers', permStaff, async (req: Request, res: Response): Promise<
   try {
     const { email, name, phone, position, corp, division, team, jobTitle, remark,
             scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
-            noteExempt, irregularWorker, mode } = req.body; // mode: undefined | 'restore' | 'new'
+            noteExempt, irregularWorker, flexSchedule, mode } = req.body; // mode: undefined | 'restore' | 'new'
+    // 유동 근무시간 ↔ 비정기적 근로자 상호배타 (유동 우선)
+    const flex = !!flexSchedule;
+    const irregular = flex ? false : !!irregularWorker;
     const phoneDigits = (phone || '').replace(/\D/g, '');
     if (!name || !phoneDigits) { res.status(400).json({ error: '이름과 전화번호는 필수입니다.' }); return; }
     // 쓰기는 읽기 범위 안에서만: 범위 밖 팀/본부/법인으로는 등록 불가(권한자는 제한 없음)
@@ -484,15 +487,15 @@ router.post('/workers', permStaff, async (req: Request, res: Response): Promise<
         const { rows } = await pool.query(
           `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
              scheduled_start=$9, scheduled_end=$10, lunch_start=$11, lunch_end=$12, workplace_id=$13,
-             note_exempt=$14, irregular_worker=$15,
+             note_exempt=$14, irregular_worker=$15, flex_schedule=$18,
              password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker', deactivated_at=NULL,
              device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL
            WHERE id=$17 RETURNING id, name`,
           [name, email || null, position || null, corp || null, division || null, team || null, jobTitle || null, remark || null,
            scheduledStart || '09:00', scheduledEnd || '18:00', lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null,
-           !!noteExempt, !!irregularWorker, passwordHash, ex.id]
+           !!noteExempt, irregular, passwordHash, ex.id, flex]
         );
-        await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, !!irregularWorker);
+        await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, irregular || flex);
         res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits, reactivated: true });
         return;
       }
@@ -510,14 +513,14 @@ router.post('/workers', permStaff, async (req: Request, res: Response): Promise<
     const { rows } = await pool.query(
       `INSERT INTO users (email, password_hash, name, phone, position,
          corp, division, team, job_title, remark, scheduled_start, scheduled_end,
-         lunch_start, lunch_end, workplace_id, note_exempt, irregular_worker)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id, name`,
+         lunch_start, lunch_end, workplace_id, note_exempt, irregular_worker, flex_schedule)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id, name`,
       [email || null, passwordHash, name, phone, position || null,
        corp || null, division || null, team || null, jobTitle || null, remark || null,
        scheduledStart || '09:00', scheduledEnd || '18:00',
-       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker]
+       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, irregular, flex]
     );
-    await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, !!irregularWorker);
+    await generateTodaySlots(rows[0].id, scheduledStart, scheduledEnd, lunchStart, lunchEnd, irregular || flex);
     await logAudit(req, '추가', '근로자', name);
     res.status(201).json({ success: true, worker: rows[0], initPassword: phoneDigits });
   } catch (e: any) {
@@ -531,13 +534,16 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
     if (!(await assertWorkerInScope(req, res, req.params.id))) return;
     const { name, phone, email, position, corp, division, team, jobTitle, remark,
             scheduledStart, scheduledEnd, lunchStart, lunchEnd, workplaceId,
-            noteExempt, irregularWorker } = req.body;
+            noteExempt, irregularWorker, flexSchedule } = req.body;
+    // 유동 근무시간 ↔ 비정기적 근로자 상호배타 (유동 우선)
+    const flex = !!flexSchedule;
+    const irregular = flex ? false : !!irregularWorker;
     // 변경 전 전체 값(비고 상세 비교용)
     const { rows: prevRows } = await pool.query(
       `SELECT u.name, u.role, u.phone, u.email, u.position, u.corp, u.division, u.team, u.job_title, u.remark,
               to_char(u.scheduled_start,'HH24:MI') ss, to_char(u.scheduled_end,'HH24:MI') se,
               to_char(u.lunch_start,'HH24:MI') ls, to_char(u.lunch_end,'HH24:MI') le,
-              u.note_exempt, u.irregular_worker, u.workplace_id, w.name AS wp_name
+              u.note_exempt, u.irregular_worker, u.flex_schedule, u.workplace_id, w.name AS wp_name
          FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [req.params.id]
     );
     const o = prevRows[0] || {};
@@ -553,11 +559,11 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
     const { rows } = await pool.query(
       `UPDATE users SET name=$1, phone=$2, email=$3, position=$4, corp=$5, division=$6, team=$7, job_title=$8,
          remark=$9, scheduled_start=$10, scheduled_end=$11, lunch_start=$12, lunch_end=$13, workplace_id=$14,
-         note_exempt=$15, irregular_worker=$16
+         note_exempt=$15, irregular_worker=$16, flex_schedule=$18
        WHERE id=$17 RETURNING id, name`,
       [name, phone || null, email || null, position || null, corp || null, division || null, team || null, jobTitle || null,
        remark || null, scheduledStart || '09:00', scheduledEnd || '18:00',
-       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, !!irregularWorker, req.params.id]
+       lunchStart || '12:00', lunchEnd || '13:00', workplaceId || null, !!noteExempt, irregular, req.params.id, flex]
     );
     if (!rows[0]) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
 
@@ -588,7 +594,8 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
     if (`${o.ss}~${o.se}` !== `${hhmm(scheduledStart)}~${hhmm(scheduledEnd)}`) parts.push(`(출퇴근)${o.ss}~${o.se}->${hhmm(scheduledStart)}~${hhmm(scheduledEnd)}`);
     if (`${o.ls}~${o.le}` !== `${hhmm(lunchStart)}~${hhmm(lunchEnd)}`) parts.push(`(휴게 시간)${o.ls}~${o.le}->${hhmm(lunchStart)}~${hhmm(lunchEnd)}`);
     if (!!o.note_exempt !== !!noteExempt) parts.push(`(근무노트 제외)${noteExempt ? 'ON' : 'OFF'}`);
-    if (!!o.irregular_worker !== !!irregularWorker) parts.push(`(비정기적 근로자)${irregularWorker ? 'ON' : 'OFF'}`);
+    if (!!o.irregular_worker !== irregular) parts.push(`(비정기적 근로자)${irregular ? 'ON' : 'OFF'}`);
+    if (!!o.flex_schedule !== flex) parts.push(`(유동 근무시간)${flex ? 'ON' : 'OFF'}`);
 
     await logAudit(req, '수정', '근로자', rows[0].name, parts.join(', ') || null);
     res.json({ success: true, worker: rows[0] });

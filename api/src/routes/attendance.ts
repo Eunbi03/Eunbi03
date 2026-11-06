@@ -631,4 +631,80 @@ router.delete('/overtime/:id', requireAuth, async (req: Request, res: Response):
   res.json({ success: true });
 });
 
+// ── 유동 근무시간: 근무 관리(근로자 본인 일정) ────────────────────────────
+// 등록·수정·삭제 허용 범위: 내일(+1) ~ +30일. 오늘·과거 불가. 유동 근무시간 대상자만.
+const FLEX_MIN_DAYS = 1, FLEX_MAX_DAYS = 30;
+async function isFlexWorker(userId: string): Promise<boolean> {
+  const { rows } = await pool.query('SELECT flex_schedule FROM users WHERE id=$1', [userId]);
+  return !!rows[0]?.flex_schedule;
+}
+
+// GET /api/attendance/schedules?from=&to= — 내 근무 일정 목록
+router.get('/schedules', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { from, to } = req.query;
+  const params: any[] = [req.user.userId];
+  let where = 'user_id=$1';
+  if (from) { params.push(from); where += ` AND work_date>=$${params.length}`; }
+  if (to)   { params.push(to);   where += ` AND work_date<=$${params.length}`; }
+  const { rows } = await pool.query(
+    `SELECT id, work_date::text AS work_date, to_char(start_time,'HH24:MI') AS start_time,
+            to_char(end_time,'HH24:MI') AS end_time
+       FROM worker_schedules WHERE ${where} ORDER BY work_date`, params);
+  res.json({ schedules: rows });
+});
+
+// POST /api/attendance/schedules — 여러 날 일괄 등록/갱신 (upsert)
+//   body: { schedules: [{ workDate, startTime, endTime }, ...] }
+router.post('/schedules', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  if (!(await isFlexWorker(req.user.userId))) { res.status(403).json({ error: '유동 근무시간 대상자만 근무 일정을 등록할 수 있습니다.' }); return; }
+  const list: any[] = Array.isArray(req.body.schedules) ? req.body.schedules : [];
+  if (!list.length) { res.status(400).json({ error: '등록할 일정이 없습니다.' }); return; }
+  let success = 0; const failed: any[] = [];
+  for (const s of list) {
+    const workDate = String(s.workDate || '');
+    const startTime = String(s.startTime || ''), endTime = String(s.endTime || '');
+    if (!OT_TIME.test(startTime) || !OT_TIME.test(endTime)) { failed.push({ workDate, reason: '시간 형식 오류' }); continue; }
+    if (endTime <= startTime) { failed.push({ workDate, reason: '퇴근 시간이 출근 시간보다 늦어야 합니다.' }); continue; }
+    const d = daysBetweenKST(workDate);
+    if (Number.isNaN(d) || d < FLEX_MIN_DAYS || d > FLEX_MAX_DAYS) { failed.push({ workDate, reason: '내일~+30일만 등록할 수 있습니다.' }); continue; }
+    try {
+      await pool.query(
+        `INSERT INTO worker_schedules (user_id, work_date, start_time, end_time)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (user_id, work_date) DO UPDATE SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, updated_at=now()`,
+        [req.user.userId, workDate, startTime, endTime]);
+      success++;
+    } catch (e: any) { failed.push({ workDate, reason: e.message }); }
+  }
+  res.status(201).json({ success, failed });
+});
+
+// PUT /api/attendance/schedules/:id — 한 건 수정
+router.put('/schedules/:id', requireAuth,
+  [body('startTime').matches(OT_TIME), body('endTime').matches(OT_TIME)],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
+    const { startTime, endTime } = req.body;
+    if (endTime <= startTime) { res.status(400).json({ error: '퇴근 시간이 출근 시간보다 늦어야 합니다.' }); return; }
+    const { rows: cur } = await pool.query('SELECT work_date::text AS work_date FROM worker_schedules WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
+    if (!cur[0]) { res.status(404).json({ error: '일정을 찾을 수 없습니다.' }); return; }
+    const d = daysBetweenKST(cur[0].work_date);
+    if (d < FLEX_MIN_DAYS || d > FLEX_MAX_DAYS) { res.status(400).json({ error: '내일~+30일 일정만 수정할 수 있습니다.' }); return; }
+    await pool.query('UPDATE worker_schedules SET start_time=$1, end_time=$2, updated_at=now() WHERE id=$3 AND user_id=$4',
+      [startTime, endTime, req.params.id, req.user.userId]);
+    res.json({ success: true });
+  }
+);
+
+// DELETE /api/attendance/schedules/:id — 한 건 삭제
+router.delete('/schedules/:id', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { rows: cur } = await pool.query('SELECT work_date::text AS work_date FROM worker_schedules WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
+  if (!cur[0]) { res.status(404).json({ error: '일정을 찾을 수 없습니다.' }); return; }
+  const d = daysBetweenKST(cur[0].work_date);
+  if (d < FLEX_MIN_DAYS || d > FLEX_MAX_DAYS) { res.status(400).json({ error: '내일~+30일 일정만 삭제할 수 있습니다.' }); return; }
+  await pool.query('DELETE FROM worker_schedules WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
+  res.json({ success: true });
+});
+
 export default router;
