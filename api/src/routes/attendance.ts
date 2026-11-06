@@ -144,9 +144,10 @@ router.post('/check-in', requireAuth,
         );
         if (slotRows.length === 0) {
           const { rows: u } = await pool.query(
-            'SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE id=$1', [userId]
+            'SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end, flex_schedule FROM users WHERE id=$1', [userId]
           );
-          if (u[0]) await generateRandomCheckSlotsForUser(u[0], date, true, true); // onlyFuture + force
+          // 유동 근무자는 등록일에만 05시 슬롯이 생성됨(미등록일 출근은 랜덤체크 없음) → 출근 시 강제 생성하지 않음
+          if (u[0] && !u[0].flex_schedule) await generateRandomCheckSlotsForUser(u[0], date, true, true); // onlyFuture + force
         }
       } catch (e: any) { console.error('[출근 시 랜덤슬롯 생성 실패]', e.message); }
     })();

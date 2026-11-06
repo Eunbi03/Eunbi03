@@ -18,20 +18,37 @@ async function generateDailyRandomCheckSlots() {
   const date = todayKST();
   // 공휴일 판정이 최신이 되도록 캐시를 다시 로드(부팅 시 실패로 비어있는 경우 방지)
   try { await loadHolidayCache(); } catch (e: any) { console.error('[랜덤체크] 공휴일 캐시 로드 실패, 생성 건너뜀:', e.message); return; }
-  // 주말·공휴일에는 아예 생성하지 않는다.
-  if (!isWorkday(date)) { console.log(`[랜덤체크] ${date} 근무일 아님 — 생성 건너뜀`); return; }
-  const { rows: users } = await pool.query(
-    "SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE role='worker' AND is_active=TRUE AND COALESCE(irregular_worker, FALSE)=FALSE"
-  );
-  let total = 0;
-  for (const user of users) {
-    try {
-      total += await generateRandomCheckSlotsForUser(user, date);
-    } catch (err: any) {
-      console.error(`[랜덤체크 생성 실패] user=${user.id}:`, err.message);
+  let total = 0, nUsers = 0;
+
+  // 정기 근무자: 평일(비공휴일)에만, 고정 출퇴근 기준. 유동 근무자는 제외.
+  if (isWorkday(date)) {
+    const { rows: users } = await pool.query(
+      "SELECT id, scheduled_start, scheduled_end, lunch_start, lunch_end FROM users WHERE role='worker' AND is_active=TRUE AND COALESCE(irregular_worker, FALSE)=FALSE AND COALESCE(flex_schedule, FALSE)=FALSE"
+    );
+    nUsers += users.length;
+    for (const user of users) {
+      try { total += await generateRandomCheckSlotsForUser(user, date); }
+      catch (err: any) { console.error(`[랜덤체크 생성 실패] user=${user.id}:`, err.message); }
     }
   }
-  console.log(`[랜덤체크] ${date} - ${users.length}명, 총 ${total}개 슬롯 생성`);
+
+  // 유동 근무자: 오늘 등록한 근무 일정이 있으면 그 시간 기준으로 생성(요일 무관, force).
+  const { rows: flexUsers } = await pool.query(
+    `SELECT u.id, to_char(ws.start_time,'HH24:MI') AS scheduled_start, to_char(ws.end_time,'HH24:MI') AS scheduled_end
+       FROM users u JOIN worker_schedules ws ON ws.user_id=u.id AND ws.work_date=$1
+      WHERE u.role='worker' AND u.is_active=TRUE AND COALESCE(u.flex_schedule, FALSE)=TRUE`, [date]
+  );
+  nUsers += flexUsers.length;
+  for (const user of flexUsers) {
+    try {
+      // 휴게 없음 → 점심 제외 창을 비움(동일 시각)
+      total += await generateRandomCheckSlotsForUser(
+        { id: user.id, scheduled_start: user.scheduled_start, scheduled_end: user.scheduled_end, lunch_start: '12:00', lunch_end: '12:00' },
+        date, false, true);
+    } catch (err: any) { console.error(`[랜덤체크 생성 실패-유동] user=${user.id}:`, err.message); }
+  }
+
+  console.log(`[랜덤체크] ${date} - ${nUsers}명, 총 ${total}개 슬롯 생성`);
 }
 
 // 한 직원의 특정 날짜 랜덤 확인 슬롯 3개를 생성한다.
@@ -166,22 +183,30 @@ async function finalizeAbsentees() {
   const date = todayKST();
   // 공휴일 판정 캐시를 다시 로드. 실패하면 결근 오처리를 막기 위해 마감을 건너뛴다(fail-safe).
   try { await loadHolidayCache(); } catch (e: any) { console.error('[결근 마감] 공휴일 캐시 로드 실패, 마감 건너뜀:', e.message); return; }
-  // 주말·공휴일에는 결근으로 처리하지 않는다.
-  if (!isWorkday(date)) {
-    console.log(`[결근 마감] ${date} — 근무일 아님(주말/공휴일), 건너뜀`);
-    return;
+
+  const markAbsent = async (userId: string) => {
+    const { rows } = await pool.query('SELECT id FROM attendance_records WHERE user_id=$1 AND date=$2', [userId, date]);
+    if (rows.length === 0) await pool.query("INSERT INTO attendance_records (user_id, date, status) VALUES ($1,$2,'결근')", [userId, date]);
+  };
+
+  // 정기 근무자(비정기·유동 제외): 평일(비공휴일)에만.
+  let nReg = 0;
+  if (isWorkday(date)) {
+    const { rows: users } = await pool.query(
+      "SELECT id FROM users WHERE role='worker' AND is_active=TRUE AND COALESCE(irregular_worker, FALSE)=FALSE AND COALESCE(flex_schedule, FALSE)=FALSE"
+    );
+    nReg = users.length;
+    for (const u of users) await markAbsent(u.id);
   }
-  // 정기 근무자만 대상. 비정기 근무자는 근무일이 특정되지 않으므로 결근 처리에서 제외한다.
-  const { rows: users } = await pool.query(
-    "SELECT id FROM users WHERE role='worker' AND is_active=TRUE AND COALESCE(irregular_worker, FALSE)=FALSE"
+
+  // 유동 근무자: 오늘 등록한 근무 일정이 있으면 그날이 근무일 → 미출근이면 결근.
+  const { rows: flexUsers } = await pool.query(
+    `SELECT u.id FROM users u JOIN worker_schedules ws ON ws.user_id=u.id AND ws.work_date=$1
+      WHERE u.role='worker' AND u.is_active=TRUE AND COALESCE(u.flex_schedule, FALSE)=TRUE`, [date]
   );
-  for (const u of users) {
-    const { rows } = await pool.query('SELECT id FROM attendance_records WHERE user_id=$1 AND date=$2', [u.id, date]);
-    if (rows.length === 0) {
-      await pool.query("INSERT INTO attendance_records (user_id, date, status) VALUES ($1,$2,'결근')", [u.id, date]);
-    }
-  }
-  console.log(`[결근 마감] ${date} 완료 (정기 근무자 ${users.length}명 대상)`);
+  for (const u of flexUsers) await markAbsent(u.id);
+
+  console.log(`[결근 마감] ${date} 완료 (정기 ${nReg}명 + 유동 ${flexUsers.length}명)`);
 }
 
 // 현재 KST 기준 자정으로부터의 분(0~1439)
@@ -217,6 +242,8 @@ async function sendDailyReminders() {
   const { rows } = await pool.query(
     `SELECT u.id, u.scheduled_start, u.scheduled_end, u.fcm_token, u.note_exempt,
             COALESCE(u.irregular_worker,FALSE) AS irregular_worker,
+            COALESCE(u.flex_schedule,FALSE) AS flex_schedule,
+            to_char(ws.start_time,'HH24:MI') AS ws_s, to_char(ws.end_time,'HH24:MI') AS ws_e,
             ar.check_in_time AS ci, ar.check_out_time AS co, ar.leave_type AS lt,
             COALESCE(ar.work_note_today, ar.daily_report) AS note,
             to_char(ot.start_time,'HH24:MI') AS ot_s, to_char(ot.end_time,'HH24:MI') AS ot_e,
@@ -224,6 +251,7 @@ async function sendDailyReminders() {
             COALESCE(ary.work_note_today, ary.daily_report) AS note_y,
             to_char(oty.start_time,'HH24:MI') AS oty_s, to_char(oty.end_time,'HH24:MI') AS oty_e
      FROM users u
+     LEFT JOIN worker_schedules ws   ON ws.user_id=u.id  AND ws.work_date=$1
      LEFT JOIN attendance_records ar  ON ar.user_id=u.id  AND ar.date=$1
      LEFT JOIN attendance_records ary ON ary.user_id=u.id AND ary.date=$2
      LEFT JOIN overtime_requests ot  ON ot.user_id=u.id  AND ot.work_date=$1 AND ot.status='approved'
@@ -234,16 +262,20 @@ async function sendDailyReminders() {
   );
 
   for (const r of rows) {
-    const startMin = hhmmToMin(r.scheduled_start || '09:00');
-    const schedEnd = hhmmToMin(r.scheduled_end || '18:00');
+    const isFlex = !!r.flex_schedule;
+    // 유동 근무자: 오늘 등록 일정 시간 기준(미등록이면 시간 없음). 그 외: 고정 출퇴근.
+    const startMin = isFlex ? (r.ws_s ? hhmmToMin(r.ws_s) : null) : hhmmToMin(r.scheduled_start || '09:00');
+    const schedEnd = isFlex ? (r.ws_e ? hhmmToMin(r.ws_e) : null) : hhmmToMin(r.scheduled_end || '18:00');
     const hasIn = !!r.ci;
     const hasOut = !!r.co;
     const hasNote = !!(r.note && String(r.note).trim());
 
     const due: Array<{ type: string; title: string; body: string }> = [];
 
-    // (1) 출근 5분 전 — 근무일이고 아직 출근 안 함 (정기 근무자만, 연차 제외). 연장과 무관하게 평소대로.
-    if (r.lt !== '연차' && workday && !r.irregular_worker && !hasIn && inWin(startMin - 5))
+    // (1) 출근 5분 전 — 아직 출근 안 함, 연차 아님.
+    //   정기: 평일이고 비정기 아님 / 유동: 오늘 등록 일정이 있을 때 (그 시각 기준)
+    const canCheckInRemind = isFlex ? !!r.ws_s : (workday && !r.irregular_worker);
+    if (r.lt !== '연차' && canCheckInRemind && !hasIn && startMin != null && inWin(startMin - 5))
       due.push({ type: 'checkIn', title: 'TimeCard', body: '출근 체크 잊지 마세요!' });
 
     // (2) 오늘 세션의 퇴근·노트 — 출근했고 미퇴근. 승인 연장이 있으면 퇴근시각을 연장 종료로 간주.
@@ -254,8 +286,10 @@ async function sendDailyReminders() {
         const otS = hhmmToMin(r.ot_s), otE = hhmmToMin(r.ot_e);
         if (otE > otS) endMin = otE;   // 당일 연장 → 종료시각으로 알림 이동
         else sameDay = false;          // 자정 넘김 → 오늘 저녁엔 안 보냄(다음날 (3)에서 처리)
+      } else if (endMin == null) {
+        sameDay = false;               // 유동 근무자가 당일 미등록 출근 → 퇴근시각 불명, 스킵
       }
-      if (sameDay) {
+      if (sameDay && endMin != null) {
         if (inWin(endMin - 5)) due.push({ type: 'checkOut', title: 'TimeCard', body: '퇴근 체크 잊지 마세요!' });
         if (!hasNote && !r.note_exempt && inWin(endMin)) due.push({ type: 'note', title: 'TimeCard', body: '근무노트가 아직 작성되지 않았어요!' });
       }
