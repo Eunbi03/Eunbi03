@@ -459,7 +459,7 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
     if (k.missingOut) missingOut++;
     if (k.missingNote) missingNote++;
     return {
-      ...base, present: true, minutesWorked: m,
+      ...base, off: false, present: true, minutesWorked: m,  // 실제 출근일은 비근무일이어도 근무로 표시
       checkInTime: r.check_in_time, checkOutTime: r.check_out_time,
       late: k.isLate, noOut: k.missingOut, noteMiss: k.missingNote,
     };

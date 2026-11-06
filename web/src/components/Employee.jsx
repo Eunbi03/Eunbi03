@@ -169,7 +169,7 @@ export default function Employee({ user, onLogout }) {
   useEffect(() => {
     if (isCheckedIn && !isCheckedOut) {
       // 출근 중: GPS 감지 시작. 퇴근을 누르지 않아도 기본 퇴근시간+2시간에 자동 종료.
-      startLocationWatch(endPlus2hMs(schedule.end));
+      startLocationWatch(endPlus2hMs(schedule.end || "18:00"));
       startIosBackgroundLocation(); // iOS 백그라운드 수집(안드로이드에서는 무시됨)
     } else if (isCheckedOut) {
       // 퇴근 버튼을 누르면 즉시 종료
@@ -189,8 +189,8 @@ export default function Employee({ user, onLogout }) {
     // ⚠️ iOS는 APNs/Firebase 연동(web/ios-native/README)이 완료돼야 서버 푸시가 옵니다.
     if (Capacitor.getPlatform() !== "web") { ensureNotifPermission(); return; }
     scheduleDailyReminders({
-      startTime: schedule.start,
-      endTime: schedule.end,
+      startTime: schedule.start || "09:00",
+      endTime: schedule.end || "18:00",
       checkedIn: isCheckedIn,
       checkedOut: isCheckedOut,
       noteWritten: !!(today?.noteToday && today.noteToday.trim()),
@@ -317,7 +317,7 @@ export default function Employee({ user, onLogout }) {
           <div>
             <div style={{ fontSize: 13, color: W.sub, fontWeight: 600, marginBottom: 14 }}>오늘 근무</div>
             <div style={{ fontSize: 16, fontWeight: 800, color: W.ink, lineHeight: 1.2 }}>{todayLabel()}</div>
-            <div style={{ fontSize: 14, color: W.sub, marginTop: 2 }}>{schedule.start} ~ {schedule.end}</div>
+            <div style={{ fontSize: 14, color: W.sub, marginTop: 2 }}>{schedule.start && schedule.end ? `${schedule.start} ~ ${schedule.end}` : (dayMeta.flexSchedule ? "근무 일정 미등록" : "")}</div>
           </div>
           <StatusBadge isCheckedIn={isCheckedIn} isCheckedOut={isCheckedOut} leaveType={today?.leaveType} />
         </div>

@@ -43,21 +43,7 @@ export default function Header({ user, onLogout }) {
   }, [user?.role]);
   const badges = headerBadges(perm);
 
-  // 근로자 화면: 왼쪽 이름 / 오른쪽 로그아웃, 배경 #333333
-  if (user?.role === "worker") {
-    return (
-      <div style={{ background: "#333333", color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) clamp(14px, 4vw, 48px) 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
-        <span style={{ fontWeight: 800, fontSize: 18, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name}</span>
-        <button
-          onClick={logout}
-          style={{ background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.55)", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 800, color: "#fff", cursor: "pointer", flexShrink: 0 }}
-        >
-          로그아웃
-        </button>
-      </div>
-    );
-  }
-
+  // 근로자 화면 헤더는 Employee가 직접 렌더(더보기 드로어). 여기서는 관리자 헤더만 담당한다.
   return (
     <div style={{ background: config.bg, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) clamp(14px, 4vw, 48px) 12px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
