@@ -115,9 +115,10 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: isAdmin ? undefined : "#f4f6f7" }}>
-      <Header user={user} onLogout={handleLogout} />
+      {/* 근로자 헤더(이름+더보기)는 Employee가 직접 렌더 → 더보기 드로어가 화면 전환 제어 */}
+      {isAdmin && <Header user={user} onLogout={handleLogout} />}
       <div style={{ padding: isAdmin ? "12px clamp(12px, 2vw, 28px)" : 0 }}>
-        {isAdmin ? <AdminApp user={user} /> : <Employee user={user} />}
+        {isAdmin ? <AdminApp user={user} /> : <Employee user={user} onLogout={handleLogout} />}
       </div>
     </div>
   );

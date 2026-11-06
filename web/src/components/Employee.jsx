@@ -7,6 +7,7 @@ import { startIosBackgroundLocation, stopIosBackgroundLocation } from "../utils/
 import MoveForm from "./MoveForm.jsx";
 import OutForm from "./OutForm.jsx";
 import OvertimeView from "./OvertimeView.jsx";
+import WorkManageView from "./WorkManageView.jsx";
 import Splash from "./Splash.jsx";
 import { scheduleDailyReminders, ensureNotifPermission } from "../utils/notify.js";
 import { Capacitor } from "@capacitor/core";
@@ -22,6 +23,31 @@ const W = {
   green: "#3E7C5A", greenBg: "#DCEBE1", noteBorder: "#c2c2c2", cellBg: "#F4F6F7",
 };
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 더보기 사이드 드로어: ㄱ~ㅎ 순 항목 + 로그아웃은 항상 맨 아래. '근무 관리'는 유동 근무자만.
+function MoreDrawer({ flex, onClose, onNavigate, onLogout }) {
+  const items = [{ label: "연장 근무", view: "overtime" }];
+  if (flex) items.push({ label: "근무 관리", view: "workmanage" });
+  items.sort((a, b) => a.label.localeCompare(b.label, "ko"));
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60 }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} onClick={onClose} />
+      <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "72%", maxWidth: 320, background: "#fff", boxShadow: "-6px 0 24px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column" }}>
+        <button onClick={onClose} aria-label="닫기" style={{ alignSelf: "flex-start", background: "none", border: "none", fontSize: 20, color: "#444", padding: "16px 18px 10px", cursor: "pointer" }}>✕</button>
+        {items.map((it) => (
+          <button key={it.view} onClick={() => onNavigate(it.view)}
+            style={{ textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #eef1f4", padding: "15px 20px", fontSize: 15, fontWeight: 700, color: "#333", cursor: "pointer" }}>
+            {it.label}
+          </button>
+        ))}
+        <button onClick={onLogout}
+          style={{ textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #eef1f4", padding: "15px 20px", fontSize: 15, fontWeight: 700, color: W.red, cursor: "pointer" }}>
+          로그아웃
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function todayLabel() {
   const ymd = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // 2026-07-07
@@ -59,7 +85,8 @@ function StatusBadge({ isCheckedIn, isCheckedOut, leaveType }) {
 const cardStyle = { background: W.card, borderRadius: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 12 };
 const ghostBtn = { width: "100%", background: W.card, border: `1px solid ${W.border}`, borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, color: W.ink, cursor: "pointer" };
 
-export default function Employee({ user }) {
+export default function Employee({ user, onLogout }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [today, setToday] = useState(null);
   const [schedule, setSchedule] = useState({ start: "09:00", end: "18:00" });
   const [weekly, setWeekly] = useState(null);
@@ -76,7 +103,7 @@ export default function Employee({ user }) {
   const [noteEditing, setNoteEditing] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
   const [showCheckoutSplash, setShowCheckoutSplash] = useState(false);
-  const [dayMeta, setDayMeta] = useState({ irregularWorker: false, isWorkday: true });
+  const [dayMeta, setDayMeta] = useState({ irregularWorker: false, isWorkday: true, flexSchedule: false });
 
   const isCheckedIn = !!today?.checkIn?.time;
   const isCheckedOut = !!today?.checkOut?.time;
@@ -109,7 +136,7 @@ export default function Employee({ user }) {
       const [t, w] = await Promise.all([api.getAttendanceToday(), api.getWeeklySummary()]);
       setToday(t.record || null);
       if (t.schedule) setSchedule(t.schedule);
-      setDayMeta({ irregularWorker: !!t.irregularWorker, isWorkday: t.isWorkday !== false });
+      setDayMeta({ irregularWorker: !!t.irregularWorker, isWorkday: t.isWorkday !== false, flexSchedule: !!t.flexSchedule });
       setWeekly(w);
       setErr("");   // 성공 시 이전 네트워크 오류 안내 제거
     } catch (e) {
@@ -238,20 +265,42 @@ export default function Employee({ user }) {
       />
     );
 
-  if (view === "overtime") return <OvertimeView onClose={() => setView("main")} />;
-  if (view === "outing") return (
+  // 근로자 앱 공통 상단바(이름 + 더보기 햄버거) + 더보기 드로어로 모든 화면을 감싼다.
+  const chrome = (node) => (
+    <div style={{ minHeight: "100vh", background: W.bg }}>
+      <div style={{ background: "#333333", color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) clamp(14px, 4vw, 48px) 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
+        <span style={{ fontWeight: 800, fontSize: 18, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name}</span>
+        <button onClick={() => setDrawerOpen(true)} aria-label="더보기" style={{ background: "none", border: "none", padding: 4, display: "flex", flexDirection: "column", gap: 5, cursor: "pointer" }}>
+          {[0, 1, 2].map((i) => <span key={i} style={{ display: "block", width: 24, height: 3, borderRadius: 2, background: "#fff" }} />)}
+        </button>
+      </div>
+      {drawerOpen && (
+        <MoreDrawer
+          flex={dayMeta.flexSchedule}
+          onClose={() => setDrawerOpen(false)}
+          onNavigate={(v) => { setDrawerOpen(false); setView(v); }}
+          onLogout={() => { setDrawerOpen(false); api.logout(); onLogout && onLogout(); }}
+        />
+      )}
+      {node}
+    </div>
+  );
+
+  if (view === "overtime") return chrome(<OvertimeView onClose={() => setView("main")} />);
+  if (view === "workmanage") return chrome(<WorkManageView onBack={() => setView("main")} />);
+  if (view === "outing") return chrome(
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
       <MoveForm onClose={() => setView("main")} onDone={() => { setView("main"); load(true); }} />
     </div>
   );
-  if (view === "out") return (
+  if (view === "out") return chrome(
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
       <OutForm workplaceName={schedule.workplaceName} checkInPlace={checkInPlaceSuggestion} initialNote={today?.noteToday || ""} outings={outings} activeOuting={activeOuting} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
     </div>
   );
-  if (view === "history") return <HistoryView onBack={() => setView("main")} />;
+  if (view === "history") return chrome(<HistoryView onBack={() => setView("main")} />);
 
-  return (
+  return chrome(
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
       {gpsBanner && !isCheckedIn && (
         <div style={{ background: W.amberBg, borderRadius: 12, padding: "12px 16px", marginBottom: 14, fontSize: 12, color: W.amber, lineHeight: 1.6 }}>
@@ -330,11 +379,6 @@ export default function Employee({ user }) {
             <button style={{ flex: activeOuting ? 1 : 2, border: "none", borderRadius: 12, padding: "13px", fontSize: 16, fontWeight: 700, background: W.ink, color: "#fff", cursor: "pointer" }} onClick={() => setView("out")}>퇴근하기</button>
           </div>
         ) : null}
-      </div>
-
-      {/* ── 연장 근무 (근무노트 작성 위) ── */}
-      <div style={{ ...cardStyle, padding: "12px 18px" }}>
-        <button style={{ width: "100%", border: `1px solid ${W.border}`, background: W.card, borderRadius: 12, padding: "13px", fontSize: 15, fontWeight: 800, color: W.ink, cursor: "pointer" }} onClick={() => setView("overtime")}>연장 근무</button>
       </div>
 
       {/* ── 근무노트 작성 (출근 후) ── */}

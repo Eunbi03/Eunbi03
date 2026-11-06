@@ -313,25 +313,36 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
   const date = await resolveActiveDate(req.user.userId); // 자정 넘긴 연장 시 어제 기록을 활성으로
   const [{ rows: attRows }, { rows: userRows }] = await Promise.all([
     pool.query(`SELECT * FROM attendance_records WHERE user_id=$1 AND date=$2`, [req.user.userId, date]),
-    pool.query(`SELECT u.scheduled_start, u.scheduled_end, u.irregular_worker, w.name AS workplace_name, w.radius_m
+    pool.query(`SELECT u.scheduled_start, u.scheduled_end, u.irregular_worker, u.flex_schedule, w.name AS workplace_name, w.radius_m
                 FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [req.user.userId]),
   ]);
 
+  const flexSchedule = !!userRows[0]?.flex_schedule;
+  // 유동 근무자: 오늘(활성일) 등록한 근무 일정이 있으면 그 시간을 사용
+  let flexToday: { start: string; end: string } | null = null;
+  if (flexSchedule) {
+    const { rows: ws } = await pool.query(
+      `SELECT to_char(start_time,'HH24:MI') AS s, to_char(end_time,'HH24:MI') AS e
+         FROM worker_schedules WHERE user_id=$1 AND work_date=$2`, [req.user.userId, date]);
+    if (ws[0]) flexToday = { start: ws[0].s, end: ws[0].e };
+  }
+
   const schedule = {
-    start: userRows[0]?.scheduled_start?.slice(0, 5) || '09:00',
-    end: userRows[0]?.scheduled_end?.slice(0, 5) || '18:00',
+    start: flexSchedule ? (flexToday?.start ?? null) : (userRows[0]?.scheduled_start?.slice(0, 5) || '09:00'),
+    end: flexSchedule ? (flexToday?.end ?? null) : (userRows[0]?.scheduled_end?.slice(0, 5) || '18:00'),
     workplaceName: userRows[0]?.workplace_name || null,
     radiusM: userRows[0]?.radius_m ?? 500,
   };
 
-  // 알림용: 비정기 근무자 여부 + 오늘이 근무일(주말·공휴일 제외)인지
+  // 알림용: 비정기 근무자 여부 + 오늘이 근무일인지
+  //  유동 근무자: 오늘 등록 일정이 있어야 근무일. 그 외: 주말·공휴일 제외 평일.
   const irregularWorker = !!userRows[0]?.irregular_worker;
   const [yy, mm, dd] = date.split('-').map(Number);
   const dow = new Date(Date.UTC(yy, mm - 1, dd, 12)).getUTCDay();
-  const isWorkday = dow !== 0 && dow !== 6 && !isHoliday(date);
+  const isWorkday = flexSchedule ? !!flexToday : (dow !== 0 && dow !== 6 && !isHoliday(date));
 
   const att = attRows[0];
-  if (!att) { res.json({ record: null, schedule, irregularWorker, isWorkday }); return; }
+  if (!att) { res.json({ record: null, schedule, irregularWorker, isWorkday, flexSchedule }); return; }
 
   const { rows: outingRows } = await pool.query(
     `SELECT id, start_time, end_time, destination, reason, start_lat, start_lng
@@ -371,7 +382,7 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
     noteField: att.work_note_field,
     noteToday: att.work_note_today,
   };
-  res.json({ record, schedule, irregularWorker, isWorkday });
+  res.json({ record, schedule, irregularWorker, isWorkday, flexSchedule });
 });
 
 // GET /api/attendance/weekly-summary

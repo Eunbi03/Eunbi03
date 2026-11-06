@@ -21,6 +21,7 @@ export default function OvertimeView({ onClose }) {
   const [msg, setMsg] = useState("");
   const [places, setPlaces] = useState([]);
   const [showList, setShowList] = useState(false);
+  const [month, setMonth] = useState(() => todayStr().slice(0, 7));
 
   const load = () => { setLoading(true); api.getMyOvertime().then((d) => setList(d.overtime || [])).catch(() => {}).finally(() => setLoading(false)); };
   useEffect(() => { load(); api.getOutingWorkplaces().then((d) => setPlaces(d.workplaces || [])).catch(() => {}); }, []);
@@ -58,15 +59,25 @@ export default function OvertimeView({ onClose }) {
   const inp = { ...S.input };
   const lab = { ...S.fieldLabel, marginTop: 10, display: "block" };
 
+  // 월 이동 + 해당 월 신청만 표시
+  const changeMonth = (delta) => { const [y, m] = month.split("-").map(Number); const d = new Date(Date.UTC(y, m - 1 + delta, 1)); setMonth(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`); };
+  const [vy, vm] = month.split("-");
+  const monthList = list.filter((o) => String(o.work_date).slice(0, 7) === month);
+
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <p style={{ ...S.formTitle, margin: 0 }}>연장 근무</p>
-        <button style={S.subGhost} onClick={onClose}>닫기</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <button style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.ink, padding: "0 4px 0 0", lineHeight: 1 }} onClick={() => (form ? setForm(null) : onClose())}>←</button>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: 0, flex: 1 }}>연장 근무</h2>
+        {!form && <button style={{ background: "none", border: "none", color: C.blue, fontSize: 28, fontWeight: 800, lineHeight: 1, cursor: "pointer", padding: "0 2px" }} aria-label="새 연장 근무 신청" onClick={openNew}>＋</button>}
       </div>
 
       {!form && (
-        <button style={{ width: "100%", border: `1px solid ${C.blue}`, background: "#fff", color: C.blue, borderRadius: 12, padding: 13, fontSize: 15, fontWeight: 800, cursor: "pointer", marginBottom: 12 }} onClick={openNew}>＋ 새 연장 근무 신청</button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 12, background: "#fff", borderRadius: 12, padding: "9px 0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: C.ink, padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(-1)}>‹</button>
+          <span style={{ fontWeight: 800, fontSize: 15, color: C.ink }}>{vy}년 {parseInt(vm, 10)}월</span>
+          <button style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: C.ink, padding: "0 8px", lineHeight: 1 }} onClick={() => changeMonth(1)}>›</button>
+        </div>
       )}
 
       {/* 신청/수정 폼 */}
@@ -111,8 +122,8 @@ export default function OvertimeView({ onClose }) {
 
       {/* 리스트 */}
       {!form && (loading ? <div style={{ textAlign: "center", color: C.inkSoft, padding: 20 }}>불러오는 중…</div>
-        : list.length === 0 ? <div style={{ textAlign: "center", color: C.inkSoft, padding: 20 }}>신청한 연장 근무가 없습니다.</div>
-        : list.map((o) => {
+        : monthList.length === 0 ? <div style={{ textAlign: "center", color: C.inkSoft, padding: 20 }}>이 달에 신청한 연장 근무가 없습니다.</div>
+        : monthList.map((o) => {
           const st = STATUS[o.status] || STATUS.pending;
           const editable = daysUntil(o.work_date) >= -2;
           return (
