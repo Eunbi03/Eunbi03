@@ -25,7 +25,7 @@ export interface BuiltReport {
 // 개별 리포트 데이터를 [from, to] 전 기간(달력용) 기준으로 산출한다.
 export async function buildIndividualReport(userId: string, from: string, to: string): Promise<BuiltReport | null> {
   const { rows: userRows } = await pool.query(
-    `SELECT u.id, u.name, u.corp, u.division, u.team, u.email, u.phone, u.note_exempt, u.irregular_worker, w.name AS wp_name
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.email, u.phone, u.note_exempt, u.irregular_worker, u.flex_schedule, w.name AS wp_name
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`, [userId]
   );
   if (!userRows[0]) return null;
@@ -33,6 +33,7 @@ export async function buildIndividualReport(userId: string, from: string, to: st
   const workplaceName: string | null = u.wp_name || null;
   const noteExempt = !!u.note_exempt;
   const irregular = !!u.irregular_worker;
+  const flex = !!u.flex_schedule;
 
   const { rows: records } = await pool.query(
     `SELECT id, date::text AS date, check_in_time, check_out_time, check_out_is_field, status, leave_type,
@@ -50,7 +51,12 @@ export async function buildIndividualReport(userId: string, from: string, to: st
   const outByRec: Record<string, any[]> = {};
   for (const o of outings) (outByRec[o.attendance_record_id] ||= []).push(o);
 
-  const workdaySet = new Set(workdaysBetween(from, to));
+  // 유동 근무자: 근무일 = 본인이 등록한 날짜
+  let workdaySet = new Set(workdaysBetween(from, to));
+  if (flex) {
+    const { rows: wsRows } = await pool.query('SELECT work_date::text AS d FROM worker_schedules WHERE user_id=$1 AND work_date>=$2 AND work_date<=$3', [userId, from, to]);
+    workdaySet = new Set(wsRows.map((x: any) => x.d));
+  }
 
   // 공휴일명 조회 (달력에 날짜 옆 표기용)
   const { rows: holRows } = await pool.query(

@@ -100,9 +100,15 @@ router.post('/check-in', requireAuth,
     );
     if (existing.rows[0]?.check_in_time) { res.status(409).json({ error: '오늘 이미 출근 처리되었습니다.' }); return; }
 
-    const { rows: userRows } = await pool.query('SELECT scheduled_start FROM users WHERE id=$1', [userId]);
-    const scheduledStart = userRows[0]?.scheduled_start?.slice(0, 5) || '09:00';
-    const status = nowHHMM() > scheduledStart ? '지각' : '정상';
+    // 지각 판정 기준 출근시각: 유동 근무자는 '오늘 등록 일정', 그 외는 고정 출근시각.
+    //   유동 근무자가 당일 미등록 출근이면 기준이 없으므로 지각 판정하지 않는다('정상').
+    const { rows: userRows } = await pool.query('SELECT scheduled_start, flex_schedule FROM users WHERE id=$1', [userId]);
+    let baseStart: string | null = userRows[0]?.scheduled_start?.slice(0, 5) || '09:00';
+    if (userRows[0]?.flex_schedule) {
+      const { rows: ws } = await pool.query("SELECT to_char(start_time,'HH24:MI') AS s FROM worker_schedules WHERE user_id=$1 AND work_date=$2", [userId, date]);
+      baseStart = ws[0]?.s ?? null;
+    }
+    const status = baseStart && nowHHMM() > baseStart ? '지각' : '정상';
 
     // 출근은 '빠르게': 위치만 저장하고 즉시 완료 응답. 거리·근무지 판정은 응답 후 비동기로 계산해
     // 관리자 화면에 반영한다. (거리 계산 전에는 distance/verified/place = NULL → '계산 중')
@@ -253,11 +259,19 @@ router.post('/check-out', requireAuth,
 
     const nOut = await nearestWorkplace(lat, lng);
 
-    const { rows: userRows } = await pool.query('SELECT scheduled_end FROM users WHERE id=$1', [userId]);
-    const scheduledEnd = record.temp_time_change_status === 'approved' && record.temp_time_change_requested_end
-      ? record.temp_time_change_requested_end.slice(0, 5)
-      : userRows[0]?.scheduled_end?.slice(0, 5) || '18:00';
-    const isEarlyLeave = nowHHMM() < scheduledEnd;
+    // 조퇴 판정 기준 퇴근시각: 유동 근무자는 '해당일 등록 일정', 그 외는 고정 퇴근시각.
+    //   유동 근무자가 미등록일 출근이면 기준이 없어 조퇴 판정하지 않는다.
+    const { rows: userRows } = await pool.query('SELECT scheduled_end, flex_schedule FROM users WHERE id=$1', [userId]);
+    let baseEnd: string | null;
+    if (userRows[0]?.flex_schedule) {
+      const { rows: ws } = await pool.query("SELECT to_char(end_time,'HH24:MI') AS e FROM worker_schedules WHERE user_id=$1 AND work_date=$2", [userId, date]);
+      baseEnd = ws[0]?.e ?? null;
+    } else {
+      baseEnd = record.temp_time_change_status === 'approved' && record.temp_time_change_requested_end
+        ? record.temp_time_change_requested_end.slice(0, 5)
+        : userRows[0]?.scheduled_end?.slice(0, 5) || '18:00';
+    }
+    const isEarlyLeave = baseEnd != null && nowHHMM() < baseEnd;
     const newStatus = isEarlyLeave ? (record.status === '지각' ? '지각조퇴' : '조퇴') : record.status;
 
     const workMinutes = Math.round((Date.now() - new Date(record.check_in_time).getTime()) / 60000);
@@ -389,8 +403,9 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
 // GET /api/attendance/weekly-summary
 router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const today = todayKST();
-  const { rows: uRows } = await pool.query('SELECT note_exempt FROM users WHERE id=$1', [req.user.userId]);
+  const { rows: uRows } = await pool.query('SELECT note_exempt, flex_schedule FROM users WHERE id=$1', [req.user.userId]);
   const noteExempt = !!uRows[0]?.note_exempt;
+  const flex = !!uRows[0]?.flex_schedule;
   const { rows } = await pool.query(
     `SELECT date::text AS date, check_in_time, check_out_time, work_minutes, status, leave_type, work_note_today, daily_report
      FROM attendance_records WHERE user_id=$1 AND date>=date_trunc('week',CURRENT_DATE AT TIME ZONE 'Asia/Seoul') AND date<=CURRENT_DATE ORDER BY date`,
@@ -399,6 +414,12 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
 
   const recByDate: Record<string, any> = {};
   for (const r of rows) recByDate[r.date] = r;
+  // 유동 근무자: 이번 주 등록 일정일을 근무일로
+  const flexSet = new Set<string>();
+  if (flex) {
+    const { rows: ws } = await pool.query("SELECT work_date::text AS d FROM worker_schedules WHERE user_id=$1 AND work_date>=date_trunc('week',CURRENT_DATE AT TIME ZONE 'Asia/Seoul') AND work_date<=CURRENT_DATE", [req.user.userId]);
+    for (const x of ws) flexSet.add(x.d);
+  }
 
   // 이번 주 일~토 (KST) 7일
   const [y, mo, dy] = today.split('-').map(Number);
@@ -417,7 +438,7 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
     const isWeekend = dow === 0 || dow === 6;
     const isFuture = date > today;
     const isToday = date === today;
-    const isWorkday = !isWeekend && !isHoliday(date);
+    const isWorkday = flex ? flexSet.has(date) : (!isWeekend && !isHoliday(date));
     const r = recByDate[date];
     const k = classifyDay(r, noteExempt);
 
@@ -450,8 +471,9 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
 // GET /api/attendance/monthly-summary
 router.get('/monthly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const today = todayKST();
-  const { rows: muRows } = await pool.query('SELECT note_exempt FROM users WHERE id=$1', [req.user.userId]);
+  const { rows: muRows } = await pool.query('SELECT note_exempt, flex_schedule FROM users WHERE id=$1', [req.user.userId]);
   const noteExempt = !!muRows[0]?.note_exempt;
+  const flex = !!muRows[0]?.flex_schedule;
   const monthStart = today.slice(0, 7) + '-01';
   const { rows } = await pool.query(
     `SELECT date::text AS date, work_minutes, status, leave_type, check_in_time, work_note_today, daily_report FROM attendance_records
@@ -461,7 +483,12 @@ router.get('/monthly-summary', requireAuth, async (req: Request, res: Response):
   const recByDate: Record<string, any> = {};
   for (const r of rows) recByDate[r.date] = r;
 
-  const workdays = workdaysBetween(monthStart, today);
+  // 근무일: 그 외=평일(공휴일 제외). 유동=이번 달 등록일(+실제 기록일) ≤ 오늘.
+  let workdays = workdaysBetween(monthStart, today);
+  if (flex) {
+    const { rows: ws } = await pool.query('SELECT work_date::text AS d FROM worker_schedules WHERE user_id=$1 AND work_date>=$2 AND work_date<=$3', [req.user.userId, monthStart, today]);
+    workdays = [...new Set([...ws.map((x: any) => x.d), ...rows.filter((r: any) => r.check_in_time || r.leave_type).map((r: any) => r.date)])].sort();
+  }
   let totalWorkMinutes = 0, lateDays = 0, earlyLeaveDays = 0, leaveDays = 0;
   let workedDays = 0, missingIn = 0, missingOut = 0, missingNote = 0;
 

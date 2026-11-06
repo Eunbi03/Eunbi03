@@ -742,11 +742,11 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   if (!userId || !from || !to) { res.status(400).json({ error: 'userId, from, to가 필요합니다.' }); return; }
 
   const workdays = workdaysBetween(from as string, to as string);
-  const workdaySet = new Set(workdays);
+  let workdaySet = new Set(workdays);
 
   // 직원 정보
   const { rows: userRows } = await pool.query(
-    `SELECT u.id, u.name, u.corp, u.division, u.team, u.job_title, u.scheduled_start, u.scheduled_end, u.note_exempt, u.irregular_worker,
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.job_title, u.scheduled_start, u.scheduled_end, u.note_exempt, u.irregular_worker, u.flex_schedule,
             w.id AS wp_id, w.name AS wp_name, w.lat AS wp_lat, w.lng AS wp_lng, w.radius_m
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id WHERE u.id=$1`,
     [userId]
@@ -757,6 +757,13 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
   if (!workerRowInScope(req, user)) { res.status(403).json({ error: '열람 권한이 없는 근로자입니다.' }); return; }
   const noteExempt = !!user.note_exempt;
   const irregular = !!user.irregular_worker;
+  // 유동 근무자: 근무일 = 본인이 등록한 날짜. (달력상 평일이 아니라 등록일 기준으로 표시·집계)
+  if (user.flex_schedule) {
+    const { rows: wsRows } = await pool.query(
+      'SELECT work_date::text AS d FROM worker_schedules WHERE user_id=$1 AND work_date>=$2 AND work_date<=$3',
+      [userId, from, to]);
+    workdaySet = new Set(wsRows.map((x: any) => x.d));
+  }
 
   // 출퇴근 기록
   const { rows: records } = await pool.query(
@@ -2226,7 +2233,7 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
   conds.push(scopeClause(req, 'u', params));
   const full = req.query.full === '1'; // 다운로드용: 페이지네이션 없이 전체 + 출퇴근지·비고 포함
   const { rows: allWorkers } = await pool.query(
-    `SELECT u.id, u.name, u.corp, u.division, u.team, u.position, u.remark, u.note_exempt, u.irregular_worker,
+    `SELECT u.id, u.name, u.corp, u.division, u.team, u.position, u.remark, u.note_exempt, u.irregular_worker, u.flex_schedule,
             w.name AS workplace_name
      FROM users u LEFT JOIN workplaces w ON u.workplace_id=w.id
      WHERE ${conds.join(' AND ')} ORDER BY u.name`, params
@@ -2246,6 +2253,16 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
       [ids, fromDate, toDate]
     );
     for (const r of recs) recByUserDate[`${r.user_id}|${r.date}`] = r;
+  }
+
+  // 유동 근무자의 등록 일정(근무일 판정용)
+  const flexSchedSet = new Set<string>();
+  const flexIds = pageWorkers.filter((w: any) => w.flex_schedule).map((w: any) => w.id);
+  if (flexIds.length) {
+    const { rows: wsRows } = await pool.query(
+      'SELECT user_id, work_date::text AS date FROM worker_schedules WHERE user_id=ANY($1) AND work_date>=$2 AND work_date<=$3',
+      [flexIds, fromDate, toDate]);
+    for (const s of wsRows) flexSchedSet.add(`${s.user_id}|${s.date}`);
   }
 
   const dowOf = (d: number) => new Date(Date.UTC(year, month - 1, d, 12)).getUTCDay(); // 0=일,6=토
@@ -2274,7 +2291,9 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
 
       // 근무일 판정: 비근무일이어도 실제 출근했거나 관리자가 무엇이든 인정(leave_type)하면 근무일로 취급
       const activated = present || !!lt;
-      const workday = w.irregular_worker ? activated : ((!isWeekend && !isHol) || activated);
+      const workday = w.flex_schedule ? (flexSchedSet.has(`${w.id}|${dateStr}`) || activated)
+        : w.irregular_worker ? activated
+        : ((!isWeekend && !isHol) || activated);
 
       if (!workday) { days.push({ off: true }); continue; }   // 근무일 아님 → '-'
       if (present) dayTotals[d]++; // 실제 출근 또는 관리자 출근인정 모두 포함
