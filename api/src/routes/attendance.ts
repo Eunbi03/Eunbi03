@@ -271,7 +271,9 @@ router.post('/check-out', requireAuth,
         ? record.temp_time_change_requested_end.slice(0, 5)
         : userRows[0]?.scheduled_end?.slice(0, 5) || '18:00';
     }
-    const isEarlyLeave = baseEnd != null && nowHHMM() < baseEnd;
+    // 자정 넘긴 연장으로 '어제' 기록에 퇴근하는 경우(새벽 퇴근)엔 조퇴로 보지 않는다.
+    const isOvernightCheckout = date !== todayKST();
+    const isEarlyLeave = !isOvernightCheckout && baseEnd != null && nowHHMM() < baseEnd;
     const newStatus = isEarlyLeave ? (record.status === '지각' ? '지각조퇴' : '조퇴') : record.status;
 
     const workMinutes = Math.round((Date.now() - new Date(record.check_in_time).getTime()) / 60000);
@@ -581,6 +583,16 @@ function daysBetweenKST(dateStr: string): number {
   return Math.round((b - a) / 86400000);
 }
 
+// 해당일의 '본래 퇴근시각'(HH:MM): 유동 근무자는 그날 등록 일정의 종료, 없으면 고정 퇴근시각.
+async function effectiveEndHHMM(userId: string, date: string): Promise<string> {
+  const { rows: u } = await pool.query('SELECT scheduled_end, flex_schedule FROM users WHERE id=$1', [userId]);
+  if (u[0]?.flex_schedule) {
+    const { rows: ws } = await pool.query("SELECT to_char(end_time,'HH24:MI') AS e FROM worker_schedules WHERE user_id=$1 AND work_date=$2", [userId, date]);
+    if (ws[0]) return ws[0].e;
+  }
+  return u[0]?.scheduled_end ? String(u[0].scheduled_end).slice(0, 5) : '18:00';
+}
+
 // GET /api/attendance/overtime — 내 연장근무 신청 목록(예정·최근)
 router.get('/overtime', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
@@ -604,9 +616,8 @@ router.post('/overtime', requireAuth,
     const d0 = daysBetweenKST(workDate);
     if (d0 < 0) { res.status(400).json({ error: '지난 날짜에는 신청할 수 없습니다.' }); return; }
     if (d0 === 0) {
-      // 당일: 본래 근무 종료시간(정규 퇴근) 전까지만 신청 가능
-      const { rows: u } = await pool.query('SELECT scheduled_end FROM users WHERE id=$1', [req.user.userId]);
-      const se = (u[0]?.scheduled_end ? String(u[0].scheduled_end).slice(0, 5) : '18:00');
+      // 당일: 본래 근무 종료시간(정규 퇴근) 전까지만 신청 가능 (유동 근무자는 그날 등록 종료 기준)
+      const se = await effectiveEndHHMM(req.user.userId, workDate);
       if (nowHHMM() >= se) { res.status(400).json({ error: '연장 근무 신청은 본래 근무시간 이내(정규 퇴근 전)에만 가능합니다.' }); return; }
     }
     // 종료<시작은 자정을 넘긴 연장(허용). 같은 시각(0시간)만 차단.
@@ -662,8 +673,7 @@ router.delete('/overtime/:id', requireAuth, async (req: Request, res: Response):
   const dd = daysBetweenKST(cur[0].work_date);
   if (dd < 0) { res.status(400).json({ error: '연장 근무일이 지나 삭제할 수 없습니다.' }); return; }
   if (dd === 0) {
-    const { rows: u } = await pool.query('SELECT scheduled_end FROM users WHERE id=$1', [req.user.userId]);
-    const se = (u[0]?.scheduled_end ? String(u[0].scheduled_end).slice(0, 5) : '18:00');
+    const se = await effectiveEndHHMM(req.user.userId, cur[0].work_date);
     if (nowHHMM() >= se) { res.status(400).json({ error: '삭제는 본래 근무시간 이내(정규 퇴근 전)에만 가능합니다.' }); return; }
   }
   await pool.query('DELETE FROM overtime_requests WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);

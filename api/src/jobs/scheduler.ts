@@ -171,7 +171,9 @@ async function autoRejectOvertime() {
           AND now() > (
             CASE WHEN (o.updated_at AT TIME ZONE 'Asia/Seoul')::date > o.work_date
               THEN ((o.work_date + INTERVAL '2 day' + TIME '23:59:59') AT TIME ZONE 'Asia/Seoul')
-              ELSE ((o.work_date + COALESCE(u.scheduled_end,'18:00'::time)) AT TIME ZONE 'Asia/Seoul')
+              ELSE ((o.work_date + COALESCE(
+                     (SELECT ws2.end_time FROM worker_schedules ws2 WHERE ws2.user_id=o.user_id AND ws2.work_date=o.work_date AND u.flex_schedule),
+                     u.scheduled_end, '18:00'::time)) AT TIME ZONE 'Asia/Seoul')
             END
           )`
     );

@@ -39,14 +39,18 @@ export default function WorkManageView({ onBack }) {
   const [editTarget, setEditTarget] = useState(null); // {id, work_date, start_time, end_time} | {work_date} (신규 불가 날 안내)
   const [msg, setMsg] = useState("");
 
+  // 보고 있는 달 전체(+등록 가능 범위 끝까지)를 불러온다 → 월 이동 시 과거/미래 등록일도 표시.
   const load = () => {
     setLoading(true);
-    const from = todayKST();
-    const toD = new Date(from + "T00:00:00Z"); toD.setUTCDate(toD.getUTCDate() + MAX_D);
-    api.getMySchedules({ from, to: toD.toISOString().slice(0, 10) })
+    const [y, m] = month.split("-").map(Number);
+    const monthStart = ymd(y, m, 1);
+    const monthEnd = `${month}-${pad(new Date(Date.UTC(y, m, 0)).getUTCDate())}`;
+    const maxD = new Date(todayKST() + "T00:00:00Z"); maxD.setUTCDate(maxD.getUTCDate() + MAX_D);
+    const to = maxD.toISOString().slice(0, 10);
+    api.getMySchedules({ from: monthStart, to: to > monthEnd ? to : monthEnd })
       .then((d) => setSchedules(d.schedules || [])).catch(() => {}).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [month]);
 
   const byDate = {};
   for (const s of schedules) byDate[s.work_date] = s;
