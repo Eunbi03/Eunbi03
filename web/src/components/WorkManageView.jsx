@@ -196,7 +196,7 @@ function AddView({ onBack, existing, onDone }) {
         {msg && <div style={{ ...S.err, marginTop: 10 }}>{msg}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
           <button style={S.subGhost} onClick={onBack} disabled={busy}>취소</button>
-          <button style={{ ...S.subPrimary, background: W.blue, opacity: busy ? 0.6 : 1 }} onClick={save} disabled={busy}>{busy ? "등록 중…" : `${sel.length || ""}건 등록`}</button>
+          <button style={{ ...S.subPrimary, background: W.blue, opacity: busy ? 0.6 : 1 }} onClick={save} disabled={busy}>{busy ? "등록 중…" : (sel.length ? `${sel.length}건 등록` : "등록")}</button>
         </div>
       </div>
 
