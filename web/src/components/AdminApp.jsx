@@ -68,7 +68,7 @@ export default function AdminApp({ user }) {
     else { setTab(key); }
   };
 
-  // 공통 필터: 설정의 조직 마스터 데이터 기반 (법인/본부·팀/직위)
+  // 공통 필터: 설정의 조직 마스터 데이터 기반 (법인/본부·팀/직급)
   const [corps, setCorps] = useState([]);          // [name]
   const [divisions, setDivisions] = useState([]);  // [{name, teams:[{name}]}]
   const [positions, setPositions] = useState([]);  // [name]
@@ -133,7 +133,7 @@ export default function AdminApp({ user }) {
         </div>
       </div>
 
-      {/* 필터: 법인 / 본부 / 팀 / 직위 */}
+      {/* 필터: 법인 / 본부 / 팀 / 직급 */}
       {showFilter && (
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
           {(() => {
@@ -153,7 +153,7 @@ export default function AdminApp({ user }) {
                   {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
                 </FilterSelect>
                 <FilterSelect isMobile={isMobile} disabled={disabled} value={filters.position} onChange={(e) => setF("position", e.target.value)}>
-                  <option value="">전체 직위</option>
+                  <option value="">전체 직급</option>
                   {positions.map((p) => <option key={p} value={p}>{p}</option>)}
                 </FilterSelect>
               </>

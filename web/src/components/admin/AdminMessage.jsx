@@ -8,7 +8,7 @@ const COL = {
   blue: "#2f6d8f", blueSoft: "#e3eef4", red: "#cb6156", white: "#ffffff",
 };
 
-// 자율 메시지 발송 — 상단 필터(법인/본부/팀/직위) + 이름검색(다중) + 문제계정만
+// 자율 메시지 발송 — 상단 필터(법인/본부/팀/직급) + 이름검색(다중) + 문제계정만
 export default function AdminMessage({ filters, currentUser }) {
   const isMobile = useIsMobile(760);
   const _perms = currentUser?.permissions || [];
