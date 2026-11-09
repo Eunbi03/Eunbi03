@@ -135,9 +135,9 @@ function WorkerModal({ worker, workplaces, positions, divisions, jobSchedules, c
           <Field label="이름 *" half>
             <input style={S.input} value={form.name} onChange={(e) => set("name", e.target.value)} />
           </Field>
-          <Field label="직책" half>
+          <Field label="직급" half>
             <select style={selStyle} value={form.position} onChange={(e) => set("position", e.target.value)}>
-              <option value="">직책 선택</option>
+              <option value="">직급 선택</option>
               {positions.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </Field>

@@ -117,6 +117,10 @@ export const getMySchedules = ({ from, to } = {}) => {
 export const bulkCreateSchedules = (schedules) => request("/attendance/schedules", { method: "POST", body: { schedules } });
 export const updateSchedule = (id, body) => request(`/attendance/schedules/${id}`, { method: "PUT", body });
 export const deleteSchedule = (id) => request(`/attendance/schedules/${id}`, { method: "DELETE" });
+// 승인자(팀장/본부장) 상태: 관리자 바로가기·대기 배지용
+export const getApproverStatus = () => request("/attendance/approver-status");
+// 관리자 화면 URL (API_BASE의 /api 를 /admin 으로)
+export const adminUrl = () => API_BASE.replace(/\/api\/?$/, "") + "/admin";
 export const checkOut = (location, { workNoteIn, workNoteOut, workNoteField, workNoteToday }) => request("/attendance/check-out", {
   method: "POST", body: { lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false, workNoteIn, workNoteOut, workNoteField, workNoteToday },
 });
@@ -198,7 +202,7 @@ export const deleteHoliday = (id) => request(`/admin/holidays/${id}`, { method: 
 export const bulkHolidays = (rows) => request("/admin/holidays/bulk", { method: "POST", body: { rows } });
 export const bulkWorkers = (rows) => request("/admin/workers/bulk", { method: "POST", body: { rows } });
 
-/* 관리자 — 조직 마스터 (법인/본부·팀/직책/근무시간) */
+/* 관리자 — 조직 마스터 (법인/본부·팀/직급/근무시간) */
 export const getCorporations = () => request("/admin/corporations");
 export const createCorporation = (name, address) => request("/admin/corporations", { method: "POST", body: { name, address } });
 export const updateCorporation = (id, data) => request(`/admin/corporations/${id}`, { method: "PUT", body: data });
@@ -216,7 +220,7 @@ export const updateMessageTemplate = (key, data) => request(`/admin/message-temp
 export const deleteTeam = (id) => request(`/admin/teams/${id}`, { method: "DELETE" });
 
 export const getPositions = () => request("/admin/positions");
-// 필터 선택지(법인/본부·팀/직책) — 본인 권한 범위로 제한(조직도 노출 방지)
+// 필터 선택지(법인/본부·팀/직급) — 본인 권한 범위로 제한(조직도 노출 방지)
 export const getFilterOptions = () => request("/admin/filter-options");
 // 연장 근무 승인 (관리자: 팀장·본부장)
 export const getOvertimeRequests = (status = "pending") => request(`/admin/overtime-requests?status=${status}`);

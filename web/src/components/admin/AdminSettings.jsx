@@ -657,7 +657,7 @@ function DivisionSection({ canEdit }) {
   );
 }
 
-/* ── 직책 관리 (여러 개 동시 추가) ────────────────────────────────────────── */
+/* ── 직급 관리 (여러 개 동시 추가) ────────────────────────────────────────── */
 function PositionSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -667,31 +667,31 @@ function PositionSection({ canEdit }) {
   useEffect(() => { load(); }, []);
   const save = async () => {
     const names = text.split(/[,\n]/).map((n) => n.trim()).filter(Boolean);
-    if (!names.length) { setMsg({ text: "직책명을 입력해주세요.", ok: false }); return; }
+    if (!names.length) { setMsg({ text: "직급명을 입력해주세요.", ok: false }); return; }
     setBusy(true); setMsg(null);
     try { await api.createPositions(names); setText(""); setAdding(false); setMsg({ text: "저장되었습니다.", ok: true }); load(); }
     catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
   };
-  const del = async (id) => { if (!window.confirm("이 직책을 삭제하시겠습니까?")) return; setBusy(true); try { await api.deletePosition(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
+  const del = async (id) => { if (!window.confirm("이 직급을 삭제하시겠습니까?")) return; setBusy(true); try { await api.deletePosition(id); load(); } catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); } };
   const edit = async (p) => {
-    const name = window.prompt("직책명 수정\n(이 직책으로 등록된 근로자도 함께 변경됩니다)", p.name);
+    const name = window.prompt("직급명 수정\n(이 직급으로 등록된 근로자도 함께 변경됩니다)", p.name);
     if (name === null) return; const nm = name.trim(); if (!nm || nm === p.name) return;
     setBusy(true); setMsg(null);
-    try { await api.updatePosition(p.id, nm); setMsg({ text: `직책명 '${p.name}' → '${nm}' 변경 완료.`, ok: true }); load(); }
+    try { await api.updatePosition(p.id, nm); setMsg({ text: `직급명 '${p.name}' → '${nm}' 변경 완료.`, ok: true }); load(); }
     catch (e) { setMsg({ text: e.message, ok: false }); } finally { setBusy(false); }
   };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>직책 관리</p>
-        {canEdit && !adding && <AddButton onClick={() => { setText(""); setAdding(true); setMsg(null); }}>+ 직책 추가</AddButton>}
+        <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>직급 관리</p>
+        {canEdit && !adding && <AddButton onClick={() => { setText(""); setAdding(true); setMsg(null); }}>+ 직급 추가</AddButton>}
       </div>
       <Msg msg={msg} />
       {adding && (
         <div style={formCardStyle}>
-          <p style={formTitleStyle}>새 직책 추가</p>
-          <label style={labelStyle}>직책명 (쉼표 또는 줄바꿈으로 여러 개)</label>
+          <p style={formTitleStyle}>새 직급 추가</p>
+          <label style={labelStyle}>직급명 (쉼표 또는 줄바꿈으로 여러 개)</label>
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3}
             placeholder="예: 사원, 선임, 책임, 수석"
             style={{ width: "100%", boxSizing: "border-box", borderRadius: 8, background: COL.white, padding: "10px 12px", fontSize: 14, color: COL.black, border: `1px solid ${COL.black}`, outline: "none", resize: "vertical" }} />
@@ -701,14 +701,14 @@ function PositionSection({ canEdit }) {
           </div>
         </div>
       )}
-      {loading ? <div style={S.empty}>불러오는 중…</div> : !list.length && !adding ? <div style={S.empty}>등록된 직책이 없습니다.</div> : (
+      {loading ? <div style={S.empty}>불러오는 중…</div> : !list.length && !adding ? <div style={S.empty}>등록된 직급이 없습니다.</div> : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {list.map((p) => (
             <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 999, padding: "7px 12px 7px 14px", fontSize: 14, color: C.ink, fontWeight: 700 }}>
               {canEdit
-                ? <span onClick={() => edit(p)} title="클릭하여 직책명 수정" style={{ cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted" }}>{p.name}</span>
+                ? <span onClick={() => edit(p)} title="클릭하여 직급명 수정" style={{ cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted" }}>{p.name}</span>
                 : p.name}
-              {canEdit && <button onClick={() => del(p.id)} disabled={busy} aria-label="직책 삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>}
+              {canEdit && <button onClick={() => del(p.id)} disabled={busy} aria-label="직급 삭제" style={{ border: "none", background: "transparent", color: COL.red, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>}
             </span>
           ))}
         </div>
@@ -892,7 +892,7 @@ const CATEGORIES = [
   { key: "jobSchedule", label: "근무시간 및 직무 관리" },
   { key: "corporation", label: "법인 관리" },
   { key: "division", label: "본부 및 팀 관리" },
-  { key: "position", label: "직책 관리" },
+  { key: "position", label: "직급 관리" },
   { key: "holiday", label: "공휴일 관리" },
   { key: "message", label: "발송 메시지 관리" },
 ];

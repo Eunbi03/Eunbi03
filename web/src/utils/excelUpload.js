@@ -49,7 +49,7 @@ export async function readWorkplaceSheet(file) {
   return extract(ws, 3, ["clientName", "branchName", "radiusM", "address", "detailAddress"]);
 }
 
-// 직원 관리 시트: 이름 → 직책 → 전화번호 → 이메일 → 근무지 → 비고 → 법인 → 본부 → 팀 → 직무 → 근무노트 제외 대상 → 비정기적 근로자
+// 직원 관리 시트: 이름 → 직급 → 전화번호 → 이메일 → 근무지 → 비고 → 법인 → 본부 → 팀 → 직무 → 근무노트 제외 대상 → 비정기적 근로자
 export async function readWorkerSheet(file) {
   const ws = await loadSheet(file, "직원 관리");
   const rows = extract(ws, 3, [

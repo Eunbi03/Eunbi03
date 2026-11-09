@@ -10,6 +10,7 @@ import { buildIndividualReport } from '../services/reportBuilder';
 import { sendReportLink, sendAdminDeviceInvite, sendFreeMessage } from '../services/reportSender';
 import { invalidateTemplateCache } from '../services/messageTemplates';
 import { VALID_PERMS, VALID_ROLES, normalizePerms, normalizeRoles } from '../utils/permissions';
+import { buildApplicantLevelMap, levelOf, canApproveFor } from '../utils/overtimeApproval';
 import { haversineDistanceMeters } from '../utils/geo';
 import multer from 'multer';
 
@@ -582,7 +583,7 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
       else parts.push(`(${label})${a}->${b}`);        // 수정
     };
     chg('이름', o.name, name);
-    chg('직책', o.position, position);
+    chg('직급', o.position, position);
     if (fmtPhoneLog(o.phone) !== fmtPhoneLog(phone)) chg('전화번호', fmtPhoneLog(o.phone), fmtPhoneLog(phone));
     chg('이메일', o.email, email);
     chg('근무지', o.wp_name, newWpName);
@@ -1184,43 +1185,13 @@ function canApproveOvertime(req: Request): boolean {
   return roles.includes('director') || roles.includes('teamlead');
 }
 
-// 신청자(근로자) 매칭 레벨 맵: 이름(공백무시)+본인휴대(숫자만) → 'director'|'teamlead'
-async function buildApplicantLevelMap(): Promise<Record<string, 'director' | 'teamlead'>> {
-  const { rows } = await pool.query(
-    `SELECT device_name, personal_phone, roles FROM admin_devices
-      WHERE device_name IS NOT NULL AND device_name<>'' AND personal_phone IS NOT NULL AND personal_phone<>''
-        AND roles && ARRAY['director','teamlead']::text[]`
-  );
-  const norm = (s: any) => String(s || '').replace(/\s/g, '');
-  const digits = (s: any) => String(s || '').replace(/\D/g, '');
-  const map: Record<string, 'director' | 'teamlead'> = {};
-  for (const m of rows) {
-    const roles: string[] = m.roles || [];
-    const key = `${norm(m.device_name)}|${digits(m.personal_phone)}`;
-    const lvl = roles.includes('director') ? 'director' : 'teamlead';
-    // director 우선
-    if (map[key] !== 'director') map[key] = lvl;
-  }
-  return map;
-}
-// 신청자 레벨 판정(매칭 없으면 worker)
-function levelOf(map: Record<string, 'director' | 'teamlead'>, worker: any): 'director' | 'teamlead' | 'worker' {
-  const norm = (s: any) => String(s || '').replace(/\s/g, '');
-  const digits = (s: any) => String(s || '').replace(/\D/g, '');
-  return map[`${norm(worker.worker_name ?? worker.name)}|${digits(worker.phone)}`] || 'worker';
-}
-// 이 승인자가 해당 신청(신청자 레벨+소속)을 승인할 수 있는가
-//  - 일반 근로자 신청 → 팀장(담당 팀 일치)
-//  - 팀장 신청 → 본부장(담당 본부 일치)
+// 승인 라우팅 공통 로직은 utils/overtimeApproval 에서 가져온다(근로자 앱 배지·알림과 동일 기준).
 function canApproveThis(req: Request, lvl: 'director' | 'teamlead' | 'worker', worker: any): boolean {
   const ad = (req as any).adminDevice; if (!ad) return false;
-  if (ad.isAuthority) return true; // 권한자는 전체 신청 승인 가능
-  const roles: string[] = ad.roles || [];
-  const teams: string[] = ad.scopeTeams || [];
-  const divs: string[] = ad.scopeDivisions || [];
-  if (lvl === 'worker') return roles.includes('teamlead') && !!worker.team && teams.includes(worker.team);
-  if (lvl === 'teamlead') return roles.includes('director') && !!worker.division && divs.includes(worker.division);
-  return false; // director 신청은 자동승인(승인 대상 아님)
+  return canApproveFor(
+    { isAuthority: ad.isAuthority, roles: ad.roles || [], teams: ad.scopeTeams || [], divs: ad.scopeDivisions || [] },
+    lvl, worker
+  );
 }
 
 // GET /admin/overtime-requests?status=pending|all — 승인 라우팅에 맞는 신청만
@@ -1866,13 +1837,13 @@ router.delete('/teams/:id', requireAdmin, permSettings, async (req: Request, res
   res.json({ success: true });
 });
 
-// ── 조직 마스터: 직책 ────────────────────────────────────────────────────────
+// ── 조직 마스터: 직급 ────────────────────────────────────────────────────────
 router.get('/positions', async (_req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query('SELECT id, name FROM positions ORDER BY name');
   res.json({ positions: rows });
 });
 
-// 필터(법인/본부·팀/직책) 선택지 — 본인 권한 범위로 제한해 조직도 노출을 막는다.
+// 필터(법인/본부·팀/직급) 선택지 — 본인 권한 범위로 제한해 조직도 노출을 막는다.
 //  권한자: 전체 마스터. 그 외: 내가 볼 수 있는 근로자에 실제로 존재하는 값만.
 router.get('/filter-options', async (req: Request, res: Response): Promise<void> => {
   if (getScope(req).all) {
@@ -1919,7 +1890,7 @@ router.get('/filter-options', async (req: Request, res: Response): Promise<void>
 router.post('/positions', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   const names: string[] = Array.isArray(req.body.names) ? req.body.names : (req.body.name ? [req.body.name] : []);
   const clean = names.map((n) => (n || '').trim()).filter(Boolean);
-  if (clean.length === 0) { res.status(400).json({ error: '직책명은 필수입니다.' }); return; }
+  if (clean.length === 0) { res.status(400).json({ error: '직급명은 필수입니다.' }); return; }
   const added: any[] = [];
   for (const n of clean) {
     const { rows } = await pool.query(
@@ -1927,25 +1898,25 @@ router.post('/positions', requireAdmin, permSettings, async (req: Request, res: 
     );
     if (rows[0]) added.push(rows[0]);
   }
-  await logAudit(req, '추가', '직책', added.map((p: any) => p.name).join(', '));
+  await logAudit(req, '추가', '직급', added.map((p: any) => p.name).join(', '));
   res.status(201).json({ positions: added });
 });
 router.put('/positions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
   const { name } = req.body;
-  if (!name || !name.trim()) { res.status(400).json({ error: '직책명은 필수입니다.' }); return; }
+  if (!name || !name.trim()) { res.status(400).json({ error: '직급명은 필수입니다.' }); return; }
   const newName = name.trim();
   const { rows: cur } = await pool.query('SELECT name FROM positions WHERE id=$1', [req.params.id]);
-  if (!cur[0]) { res.status(404).json({ error: '직책을 찾을 수 없습니다.' }); return; }
+  if (!cur[0]) { res.status(404).json({ error: '직급을 찾을 수 없습니다.' }); return; }
   const oldName = cur[0].name;
   try {
     await pool.query('UPDATE positions SET name=$1 WHERE id=$2', [newName, req.params.id]);
-  } catch (e: any) { if (e.code === '23505') { res.status(400).json({ error: '이미 등록된 직책명입니다.' }); return; } throw e; }
+  } catch (e: any) { if (e.code === '23505') { res.status(400).json({ error: '이미 등록된 직급명입니다.' }); return; } throw e; }
   if (oldName !== newName) await pool.query('UPDATE users SET position=$1 WHERE position=$2', [newName, oldName]);
-  await logAudit(req, '수정', '직책', newName, oldName !== newName ? `(직책명)${oldName}->${newName}` : null);
+  await logAudit(req, '수정', '직급', newName, oldName !== newName ? `(직급명)${oldName}->${newName}` : null);
   res.json({ success: true });
 });
 router.delete('/positions/:id', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
-  { const { rows: r } = await pool.query('DELETE FROM positions WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '직책', r[0]?.name); }
+  { const { rows: r } = await pool.query('DELETE FROM positions WHERE id=$1 RETURNING name', [req.params.id]); await logAudit(req, '삭제', '직급', r[0]?.name); }
   res.json({ success: true });
 });
 

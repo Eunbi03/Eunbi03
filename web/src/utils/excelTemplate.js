@@ -73,7 +73,7 @@ const todayStr = () => { const d = new Date(); return `${d.getFullYear()}${pad(d
 export async function downloadWorkerTemplate(workers = []) {
   const columns = [
     { header: "이름", width: 10 },
-    { header: "직책", width: 10 },
+    { header: "직급", width: 10 },
     { header: "전화번호", width: 15, numFmt: "@" },
     { header: "이메일", width: 22 },
     { header: "근무지", width: 18 },

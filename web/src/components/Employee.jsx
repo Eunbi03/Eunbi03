@@ -25,19 +25,23 @@ const W = {
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
 // 더보기 사이드 드로어: ㄱ~ㅎ 순 항목 + 로그아웃은 항상 맨 아래. '근무 관리'는 유동 근무자만.
-function MoreDrawer({ flex, onClose, onNavigate, onLogout }) {
+function MoreDrawer({ flex, approver, onClose, onNavigate, onAdmin, onLogout }) {
   const items = [{ label: "연장 근무", view: "overtime" }];
   if (flex) items.push({ label: "근무 관리", view: "workmanage" });
+  // 팀장·본부장: '관리자 화면' 바로가기(승인 대기 배지)
+  if (approver?.isApprover) items.push({ label: "관리자 화면", admin: true, badge: approver.pendingCount || 0 });
   items.sort((a, b) => a.label.localeCompare(b.label, "ko"));
+  const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #eef1f4", padding: "15px 20px", fontSize: 15, fontWeight: 700, color: "#333", cursor: "pointer" };
+  const Badge = ({ n }) => <span style={{ minWidth: 20, height: 20, borderRadius: 10, background: W.red, color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 6px" }}>{n}</span>;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60 }}>
       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} onClick={onClose} />
       <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "72%", maxWidth: 320, background: "#fff", boxShadow: "-6px 0 24px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column" }}>
         <button onClick={onClose} aria-label="닫기" style={{ alignSelf: "flex-start", background: "none", border: "none", fontSize: 20, color: "#444", padding: "16px 18px 10px", cursor: "pointer" }}>✕</button>
         {items.map((it) => (
-          <button key={it.view} onClick={() => onNavigate(it.view)}
-            style={{ textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #eef1f4", padding: "15px 20px", fontSize: 15, fontWeight: 700, color: "#333", cursor: "pointer" }}>
-            {it.label}
+          <button key={it.view || "admin"} onClick={() => (it.admin ? onAdmin() : onNavigate(it.view))} style={rowStyle}>
+            <span>{it.label}</span>
+            {it.admin && it.badge > 0 && <Badge n={it.badge} />}
           </button>
         ))}
         <button onClick={onLogout}
@@ -87,6 +91,7 @@ const ghostBtn = { width: "100%", background: W.card, border: `1px solid ${W.bor
 
 export default function Employee({ user, onLogout }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [approver, setApprover] = useState({ isApprover: false, pendingCount: 0 });
   const [today, setToday] = useState(null);
   const [schedule, setSchedule] = useState({ start: "09:00", end: "18:00" });
   const [weekly, setWeekly] = useState(null);
@@ -138,6 +143,7 @@ export default function Employee({ user, onLogout }) {
       if (t.schedule) setSchedule(t.schedule);
       setDayMeta({ irregularWorker: !!t.irregularWorker, isWorkday: t.isWorkday !== false, flexSchedule: !!t.flexSchedule });
       setWeekly(w);
+      api.getApproverStatus().then((s) => setApprover({ isApprover: !!s.isApprover, pendingCount: s.pendingCount || 0 })).catch(() => {});
       setErr("");   // 성공 시 이전 네트워크 오류 안내 제거
     } catch (e) {
       // 백그라운드 자동 새로고침(silent)·폴링 실패는 사용자에게 표시하지 않는다
@@ -270,15 +276,20 @@ export default function Employee({ user, onLogout }) {
     <div style={{ minHeight: "100vh", background: W.bg }}>
       <div style={{ background: "#333333", color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) clamp(14px, 4vw, 48px) 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 50 }}>
         <span style={{ fontWeight: 800, fontSize: 18, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name}</span>
-        <button onClick={() => setDrawerOpen(true)} aria-label="더보기" style={{ background: "none", border: "none", padding: 4, display: "flex", flexDirection: "column", gap: 5, cursor: "pointer" }}>
+        <button onClick={() => setDrawerOpen(true)} aria-label="더보기" style={{ position: "relative", background: "none", border: "none", padding: 4, display: "flex", flexDirection: "column", gap: 5, cursor: "pointer" }}>
           {[0, 1, 2].map((i) => <span key={i} style={{ display: "block", width: 24, height: 3, borderRadius: 2, background: "#fff" }} />)}
+          {approver.isApprover && approver.pendingCount > 0 && (
+            <span style={{ position: "absolute", top: -6, right: -8, minWidth: 17, height: 17, borderRadius: 9, background: W.red, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{approver.pendingCount}</span>
+          )}
         </button>
       </div>
       {drawerOpen && (
         <MoreDrawer
           flex={dayMeta.flexSchedule}
+          approver={approver}
           onClose={() => setDrawerOpen(false)}
           onNavigate={(v) => { setDrawerOpen(false); setView(v); }}
+          onAdmin={() => { setDrawerOpen(false); try { window.open(api.adminUrl(), "_system"); } catch { window.open(api.adminUrl(), "_blank"); } }}
           onLogout={() => { setDrawerOpen(false); api.logout(); onLogout && onLogout(); }}
         />
       )}

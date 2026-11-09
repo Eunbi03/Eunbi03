@@ -7,6 +7,8 @@ import { requireAuth } from '../middleware/auth';
 import { workdaysBetween, isHoliday } from '../utils/holidays';
 import { classifyDay } from '../utils/attendanceKpi';
 import { generateRandomCheckSlotsForUser } from '../jobs/scheduler';
+import { sendNotification, fcmEnabled } from '../services/fcm';
+import { buildApplicantLevelMap, levelOf, canApproveFor, getApproverProfileByUser } from '../utils/overtimeApproval';
 
 const router = Router();
 const GPS_MAX_ACCURACY_M = parseFloat(process.env.GPS_MAX_ACCURACY_M || '500');
@@ -593,6 +595,49 @@ async function effectiveEndHHMM(userId: string, date: string): Promise<string> {
   return u[0]?.scheduled_end ? String(u[0].scheduled_end).slice(0, 5) : '18:00';
 }
 
+// 연장근무 신청(대기) 발생 시 담당 승인자(팀장/본부장)의 근로자앱으로 푸시.
+//  일반 근로자 신청 → 담당 팀의 팀장 / 팀장 신청 → 담당 본부의 본부장. 본부장 신청(자동승인)은 알림 없음.
+async function notifyOvertimeApprovers(userId: string): Promise<void> {
+  if (!fcmEnabled()) return;
+  try {
+    const { rows: a } = await pool.query('SELECT name, team, division FROM users WHERE id=$1', [userId]);
+    if (!a[0]) return;
+    const lvl = await applicantLevel(userId);
+    if (lvl === 'director') return; // 자동승인 → 알림 대상 아님
+    const targetRole = lvl === 'worker' ? 'teamlead' : 'director';
+    const scopeCol = lvl === 'worker' ? 'scope_teams' : 'scope_divisions';
+    const scopeVal = lvl === 'worker' ? a[0].team : a[0].division;
+    if (!scopeVal) return;
+    // 담당 승인자 admin_device ↔ 그 사람의 근로자 계정(이름+본인휴대) → fcm_token
+    const { rows } = await pool.query(
+      `SELECT DISTINCT uu.fcm_token
+         FROM admin_devices ad
+         JOIN users uu ON replace(uu.name,' ','')=replace(ad.device_name,' ','')
+                      AND regexp_replace(uu.phone,'\\D','','g')=regexp_replace(COALESCE(ad.personal_phone,''),'\\D','','g')
+        WHERE $1 = ANY(ad.roles) AND $2 = ANY(ad.${scopeCol})
+          AND uu.is_active=TRUE AND uu.fcm_token IS NOT NULL`,
+      [targetRole, scopeVal]
+    );
+    const msg = `${a[0].name}님이 연장 근무 신청 승인을 기다리고 있습니다.`;
+    for (const r of rows) await sendNotification(r.fcm_token, 'TimeCard', msg);
+  } catch (e: any) { console.error('[연장 승인 알림 실패]', e.message); }
+}
+
+// GET /api/attendance/approver-status — 내가 승인자(팀장/본부장)인지 + 승인 대기 건수
+router.get('/approver-status', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const prof = await getApproverProfileByUser(req.user.userId);
+  if (!prof.isApprover) { res.json({ isApprover: false, pendingCount: 0 }); return; }
+  const { rows } = await pool.query(
+    `SELECT u.name AS worker_name, u.phone, u.team, u.division
+       FROM overtime_requests o JOIN users u ON u.id=o.user_id
+      WHERE o.status='pending' AND u.is_active=TRUE`
+  );
+  const map = await buildApplicantLevelMap();
+  let pendingCount = 0;
+  for (const r of rows) if (canApproveFor(prof, levelOf(map, r), r)) pendingCount++;
+  res.json({ isApprover: true, pendingCount });
+});
+
 // GET /api/attendance/overtime — 내 연장근무 신청 목록(예정·최근)
 router.get('/overtime', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { rows } = await pool.query(
@@ -632,6 +677,7 @@ router.post('/overtime', requireAuth,
         [req.user.userId, workDate, startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim(),
          autoApprove ? 'approved' : 'pending', autoApprove ? '자동 승인' : null, autoApprove ? new Date() : null]
       );
+      if (!autoApprove) void notifyOvertimeApprovers(req.user.userId); // 담당 팀장/본부장에게 승인 대기 알림
       res.status(201).json({ success: true, id: rows[0].id, autoApproved: autoApprove });
     } catch (e: any) {
       if (e.code === '23505') { res.status(409).json({ error: '해당 날짜에 이미 연장 근무 신청이 있습니다.' }); return; }
@@ -662,6 +708,7 @@ router.put('/overtime/:id', requireAuth,
       [startTime, endTime, String(place).trim(), workplaceId || null, String(purpose).trim(), req.params.id, req.user.userId,
        autoApprove ? 'approved' : 'pending', autoApprove ? '자동 승인' : null, autoApprove ? new Date() : null]
     );
+    if (!autoApprove) void notifyOvertimeApprovers(req.user.userId); // 수정 재승인 → 담당 승인자 알림
     res.json({ success: true });
   }
 );
