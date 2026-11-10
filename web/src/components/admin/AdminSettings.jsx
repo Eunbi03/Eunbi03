@@ -91,6 +91,7 @@ function WorkplaceSection({ canEdit }) {
   const [delMode, setDelMode] = useState(null);  // 지점 삭제모드인 거래처명
   const [sel, setSel] = useState({});            // 선택된 지점 id
   const [query, setQuery] = useState("");        // 근무지 검색어
+  const [branchSearch, setBranchSearch] = useState(null); // 지점 자동검색 모달 { client, locked }
 
   const load = () => { setLoading(true); api.getWorkplaces().then((d) => setList(d.workplaces || [])).catch(() => {}).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
@@ -327,6 +328,8 @@ function WorkplaceSection({ canEdit }) {
               style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>양식 다운로드</button>
             <button onClick={() => fileRef.current?.click()} disabled={busy}
               style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>엑셀 업로드</button>
+            <button onClick={() => setBranchSearch({ client: "", locked: false })} title="거래처명으로 전국 지점을 검색해 일괄 등록"
+              style={{ border: "none", background: COL.blue, color: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>지점 검색</button>
             <AddButton onClick={openRowAdd}>+ 근무지 추가</AddButton>
           </div>
         )}
@@ -357,7 +360,8 @@ function WorkplaceSection({ canEdit }) {
             <div key={g.clientName}>
               <CardRow>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{g.clientName} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {g.radius_m}m</span></p>
+                  <p style={{ fontWeight: 700, fontSize: 15, color: C.ink, margin: "0 0 3px" }}>{g.clientName} <span style={{ fontSize: 12, color: COL.gray, fontWeight: 400 }}>반경 {g.radius_m}m</span>
+                    {canEdit && <span onClick={(e) => { e.stopPropagation(); setBranchSearch({ client: g.clientName, locked: true }); }} style={{ marginLeft: 8, fontSize: 12.5, color: COL.blue, textDecoration: "underline", cursor: "pointer" }}>점검하기</span>}</p>
                   <p style={{ fontSize: 13, color: COL.gray, margin: 0 }}>{[wp.address, wp.detail_address].filter(Boolean).join(" ") || `위도 ${wp.lat} · 경도 ${wp.lng}`}</p>
                 </div>
                 {canEdit && <RowAddButton onClick={() => openBranchAdd(g)} />}
@@ -376,7 +380,8 @@ function WorkplaceSection({ canEdit }) {
               onClick={() => { setOpenClient(open ? null : g.clientName); setDelMode(null); setSel({}); }}>
               <span style={{ color: COL.blue, fontSize: 12, transform: open ? "rotate(90deg)" : "none", transition: ".15s" }}>▶</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: "0 0 2px" }}>{g.clientName} <span style={{ fontSize: 11, fontWeight: 800, color: COL.blue, background: COL.blueSoft || "#e3eef4", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>반경 {g.radius_m}m</span></p>
+                <p style={{ fontWeight: 800, fontSize: 15, color: C.ink, margin: "0 0 2px" }}>{g.clientName} <span style={{ fontSize: 11, fontWeight: 800, color: COL.blue, background: COL.blueSoft || "#e3eef4", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>반경 {g.radius_m}m</span>
+                  {canEdit && <span onClick={(e) => { e.stopPropagation(); setBranchSearch({ client: g.clientName, locked: true }); }} style={{ marginLeft: 8, fontSize: 12.5, color: COL.blue, textDecoration: "underline", cursor: "pointer", fontWeight: 400 }}>점검하기</span>}</p>
                 <p style={{ fontSize: 12.5, color: COL.gray, margin: 0 }}>{q ? `${vb.length}개 점 검색됨` : `${g.branches.length}개 점`}</p>
               </div>
               {canEdit && (
@@ -416,6 +421,143 @@ function WorkplaceSection({ canEdit }) {
           </div>
         );
       })}
+
+      {branchSearch && (
+        <BranchSearchModal
+          initialClient={branchSearch.client}
+          lockClient={branchSearch.locked}
+          onClose={() => setBranchSearch(null)}
+          onDone={() => { setBranchSearch(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── 거래처 지점 자동검색/점검 모달 ─────────────────────────────────────────── */
+function BranchSearchModal({ initialClient, lockClient, onClose, onDone }) {
+  const [client, setClient] = useState(initialClient || "");
+  const [branches, setBranches] = useState(null); // null=검색 전
+  const [loading, setLoading] = useState(false);
+  const [sel, setSel] = useState({});              // {index: true} — 신규만 선택 가능
+  const [radius, setRadius] = useState(300);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [confirmSimilar, setConfirmSimilar] = useState(null); // 유사 거래처명 배열
+
+  const doSearch = async (c) => {
+    const name = (c ?? client).trim();
+    if (!name) { setMsg({ text: "거래처명을 입력하세요.", ok: false }); return; }
+    setLoading(true); setMsg(null); setBranches(null); setSel({});
+    try {
+      const d = await api.searchBranches(name);
+      setBranches(d.branches || []);
+      // 신규 지점은 기본 선택
+      const s = {}; (d.branches || []).forEach((b, i) => { if (!b.registered) s[i] = true; });
+      setSel(s);
+      if (!(d.branches || []).length) setMsg({ text: "검색된 지점이 없습니다. (거래처명을 정확히 입력했는지 확인)", ok: false });
+    } catch (e) { setMsg({ text: e.message, ok: false }); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { if (initialClient) doSearch(initialClient); /* eslint-disable-next-line */ }, []);
+
+  const newRows = (branches || []).filter((b) => !b.registered);
+  const selectedIdx = Object.keys(sel).filter((k) => sel[k]).map(Number);
+  const allNewSelected = newRows.length > 0 && newRows.every((b, i) => sel[(branches || []).indexOf(b)]);
+  const toggleAll = () => {
+    if (allNewSelected) { setSel({}); return; }
+    const s = {}; (branches || []).forEach((b, i) => { if (!b.registered) s[i] = true; }); setSel(s);
+  };
+
+  const register = async (confirm = false) => {
+    const rows = selectedIdx.map((i) => branches[i]).filter((b) => b && !b.registered)
+      .map((b) => ({ branchName: b.branchName, address: b.address, lat: b.lat, lng: b.lng }));
+    if (!rows.length) { setMsg({ text: "등록할 지점을 선택하세요.", ok: false }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.addBranches({ client: client.trim(), radiusM: radius, branches: rows, confirm });
+      const okTxt = `${r.success}곳 등록 완료` + (r.failed?.length ? `, ${r.failed.length}곳 실패` : "");
+      setMsg({ text: okTxt, ok: true });
+      await doSearch(client.trim()); // 등록 후 현황 갱신
+      setBusy(false);
+      if (!r.failed?.length) setTimeout(onDone, 700);
+    } catch (e) {
+      setBusy(false);
+      if (e.status === 409 && e.payload?.needsConfirm) { setConfirmSimilar(e.payload.similarTo || []); return; }
+      setMsg({ text: e.message, ok: false });
+    }
+  };
+
+  const overlay = { position: "fixed", inset: 0, background: "rgba(30,36,48,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 };
+  const tag = (ok) => ({ fontSize: 11, fontWeight: 800, padding: "2px 9px", borderRadius: 999, background: ok ? "#dcece2" : "#ececec", color: ok ? "#3E7C5A" : "#8a94a0" });
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 560, maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "0 10px 30px rgba(0,0,0,.25)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 18px", borderBottom: `1px solid ${C.lineAdmin}` }}>
+          <span style={{ fontWeight: 800, fontSize: 17, color: C.ink }}>{lockClient ? `점검하기 — ${initialClient}` : "거래처명으로 지점 검색"}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, color: COL.gray, cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ padding: "14px 18px", overflowY: "auto" }}>
+          {!lockClient && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input value={client} onChange={(e) => setClient(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doSearch()}
+                placeholder="거래처명 (예: 이마트, 스타벅스)"
+                style={{ flex: 1, border: `1px solid ${C.lineAdmin}`, borderRadius: 9, padding: "10px 12px", fontSize: 14 }} />
+              <button onClick={() => doSearch()} disabled={loading}
+                style={{ border: "none", background: COL.blue, color: "#fff", borderRadius: 9, padding: "10px 18px", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{loading ? "검색 중…" : "지점 검색"}</button>
+            </div>
+          )}
+
+          {loading && <div style={S.empty}>전국 지점 검색 중… (몇 초 걸려요)</div>}
+
+          {branches && branches.length > 0 && (
+            <div style={{ border: `1px solid ${C.lineAdmin}`, borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: "#f6f8fa", borderBottom: `1px solid ${C.lineAdmin}`, fontSize: 13, fontWeight: 700 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={allNewSelected} onChange={toggleAll} /> 신규 전체 선택
+                </label>
+                <span style={{ color: COL.gray }}>검색 {branches.length} · 신규 {newRows.length} · 등록됨 {branches.length - newRows.length}</span>
+              </div>
+              <div style={{ maxHeight: "40vh", overflowY: "auto" }}>
+                {branches.map((b, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: `1px solid #eef1f4`, opacity: b.registered ? 0.6 : 1 }}>
+                    <input type="checkbox" disabled={b.registered} checked={b.registered || !!sel[i]} onChange={(e) => setSel((s) => ({ ...s, [i]: e.target.checked }))} />
+                    <span style={{ fontWeight: 700, fontSize: 14, minWidth: 110 }}>{b.branchName}</span>
+                    <span style={{ flex: 1, fontSize: 12.5, color: COL.gray, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.address}</span>
+                    <span style={tag(b.registered)}>{b.registered ? "등록됨" : "신규"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <Msg msg={msg} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "14px 18px", borderTop: `1px solid ${C.lineAdmin}` }}>
+          {!lockClient ? (
+            <label style={{ fontSize: 13, color: COL.gray }}>참고 반경(m) <input type="number" value={radius} onChange={(e) => setRadius(parseInt(e.target.value, 10) || 0)} style={{ width: 90, marginLeft: 6, border: `1px solid ${C.lineAdmin}`, borderRadius: 8, padding: "7px 9px", fontSize: 14 }} /></label>
+          ) : <span style={{ fontSize: 12, color: COL.gray }}>반경은 기존 거래처 값을 따릅니다</span>}
+          <button onClick={() => register(false)} disabled={busy || !selectedIdx.length}
+            style={{ border: "none", background: busy || !selectedIdx.length ? "#aeb8c2" : COL.blue, color: "#fff", borderRadius: 9, padding: "10px 20px", fontSize: 14, fontWeight: 800, cursor: busy || !selectedIdx.length ? "default" : "pointer" }}>
+            {busy ? "등록 중…" : `선택 ${selectedIdx.filter((i) => branches && !branches[i].registered).length}곳 등록`}
+          </button>
+        </div>
+      </div>
+
+      {confirmSimilar && (
+        <div style={overlay} onClick={() => setConfirmSimilar(null)}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 420, boxShadow: "0 10px 30px rgba(0,0,0,.25)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.ink }}>동일한 거래처가 존재합니다</div>
+            <div style={{ fontSize: 13, color: "#444", lineHeight: 1.6 }}>기존 거래처 <b>{confirmSimilar.join(", ")}</b> 와(과) 80% 이상 일치합니다.<br />입력한 <b>'{client}'</b> 이름 그대로 <b>별도 새 거래처</b>로 등록할까요?</div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setConfirmSimilar(null)} style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 9, padding: "9px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>취소</button>
+              <button onClick={() => { setConfirmSimilar(null); register(true); }} style={{ border: "none", background: COL.blue, color: "#fff", borderRadius: 9, padding: "9px 16px", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

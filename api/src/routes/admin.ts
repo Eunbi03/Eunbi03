@@ -380,6 +380,125 @@ router.post('/workplaces/bulk', requireAdmin, permSettings, async (req: Request,
   res.json({ success, failed });
 });
 
+// ── 거래처 지점 자동 검색(카카오 키워드) ────────────────────────────────────
+const KR_REGIONS = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
+
+// 엄격 매칭: place_name 이 정확히 [거래처명][지점명] 2덩이이고 지점명이 '점'으로 끝날 때만 지점명 반환.
+//  예 '이마트 성수점'→'성수점' / '이마트 트레이더스 월계점'(3덩이)·'이마트24 …'(불일치)·'이마트에브리데이'(불일치)→제외
+function branchNameIfMatch(client: string, placeName: string): string | null {
+  const q = String(client || '').replace(/\s+/g, '');
+  const parts = String(placeName || '').trim().split(/\s+/);
+  if (parts.length !== 2) return null;
+  if (parts[0] !== q) return null;
+  if (!parts[1].endsWith('점')) return null;
+  return parts[1];
+}
+
+async function kakaoKeyword(client: string, region: string): Promise<any[]> {
+  const key = process.env.KAKAO_REST_KEY as string;
+  const out: any[] = [];
+  for (let page = 1; page <= 3; page++) {
+    const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(client + ' ' + region)}&size=15&page=${page}`;
+    const resp = await fetch(url, { headers: { Authorization: `KakaoAK ${key}` } });
+    if (!resp.ok) break;
+    const data: any = await resp.json();
+    for (const d of (data.documents || [])) out.push(d);
+    if (data.meta?.is_end) break;
+  }
+  return out;
+}
+
+// 전국(시/도별) 키워드 검색 → 엄격 매칭·중복 제거된 지점 목록
+async function searchBranchesNationwide(client: string): Promise<Array<{ branchName: string; name: string; address: string; lat: number; lng: number }>> {
+  const all = (await Promise.all(KR_REGIONS.map((r) => kakaoKeyword(client, r).catch(() => [])))).flat();
+  const seen = new Set<string>();
+  const out: Array<{ branchName: string; name: string; address: string; lat: number; lng: number }> = [];
+  for (const d of all) {
+    if (d.id && seen.has(d.id)) continue;
+    if (d.id) seen.add(d.id);
+    const branch = branchNameIfMatch(client, d.place_name);
+    if (!branch) continue;
+    out.push({
+      branchName: branch, name: d.place_name,
+      address: d.road_address_name || d.address_name || '',
+      lat: parseFloat(d.y), lng: parseFloat(d.x),
+    });
+  }
+  out.sort((a, b) => a.branchName.localeCompare(b.branchName, 'ko'));
+  return out;
+}
+
+// GET /admin/workplaces/search-branches?client= — 거래처명으로 전국 지점 검색 + 등록여부
+router.get('/workplaces/search-branches', permSettings, async (req: Request, res: Response): Promise<void> => {
+  const client = String(req.query.client || '').trim();
+  if (!client) { res.status(400).json({ error: '거래처명을 입력해주세요.' }); return; }
+  if (!process.env.KAKAO_REST_KEY) { res.status(500).json({ error: '카카오 API 키가 설정되지 않았습니다.' }); return; }
+  try {
+    const found = await searchBranchesNationwide(client);
+    const { rows: ex } = await pool.query('SELECT name, address FROM workplaces WHERE is_active=TRUE AND client_name=$1', [client]);
+    const regNames = new Set(ex.map((r: any) => r.name));
+    const regAddr = new Set(ex.map((r: any) => r.address).filter(Boolean));
+    const branches = found.map((b) => ({ ...b, registered: regNames.has(wpFullName(client, b.branchName)) || (!!b.address && regAddr.has(b.address)) }));
+    res.json({ client, branches, total: branches.length, registered: branches.filter((b) => b.registered).length });
+  } catch (e: any) { res.status(500).json({ error: e.message || '지점 검색 중 오류가 발생했습니다.' }); }
+});
+
+// 문자열 유사도(0~1): 공백 제거·소문자 기준 레벤슈타인
+function simRatio(a: string, b: string): number {
+  const s = a.replace(/\s/g, '').toLowerCase(), t = b.replace(/\s/g, '').toLowerCase();
+  if (!s.length && !t.length) return 1;
+  const m = s.length, n = t.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (s[i - 1] === t[j - 1] ? 0 : 1));
+  return 1 - dp[m][n] / Math.max(m, n);
+}
+
+// POST /admin/workplaces/add-branches — 검색으로 고른 지점 일괄 등록(좌표 포함, 지오코딩 불필요)
+//  body: { client, radiusM?, confirm?, branches: [{ branchName, address, lat, lng }] }
+router.post('/workplaces/add-branches', requireAdmin, permSettings, async (req: Request, res: Response): Promise<void> => {
+  const client = String(req.body.client || '').trim();
+  const list: any[] = Array.isArray(req.body.branches) ? req.body.branches : [];
+  if (!client || !list.length) { res.status(400).json({ error: '거래처명과 지점을 선택해주세요.' }); return; }
+
+  // 80% 유사 거래처 경고(정확히 같은 이름이 이미 있으면 경고 안 함 — 지점 추가로 간주)
+  const { rows: clients } = await pool.query('SELECT DISTINCT client_name FROM workplaces WHERE is_active=TRUE AND client_name IS NOT NULL');
+  const names: string[] = clients.map((c: any) => c.client_name);
+  const exact = names.includes(client);
+  if (!exact && req.body.confirm !== true) {
+    const similar = names.filter((n) => n !== client && simRatio(client, n) >= 0.8);
+    if (similar.length) { res.status(409).json({ needsConfirm: true, similarTo: similar }); return; }
+  }
+
+  // 참고반경: 기존 거래처 값 → 없으면 body → 300
+  let radius = parseInt(req.body.radiusM, 10) || 0;
+  const { rows: exr } = await pool.query('SELECT radius_m FROM workplaces WHERE is_active=TRUE AND client_name=$1 LIMIT 1', [client]);
+  if (exr[0]) radius = exr[0].radius_m;
+  if (!radius) radius = 300;
+
+  let success = 0; const failed: any[] = []; const okNames: string[] = [];
+  for (const b of list) {
+    const branchName = String(b.branchName || '').trim();
+    const address = String(b.address || '').trim();
+    const lat = Number(b.lat), lng = Number(b.lng);
+    const name = wpFullName(client, branchName);
+    if (!branchName || Number.isNaN(lat) || Number.isNaN(lng)) { failed.push({ name, reason: '좌표/지점명 누락' }); continue; }
+    try {
+      const dup = await workplaceDupCheck(name, address);
+      if (dup.name || dup.address) { failed.push({ name, reason: '이미 등록됨' }); continue; }
+      await pool.query(
+        `INSERT INTO workplaces (name, client_name, branch_name, lat, lng, radius_m, address)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [name, client, branchName, lat, lng, radius, address || null]
+      );
+      success++; okNames.push(name);
+    } catch (e: any) { failed.push({ name, reason: e.message }); }
+  }
+  if (success > 0) await logAudit(req, '추가', '근무지', `지점검색 일괄 ${success}개`, `(근무지)${okNames.join(', ')} 총 ${success}개점`);
+  res.json({ success, failed });
+});
+
 // ── 직원 관리 ──────────────────────────────────────────────────
 
 router.get('/workers', async (req: Request, res: Response): Promise<void> => {

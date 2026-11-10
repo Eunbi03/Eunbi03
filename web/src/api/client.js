@@ -147,6 +147,10 @@ export const deleteWorkplaceClient = (clientName) => request("/admin/workplaces/
 export const deleteWorkplaceBranches = (ids) => request("/admin/workplaces/delete-branches", { method: "POST", body: { ids } });
 export const geocodeAddress = (address) => request(`/admin/geocode?address=${encodeURIComponent(address)}`);
 export const bulkWorkplaces = (rows) => request("/admin/workplaces/bulk", { method: "POST", body: { rows } });
+// 거래처명으로 전국 지점 검색 + 등록여부
+export const searchBranches = (client) => request(`/admin/workplaces/search-branches?client=${encodeURIComponent(client)}`);
+// 검색으로 고른 지점 일괄 등록 (좌표 포함)
+export const addBranches = (body) => request("/admin/workplaces/add-branches", { method: "POST", body });
 
 /* 관리자 — 직원 */
 export const getWorkers = (params = {}) => {
