@@ -2173,7 +2173,7 @@ router.get('/monthly-overview', async (req: Request, res: Response): Promise<voi
   const month = parseInt((req.query.month as string) || String(now.getMonth() + 1), 10); // 1-12
   const { corp, division, team, position, userIds } = req.query;
   const pageNum = Math.max(1, parseInt((req.query.page as string) || '1', 10));
-  const PER_PAGE = 10;
+  const PER_PAGE = 30;
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const mm = String(month).padStart(2, '0');
