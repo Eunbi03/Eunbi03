@@ -1092,7 +1092,7 @@ export default function AdminStaff({ filters, currentUser }) {
           )}
           {!isAdminRole && (
             <div style={{ fontSize: fsBody, color: C.inkSoft, lineHeight: 1.7 }}>
-              근무시간: {w.scheduled_start?.slice(0, 5)}~{w.scheduled_end?.slice(0, 5)}
+              근무시간: {w.flex_schedule ? "유동 근무시간" : `${w.scheduled_start?.slice(0, 5)}~${w.scheduled_end?.slice(0, 5)}`}
               {flags && ` (${flags})`}
             </div>
           )}
