@@ -199,7 +199,7 @@ router.post('/outing/start', requireAuth,
     const { rows } = await pool.query(
       `INSERT INTO outing_records (attendance_record_id, user_id, start_time, start_lat, start_lng, destination, reason, workplace_id, distance_m)
        VALUES ($1,$2,now(),$3,$4,$5,$6,$7,$8) RETURNING id, start_time`,
-      [attRows[0].id, userId, lat, lng, destination, reason || null, wpId, distanceM]
+      [attRows[0].id, userId, lat, lng, destination, reason || '', wpId, distanceM]
     );
     res.status(201).json({ success: true, outing: rows[0] });
   }

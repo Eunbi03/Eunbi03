@@ -17,7 +17,9 @@ import { renderReportHtml } from './services/reportHtml';
 const app = express();
 
 app.use(helmet());
-app.set('trust proxy', 1);
+// 리버스 프록시가 2단(외부 프록시 → 컨테이너 nginx)이라 사설망(도커/사내망) 홉을 모두 신뢰해야
+// 실제 클라이언트 IP가 req.ip에 잡힌다. 'uniquelocal' = loopback+10/8+172.16/12+192.168/16 신뢰.
+app.set('trust proxy', 'uniquelocal');
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').filter(Boolean);
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true, credentials: true }));
@@ -25,8 +27,27 @@ app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true, credential
 app.use(express.json({ limit: '1mb' }));
 app.use(pinoHttp());
 
-app.use('/api/', rateLimit({ windowMs: 60_000, max: 100, standardHeaders: true }));
-app.use('/api/auth/login', rateLimit({ windowMs: 60_000, max: 5, message: { error: '잠시 후 다시 시도해주세요.' } }));
+// 레이트리밋 키: 로그인된 요청은 '사용자별'(공유 공인 IP에서도 서로 안 깎아먹음),
+// 로그인 전(무인증) 요청은 IP별로 집계한다. (trust proxy 설정으로 req.ip = 실제 클라이언트 IP)
+function rateKey(req: express.Request): string {
+  const h = req.headers.authorization;
+  if (h && h.startsWith('Bearer ')) {
+    try {
+      const p = jwt.decode(h.slice(7)) as { userId?: string } | null;
+      if (p && p.userId) return 'u:' + p.userId;
+    } catch { /* 토큰 파싱 실패 시 IP로 폴백 */ }
+  }
+  return 'ip:' + (req.ip || 'unknown');
+}
+
+// 전역: 사용자(또는 IP)당 분당 300회 — 정상 사용엔 넉넉, 폭주/오남용만 차단.
+// (keyGeneratorIpFallback 검증 비활성: IPv6도 전체 주소로 키잉 — 여기선 사용자별 키가 주 경로)
+app.use('/api/', rateLimit({
+  windowMs: 60_000, max: 300, standardHeaders: true,
+  keyGenerator: rateKey, validate: { ip: false },
+}));
+// 로그인(무인증): 사무실 공유 IP를 고려해 분당 30회. (비번 5회 오류 시 계정 잠금이 별도로 brute-force 방어)
+app.use('/api/auth/login', rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, message: { error: '잠시 후 다시 시도해주세요.' } }));
 
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
