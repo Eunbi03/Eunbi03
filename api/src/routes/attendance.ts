@@ -247,7 +247,12 @@ router.post('/check-out', requireAuth,
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
 
-    const { lat, lng, accuracyM, isMocked, workNoteIn, workNoteOut, workNoteField, workNoteToday } = req.body;
+    const {
+      lat, lng, accuracyM, isMocked,
+      workNoteIn, workNoteInWorkplaceId, workNoteInEdited,
+      workNoteOut, workNoteOutWorkplaceId,
+      workNoteField, workNoteToday,
+    } = req.body;
     const userId = req.user.userId;
     const date = await resolveActiveDate(userId); // 자정 넘긴 연장 시 어제(연장근무일) 기록으로
 
@@ -259,7 +264,38 @@ router.post('/check-out', requireAuth,
     const record = attRows[0];
     if (record.check_out_time) { res.status(409).json({ error: '이미 퇴근 처리되었습니다.' }); return; }
 
-    const nOut = await nearestWorkplace(lat, lng);
+    // 퇴근 장소/거리: 등록 근무지를 고른 경우에만 '퇴근 시점 GPS' 기준 거리 계산.
+    //  미등록(직접입력·외근지)이면 장소명만 남기고 거리는 측정하지 않는다(null).
+    let coPlace: string | null = (workNoteOut || '').trim() || null;
+    let coDist: number | null = null;
+    let coVerified = false;
+    if (workNoteOutWorkplaceId) {
+      const { rows: wp } = await pool.query('SELECT name, lat, lng, radius_m FROM workplaces WHERE id=$1 AND is_active=TRUE', [workNoteOutWorkplaceId]);
+      if (wp[0]) {
+        coPlace = wp[0].name;
+        coDist = haversineDistanceMeters(lat, lng, wp[0].lat, wp[0].lng);
+        coVerified = coDist <= (wp[0].radius_m ?? 500);
+      }
+    }
+
+    // 출근 장소 교정(근로자가 노트에서 출근 장소를 바꾼 경우에만): '출근 당시 GPS' 기준으로 재계산.
+    if (workNoteInEdited) {
+      let ciPlace: string | null = (workNoteIn || '').trim() || null;
+      let ciDist: number | null = null;
+      let ciVerified = false;
+      if (workNoteInWorkplaceId) {
+        const { rows: wp } = await pool.query('SELECT name, lat, lng, radius_m FROM workplaces WHERE id=$1 AND is_active=TRUE', [workNoteInWorkplaceId]);
+        if (wp[0] && record.check_in_lat != null && record.check_in_lng != null) {
+          ciPlace = wp[0].name;
+          ciDist = haversineDistanceMeters(record.check_in_lat, record.check_in_lng, wp[0].lat, wp[0].lng);
+          ciVerified = ciDist <= (wp[0].radius_m ?? 500);
+        }
+      }
+      await pool.query(
+        'UPDATE attendance_records SET check_in_place=$1, check_in_distance_m=$2, check_in_location_verified=$3 WHERE id=$4',
+        [ciPlace, ciDist, ciVerified, record.id]
+      );
+    }
 
     // 조퇴 판정 기준 퇴근시각: 유동 근무자는 '해당일 등록 일정', 그 외는 고정 퇴근시각.
     //   유동 근무자가 미등록일 출근이면 기준이 없어 조퇴 판정하지 않는다.
@@ -294,7 +330,7 @@ router.post('/check-out', requireAuth,
            daily_report=COALESCE(NULLIF($7,''), daily_report),
            status=$8, work_minutes=$9
        WHERE id=$10 RETURNING id, check_out_time, status`,
-      [lat, lng, nOut.distanceM, workNoteIn || '', workNoteOut || '', workNoteField || '', workNoteToday || '', newStatus, workMinutes, record.id, nOut.withinAny, nOut.wpName]
+      [lat, lng, coDist, workNoteIn || '', workNoteOut || '', workNoteField || '', workNoteToday || '', newStatus, workMinutes, record.id, coVerified, coPlace]
     );
     res.json({ success: true, record: rows[0], message: '오늘 하루 수고하셨습니다.' });
   }
@@ -377,12 +413,14 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
       lat: att.check_in_lat, lng: att.check_in_lng,
       distanceM: att.check_in_distance_m,
       within: att.check_in_location_verified,
+      place: att.check_in_place,
     } : null,
     checkOut: att.check_out_time ? {
       time: att.check_out_time,
       lat: att.check_out_lat, lng: att.check_out_lng,
       distanceM: att.check_out_distance_m,
       within: att.check_out_location_verified,
+      place: att.check_out_place,
     } : null,
     outings: outingRows.map((o: any) => ({
       id: o.id,

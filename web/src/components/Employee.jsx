@@ -306,7 +306,7 @@ export default function Employee({ user, onLogout }) {
   );
   if (view === "out") return chrome(
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      <OutForm workplaceName={schedule.workplaceName} checkInPlace={checkInPlaceSuggestion} initialNote={today?.noteToday || ""} outings={outings} activeOuting={activeOuting} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} checkInPlace={today?.checkIn?.place || null} checkInSuggestion={checkInPlaceSuggestion} initialNote={today?.noteToday || ""} outings={outings} activeOuting={activeOuting} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
     </div>
   );
   if (view === "history") return chrome(<HistoryView onBack={() => setView("main")} />);

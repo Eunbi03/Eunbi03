@@ -121,8 +121,13 @@ export const deleteSchedule = (id) => request(`/attendance/schedules/${id}`, { m
 export const getApproverStatus = () => request("/attendance/approver-status");
 // 관리자 화면 URL (API_BASE의 /api 를 /admin 으로)
 export const adminUrl = () => API_BASE.replace(/\/api\/?$/, "") + "/admin";
-export const checkOut = (location, { workNoteIn, workNoteOut, workNoteField, workNoteToday }) => request("/attendance/check-out", {
-  method: "POST", body: { lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false, workNoteIn, workNoteOut, workNoteField, workNoteToday },
+export const checkOut = (location, { workNoteIn, workNoteInWorkplaceId, workNoteInEdited, workNoteOut, workNoteOutWorkplaceId, workNoteField, workNoteToday }) => request("/attendance/check-out", {
+  method: "POST", body: {
+    lat: location.lat, lng: location.lng, accuracyM: location.acc, isMocked: false,
+    workNoteIn, workNoteInWorkplaceId: workNoteInWorkplaceId || null, workNoteInEdited: !!workNoteInEdited,
+    workNoteOut, workNoteOutWorkplaceId: workNoteOutWorkplaceId || null,
+    workNoteField, workNoteToday,
+  },
 });
 export const saveWorkNote = ({ workNoteToday, workNoteField }) => request("/attendance/work-note", { method: "PUT", body: { workNoteToday, workNoteField } });
 export const getAttendanceToday = () => request("/attendance/today");
