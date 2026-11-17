@@ -991,8 +991,29 @@ router.get('/individual-report', async (req: Request, res: Response): Promise<vo
     return {
       date: day,
       leaveType: lt || undefined,
-      checkIn: hasIn ? (() => { const n = nearestOf(r.check_in_lat, r.check_in_lng); return { time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng, distanceM: n.distanceM ?? r.check_in_distance_m, within: n.within, place: n.place ?? r.check_in_place, note: r.work_note_in }; })() : null,
-      checkOut: r.check_out_time ? (() => { const n = nearestOf(r.check_out_lat, r.check_out_lng); return { time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng, distanceM: n.distanceM ?? r.check_out_distance_m, within: n.within, place: n.place ?? r.check_out_place, isField: r.check_out_is_field, note: r.work_note_out }; })() : null,
+      // 저장된 판정값(출근 교정·퇴근 외근지 반영)을 우선 사용하고, 값이 전혀 없는 레거시 기록만 좌표로 재계산.
+      checkIn: hasIn ? (() => {
+        const stored = r.check_in_place != null || r.check_in_distance_m != null || r.check_in_location_verified != null;
+        const n = nearestOf(r.check_in_lat, r.check_in_lng);
+        return {
+          time: r.check_in_time, lat: r.check_in_lat, lng: r.check_in_lng,
+          distanceM: stored ? r.check_in_distance_m : n.distanceM,
+          within: stored ? r.check_in_location_verified : n.within,
+          place: (stored ? r.check_in_place : n.place) || r.work_note_in || null,
+          note: r.work_note_in,
+        };
+      })() : null,
+      checkOut: r.check_out_time ? (() => {
+        const stored = r.check_out_place != null || r.check_out_distance_m != null || r.check_out_location_verified != null;
+        const n = nearestOf(r.check_out_lat, r.check_out_lng);
+        return {
+          time: r.check_out_time, lat: r.check_out_lat, lng: r.check_out_lng,
+          distanceM: stored ? r.check_out_distance_m : n.distanceM,
+          within: stored ? r.check_out_location_verified : n.within,
+          place: (stored ? r.check_out_place : n.place) || r.work_note_out || null,
+          isField: r.check_out_is_field, note: r.work_note_out,
+        };
+      })() : null,
       status: r.status,
       workMinutes: r.work_minutes,
       isLate: k.isLate,
