@@ -264,18 +264,33 @@ router.post('/check-out', requireAuth,
     const record = attRows[0];
     if (record.check_out_time) { res.status(409).json({ error: '이미 퇴근 처리되었습니다.' }); return; }
 
-    // 퇴근 장소/거리: 등록 근무지를 고른 경우에만 '퇴근 시점 GPS' 기준 거리 계산.
-    //  미등록(직접입력·외근지)이면 장소명만 남기고 거리는 측정하지 않는다(null).
-    let coPlace: string | null = (workNoteOut || '').trim() || null;
-    let coDist: number | null = null;
-    let coVerified = false;
-    if (workNoteOutWorkplaceId) {
-      const { rows: wp } = await pool.query('SELECT name, lat, lng, radius_m FROM workplaces WHERE id=$1 AND is_active=TRUE', [workNoteOutWorkplaceId]);
-      if (wp[0]) {
-        coPlace = wp[0].name;
-        coDist = haversineDistanceMeters(lat, lng, wp[0].lat, wp[0].lng);
-        coVerified = coDist <= (wp[0].radius_m ?? 500);
+    // 신버전 앱 식별: 새 퇴근 화면은 workNoteInEdited(불리언)를 항상 보낸다.
+    //  구버전 앱(이 필드 없음)은 장소 id를 못 보내므로, 기존처럼 '가장 가까운 근무지'로 채워 호환을 유지한다.
+    const isNewClient = (workNoteInEdited !== undefined) || (workNoteInWorkplaceId != null) || (workNoteOutWorkplaceId != null);
+
+    // 퇴근 장소/거리:
+    //  - 신버전: 등록 근무지를 고른 경우에만 '퇴근 시점 GPS' 기준 거리 계산, 미등록(직접입력·외근지)이면 거리 없음.
+    //  - 구버전: 가장 가까운 등록 근무지 + 거리(기존 동작 유지).
+    let coPlace: string | null;
+    let coDist: number | null;
+    let coVerified: boolean;
+    if (isNewClient) {
+      coPlace = (workNoteOut || '').trim() || null;
+      coDist = null;
+      coVerified = false;
+      if (workNoteOutWorkplaceId) {
+        const { rows: wp } = await pool.query('SELECT name, lat, lng, radius_m FROM workplaces WHERE id=$1 AND is_active=TRUE', [workNoteOutWorkplaceId]);
+        if (wp[0]) {
+          coPlace = wp[0].name;
+          coDist = haversineDistanceMeters(lat, lng, wp[0].lat, wp[0].lng);
+          coVerified = coDist <= (wp[0].radius_m ?? 500);
+        }
       }
+    } else {
+      const nOut = await nearestWorkplace(lat, lng);
+      coPlace = nOut.wpName;
+      coDist = nOut.distanceM;
+      coVerified = nOut.withinAny;
     }
 
     // 출근 장소 교정(근로자가 노트에서 출근 장소를 바꾼 경우에만): '출근 당시 GPS' 기준으로 재계산.
