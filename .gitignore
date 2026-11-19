@@ -26,3 +26,11 @@ data/redis/*
 # Firebase 서비스 계정 비밀키 (절대 커밋 금지)
 firebase-key.json
 **/firebase-key.json
+
+# iOS (Capacitor) — 소스는 커밋, 생성물·의존성·시크릿 제외
+web/ios/App/Pods/
+web/ios/App/App/public/
+web/ios/App/App/capacitor.config.json
+web/ios/**/xcuserdata/
+web/ios/DerivedData/
+web/ios/App/App/GoogleService-Info.plist
