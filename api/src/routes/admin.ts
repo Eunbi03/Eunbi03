@@ -2162,7 +2162,9 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
             to_char(break_start,'HH24:MI') bs, to_char(break_end,'HH24:MI') be FROM job_schedules`
   );
   const jsByName: Record<string, any> = {}; for (const j of jss) jsByName[j.name] = j;
-  // 조직 마스터(설정 등록값)로 법인/본부/팀 검증 준비
+  // 조직 마스터(설정 등록값)로 직급/법인/본부/팀 검증 준비
+  const { rows: posRows } = await pool.query('SELECT name FROM positions');
+  const posSet = new Set<string>(posRows.map((p: any) => p.name));
   const { rows: corpRows } = await pool.query('SELECT name FROM corporations');
   const corpSet = new Set<string>(corpRows.map((c: any) => c.name));
   const { rows: divRows } = await pool.query('SELECT id, name FROM divisions');
@@ -2180,7 +2182,9 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
     if (!name || !phoneDigits) { failed.push({ ...info, reason: '이름/전화번호 누락' }); continue; }
     // 법인/본부/팀: 설정에 등록된 값이 아니면 실패 (예전 양식·오타 유입 방지)
     const corp = (r.corp || '').trim(), division = (r.division || '').trim(), team = (r.team || '').trim();
+    const position = (r.position || '').trim();
     const orgReasons: string[] = [];
+    if (position && !posSet.has(position)) orgReasons.push(`직급 '${position}' 미등록`);
     if (corp && !corpSet.has(corp)) orgReasons.push(`법인 '${corp}' 미등록`);
     if (division && !divSet.has(division)) orgReasons.push(`본부 '${division}' 미등록`);
     if (team) {
@@ -2196,31 +2200,24 @@ router.post('/workers/bulk', requireAdmin, permStaff, async (req: Request, res: 
     if (r.jobTitle && !js) { failed.push({ ...info, reason: `직무 '${r.jobTitle}' 없음` }); continue; }
     const times = js ? { s: js.s, e: js.e, bs: js.bs, be: js.be } : { s: '09:00', e: '18:00', bs: '12:00', be: '13:00' };
     const noteExempt = String(r.noteExempt) === '1' || r.noteExempt === true;
-    const irregular = String(r.irregularWorker) === '1' || r.irregularWorker === true;
+    const flex = String(r.flexSchedule) === '1' || r.flexSchedule === true;
+    const irregular = flex ? false : (String(r.irregularWorker) === '1' || r.irregularWorker === true); // 유동·비정기 상호배타
     try {
       const passwordHash = await bcrypt.hash(phoneDigits, 12);
-      // 전화번호로만 매칭 (이메일 중복검사 안 함). 삭제된 계정이면 자동 복구.
+      // 신규 등록 전용: 전화번호가 이미 있으면(활성·삭제 불문) 거부. 기존 수정·복구는 관리자 화면에서만.
       const { rows: existing } = await pool.query(
-        `SELECT id, is_active FROM users WHERE regexp_replace(phone,'\\D','','g')=$1 ORDER BY is_active DESC LIMIT 1`, [phoneDigits]);
-      if (existing[0] && existing[0].is_active) { failed.push({ ...info, reason: '이미 등록된 전화번호' }); continue; }
+        `SELECT id, is_active FROM users WHERE regexp_replace(phone,'\\D','','g')=$1 LIMIT 1`, [phoneDigits]);
       if (existing[0]) {
-        await pool.query(
-          `UPDATE users SET name=$1, email=$2, position=$3, corp=$4, division=$5, team=$6, job_title=$7, remark=$8,
-             scheduled_start=$9, scheduled_end=$10, lunch_start=$11, lunch_end=$12, workplace_id=$13,
-             note_exempt=$14, irregular_worker=$15, password_hash=$16, must_change_password=TRUE, is_active=TRUE, role='worker', deactivated_at=NULL,
-             device_id=NULL, device_registered_at=NULL, is_locked=FALSE, failed_login_attempts=0, locked_reason=NULL WHERE id=$17`,
-          [name, r.email || null, r.position || null, r.corp || null, r.division || null, r.team || null, r.jobTitle || null, r.remark || null,
-           times.s, times.e, times.bs, times.be, workplaceId, noteExempt, irregular, passwordHash, existing[0].id]
-        );
-      } else {
-        await pool.query(
-          `INSERT INTO users (email, password_hash, name, phone, position, corp, division, team, job_title, remark,
-             scheduled_start, scheduled_end, lunch_start, lunch_end, workplace_id, note_exempt, irregular_worker)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-          [r.email || null, passwordHash, name, r.phone, r.position || null, r.corp || null, r.division || null, r.team || null, r.jobTitle || null, r.remark || null,
-           times.s, times.e, times.bs, times.be, workplaceId, noteExempt, irregular]
-        );
+        failed.push({ ...info, reason: existing[0].is_active ? '이미 등록된 전화번호' : '삭제 이력 존재 — 관리자 화면에서 복구' });
+        continue;
       }
+      await pool.query(
+        `INSERT INTO users (email, password_hash, name, phone, position, corp, division, team, job_title, remark,
+           scheduled_start, scheduled_end, lunch_start, lunch_end, workplace_id, note_exempt, irregular_worker, flex_schedule)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        [r.email || null, passwordHash, name, r.phone, r.position || null, r.corp || null, r.division || null, r.team || null, r.jobTitle || null, r.remark || null,
+         times.s, times.e, times.bs, times.be, workplaceId, noteExempt, irregular, flex]
+      );
       success++; okNames.push(name);
     } catch (e: any) {
       failed.push({ ...info, reason: e.code === '23505' ? '중복(전화번호/이메일)' : e.message });

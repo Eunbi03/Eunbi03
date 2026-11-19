@@ -49,12 +49,13 @@ export async function readWorkplaceSheet(file) {
   return extract(ws, 3, ["clientName", "branchName", "radiusM", "address", "detailAddress"]);
 }
 
-// 직원 관리 시트: 이름 → 직급 → 전화번호 → 이메일 → 근무지 → 비고 → 법인 → 본부 → 팀 → 직무 → 근무노트 제외 대상 → 비정기적 근로자
+// 신규 등록 시트: 이름 → 직급 → 전화번호 → 이메일 → 비고 → 법인 → 본부 → 팀 → 직무 → 근무노트 제외대상 → 비정기적 근로자 → 유동 근무시간
+//  (근무지 열 제거 — 기본 근무지 개념 없음. '전체 직원' 시트는 조회용이라 업로드하지 않는다.)
 export async function readWorkerSheet(file) {
-  const ws = await loadSheet(file, "직원 관리");
+  const ws = await loadSheet(file, "신규 등록");
   const rows = extract(ws, 3, [
-    "name", "position", "phone", "email", "workplaceName", "remark",
-    "corp", "division", "team", "jobTitle", "noteExempt", "irregularWorker",
+    "name", "position", "phone", "email", "remark",
+    "corp", "division", "team", "jobTitle", "noteExempt", "irregularWorker", "flexSchedule",
   ]);
   // 전화번호가 엑셀에서 숫자로 저장되어 앞자리 0이 사라진 경우 복원 (예: 1012345678 → 01012345678)
   for (const r of rows) {

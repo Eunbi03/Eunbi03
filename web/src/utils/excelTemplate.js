@@ -68,35 +68,145 @@ async function buildAndDownload({ sheetName, title, columns, dataRows, filename 
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`; };
 
-// ── 직원 관리 양식 (현재 재직 인원 채움) ───────────────────────────────
-// 파서 열 순서: name, position, phone, email, workplaceName, remark, corp, division, team, jobTitle, noteExempt, irregularWorker
-export async function downloadWorkerTemplate(workers = []) {
-  const columns = [
-    { header: "이름", width: 10 },
-    { header: "직급", width: 10 },
-    { header: "전화번호", width: 15, numFmt: "@" },
-    { header: "이메일", width: 22 },
-    { header: "근무지", width: 18 },
-    { header: "비고", width: 14 },
-    { header: "법인", width: 12 },
-    { header: "본부", width: 12 },
-    { header: "팀", width: 12 },
-    { header: "직무", width: 12 },
-    { header: "근무노트 제외 대상 (해당:1)", width: 16 },
-    { header: "비정기적 근로자 (해당:1)", width: 16 },
+// ── 직원 관리 양식 (3시트) ──────────────────────────────────────────────
+//  시트1 '전체 직원' : 조회·관리용(업로드 안 함). 이름,직급,전화,이메일,비고,법인,본부,팀,직무,출근,퇴근,제외,비정기,유동
+//  시트2 '신규 등록' : 업로드 대상. 직급/법인/본부/팀/직무는 '기준 목록' 드롭다운 + 기준에 없으면 빨간색(조건부서식)
+//  시트3 '기준 목록' : 직급|법인|본부|팀|직무 유효값(다운로드 시점의 설정값으로 자동 채움)
+//  opts = { positions:[name], corporations:[name], divisions:[{name,teams:[{name}]}], jobTitles:[name] }
+export async function downloadWorkerTemplate(workers = [], opts = {}) {
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+
+  const positions = (opts.positions || []).filter(Boolean);
+  const corporations = (opts.corporations || []).filter(Boolean);
+  const divisions = opts.divisions || [];
+  const divNames = divisions.map((d) => d.name).filter(Boolean);
+  const teamNames = [...new Set(divisions.flatMap((d) => (d.teams || []).map((t) => t.name)).filter((t) => t && t !== "전체"))];
+  const jobTitles = (opts.jobTitles || []).filter(Boolean);
+
+  const colLetter = (n) => { let s = ""; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+  const hhmm = (t) => (t ? String(t).slice(0, 5) : "");
+
+  // 공통 셀 스타일
+  const titleFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEF3F7" } };
+  const headFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCE9F0" } };
+  const baseFont = { name: "맑은 고딕", size: 11, color: { argb: "FF333333" } };
+
+  const writeHeader = (ws, cols, title) => {
+    const nCol = cols.length;
+    cols.forEach((c, i) => { ws.getColumn(i + 1).width = c.width || 14; });
+    ws.mergeCells(`A1:${colLetter(nCol)}1`);
+    const t = ws.getCell("A1");
+    t.value = title; t.font = { name: "맑은 고딕", size: 15, bold: true, color: { argb: "FF2F6D8F" } };
+    t.alignment = { vertical: "middle", horizontal: "center" }; t.fill = titleFill;
+    ws.getRow(1).height = 28;
+    const hr = ws.getRow(2);
+    cols.forEach((c, i) => {
+      const cell = hr.getCell(i + 1);
+      cell.value = c.header;
+      cell.font = { name: "맑은 고딕", size: 11, bold: true, color: { argb: "FF333333" } };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.fill = headFill; cell.border = borderAll;
+    });
+    hr.height = 30;
+  };
+
+  // ── 시트3: 기준 목록 (먼저 만들어 드롭다운이 참조) ──
+  const refName = "기준 목록";
+  const wsRef = wb.addWorksheet(refName);
+  const refCols = [
+    { header: "직급", values: positions },
+    { header: "법인", values: corporations },
+    { header: "본부", values: divNames },
+    { header: "팀", values: teamNames },
+    { header: "직무", values: jobTitles },
   ];
-  const dataRows = workers.map((w) => [
-    w.name || "", w.position || "", w.phone || "", w.email || "",
-    w.workplace_name || "", w.remark || "", w.corp || "", w.division || "",
-    w.team || "", w.job_title || "",
-    w.note_exempt ? "1" : "", w.irregular_worker ? "1" : "",
-  ]);
-  await buildAndDownload({
-    sheetName: "직원 관리",
-    title: "직원 관리 업로드 양식",
-    columns, dataRows,
-    filename: `직원관리_양식_${todayStr()}.xlsx`,
+  writeHeader(wsRef, refCols.map((c) => ({ header: c.header, width: 16 })), "기준 목록 (설정 등록값)");
+  refCols.forEach((c, ci) => {
+    c.values.forEach((v, ri) => {
+      const cell = wsRef.getRow(3 + ri).getCell(ci + 1);
+      cell.value = v; cell.font = baseFont; cell.alignment = { vertical: "middle", horizontal: "center" }; cell.border = borderAll;
+    });
   });
+  // 각 기준 열의 범위 문자열 (드롭다운/조건부서식 참조용). 값이 없으면 최소 1행.
+  const refRange = (ci, count) => {
+    const L = colLetter(ci + 1);
+    const last = 3 + Math.max(count, 1) - 1;
+    return `'${refName}'!$${L}$3:$${L}$${last}`;
+  };
+  const RNG = { position: refRange(0, positions.length), corp: refRange(1, corporations.length), division: refRange(2, divNames.length), team: refRange(3, teamNames.length), jobTitle: refRange(4, jobTitles.length) };
+
+  // ── 시트1: 전체 직원 (조회용) ──
+  const ws1 = wb.addWorksheet("전체 직원");
+  const cols1 = [
+    { header: "이름", width: 10 }, { header: "직급", width: 10 }, { header: "전화번호", width: 15 },
+    { header: "이메일", width: 22 }, { header: "비고", width: 14 }, { header: "법인", width: 12 },
+    { header: "본부", width: 12 }, { header: "팀", width: 12 }, { header: "직무", width: 12 },
+    { header: "출근시간", width: 10 }, { header: "퇴근시간", width: 10 },
+    { header: "근무노트 제외대상\n(0/1)", width: 14 }, { header: "비정기적 근로자\n(0/1)", width: 14 }, { header: "유동 근무시간\n(0/1)", width: 14 },
+  ];
+  writeHeader(ws1, cols1, "전체 직원 (조회·관리용 — 업로드에 사용되지 않음)");
+  workers.forEach((w, r) => {
+    const flex = !!w.flex_schedule;
+    const vals = [
+      w.name || "", w.position || "", w.phone || "", w.email || "", w.remark || "",
+      w.corp || "", w.division || "", w.team || "", w.job_title || "",
+      flex ? "" : hhmm(w.scheduled_start), flex ? "" : hhmm(w.scheduled_end),
+      w.note_exempt ? 1 : 0, w.irregular_worker ? 1 : 0, flex ? 1 : 0,
+    ];
+    const row = ws1.getRow(3 + r);
+    vals.forEach((v, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = v; cell.font = baseFont; cell.alignment = { vertical: "middle", horizontal: "center" }; cell.border = borderAll;
+      if (i === 2) cell.numFmt = "@"; // 전화번호 텍스트
+    });
+  });
+
+  // ── 시트2: 신규 등록 (업로드 대상) ──
+  const ws2 = wb.addWorksheet("신규 등록");
+  const cols2 = [
+    { header: "이름", width: 10 }, { header: "직급", width: 12 }, { header: "전화번호", width: 15 },
+    { header: "이메일", width: 22 }, { header: "비고", width: 14 }, { header: "법인", width: 12 },
+    { header: "본부", width: 12 }, { header: "팀", width: 12 }, { header: "직무", width: 12 },
+    { header: "근무노트 제외대상\n(0/1)", width: 14 }, { header: "비정기적 근로자\n(0/1)", width: 14 }, { header: "유동 근무시간\n(0/1)", width: 14 },
+  ];
+  writeHeader(ws2, cols2, "신규 등록 (이 시트만 업로드됩니다 · 색칠된 칸=기준에 없는 값, 수정 필요)");
+  const EMPTY_ROWS = 100;
+  const firstData = 3, lastData = firstData + EMPTY_ROWS - 1;
+  // 빈 데이터행 서식(테두리) + 드롭다운
+  const ddCols = { 2: RNG.position, 6: RNG.corp, 7: RNG.division, 8: RNG.team, 9: RNG.jobTitle }; // 열번호→기준범위
+  const boolCols = [10, 11, 12];
+  for (let rn = firstData; rn <= lastData; rn++) {
+    const row = ws2.getRow(rn);
+    for (let c = 1; c <= cols2.length; c++) {
+      const cell = row.getCell(c);
+      cell.font = baseFont; cell.alignment = { vertical: "middle", horizontal: "center" }; cell.border = borderAll;
+      if (c === 3) cell.numFmt = "@"; // 전화번호 텍스트
+      if (ddCols[c]) cell.dataValidation = { type: "list", allowBlank: true, formulae: [ddCols[c]] };
+      if (boolCols.includes(c)) cell.dataValidation = { type: "list", allowBlank: true, formulae: ['"0,1"'] };
+    }
+  }
+  // 조건부서식: 기준에 없는 값이면 빨간색 (값이 있을 때만)
+  Object.entries(ddCols).forEach(([c, rng]) => {
+    const L = colLetter(Number(c));
+    ws2.addConditionalFormatting({
+      ref: `${L}${firstData}:${L}${lastData}`,
+      rules: [{
+        type: "expression",
+        formulae: [`AND(${L}${firstData}<>"",COUNTIF(${rng},${L}${firstData})=0)`],
+        style: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFC7CE" } } },
+        priority: 1,
+      }],
+    });
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `직원관리_양식_${todayStr()}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ── 근무지 추가 양식 (현재 등록 근무지 채움) ──────────────────────────
