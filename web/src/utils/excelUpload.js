@@ -43,12 +43,6 @@ export async function readHolidaySheet(file) {
   return extract(ws, 3, ["date", "name"]);
 }
 
-// 근무지 추가 시트: 거래처명 → 지점명(빈칸 가능) → 참고 반경(미터) → 주소 → 상세주소
-export async function readWorkplaceSheet(file) {
-  const ws = await loadSheet(file, "근무지 추가");
-  return extract(ws, 3, ["clientName", "branchName", "radiusM", "address", "detailAddress"]);
-}
-
 // 신규 등록 시트: 이름 → 직급 → 전화번호 → 이메일 → 비고 → 법인 → 본부 → 팀 → 직무 → 근무노트 제외대상 → 비정기적 근로자 → 유동 근무시간
 //  (근무지 열 제거 — 기본 근무지 개념 없음. '전체 직원' 시트는 조회용이라 업로드하지 않는다.)
 export async function readWorkerSheet(file) {

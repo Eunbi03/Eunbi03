@@ -209,40 +209,20 @@ export async function downloadWorkerTemplate(workers = [], opts = {}) {
   URL.revokeObjectURL(url);
 }
 
-// ── 근무지 추가 양식 (현재 등록 근무지 채움) ──────────────────────────
-// 파서 열 순서: clientName, branchName, radiusM, address, detailAddress
-export async function downloadWorkplaceTemplate(workplaces = []) {
-  const columns = [
-    { header: "거래처명", width: 18 },
-    { header: "지점명", width: 16 },
-    { header: "참고 반경(미터)", width: 14 },
-    { header: "주소", width: 34 },
-    { header: "상세주소", width: 22 },
-  ];
-  const dataRows = workplaces.map((w) => [
-    w.client_name || "", w.branch_name || "", w.radius_m ?? "",
-    w.address || "", w.detail_address || "",
-  ]);
-  await buildAndDownload({
-    sheetName: "근무지 추가",
-    title: "근무지 추가 업로드 양식",
-    columns, dataRows,
-    filename: `근무지_양식_${todayStr()}.xlsx`,
-  });
-}
+// (근무지 Excel 양식/업로드는 폐지 — 지점 검색·개별 추가로 대체)
 
-// ── 공휴일 관리 양식 (현재 등록 공휴일 채움) ──────────────────────────
+// ── 공휴일 관리 양식 (신규 등록 전용 빈 양식) ──────────────────────────
 // 파서 열 순서: date, name
 export async function downloadHolidayTemplate(holidays = []) {
   const columns = [
     { header: "날짜 (YYYY-MM-DD)", width: 16, numFmt: "@" },
     { header: "이름", width: 20 },
   ];
-  const dataRows = holidays.map((h) => [String(h.date || "").slice(0, 10), h.name || ""]);
+  // 신규 등록 전용: 기존 공휴일을 채우지 않고 빈 양식(제목+헤더)만 제공
   await buildAndDownload({
     sheetName: "공휴일 관리",
-    title: "공휴일 관리 업로드 양식",
-    columns, dataRows,
+    title: "공휴일 관리 업로드 양식 (신규 등록)",
+    columns, dataRows: [],
     filename: `공휴일_양식_${todayStr()}.xlsx`,
   });
 }

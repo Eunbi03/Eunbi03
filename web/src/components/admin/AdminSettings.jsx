@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { C, S } from "../../styles.js";
 import * as api from "../../api/client.js";
-import { readHolidaySheet, readWorkplaceSheet } from "../../utils/excelUpload.js";
-import { downloadWorkplaceTemplate, downloadHolidayTemplate } from "../../utils/excelTemplate.js";
+import { readHolidaySheet } from "../../utils/excelUpload.js";
+import { downloadHolidayTemplate } from "../../utils/excelTemplate.js";
 
 // 지정 색상 팔레트
 const COL = {
@@ -81,7 +81,6 @@ function WorkplaceSection({ canEdit }) {
   const [list, setList] = useState([]); const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
   const [searching, setSearching] = useState(false);
-  const fileRef = useRef(null);
 
   // 근무지 행 추가/수정 폼 (주소 검색 포함). kind: 'add' | 'single' | 'branch'
   const [rowForm, setRowForm] = useState(null); // { kind, id, ...emptyWp }
@@ -248,20 +247,6 @@ function WorkplaceSection({ canEdit }) {
   const openBranchEdit = (wp) => { closeForms(); setRowForm({ kind: "branch", id: wp.id, clientName: wp.client_name || "", branchName: wp.branch_name || "", radius_m: wp.radius_m || 500, address: wp.address || "", detailAddress: wp.detail_address || "", postalCode: wp.postal_code || "", lat: wp.lat, lng: wp.lng }); setMsg(null); };
   const openClientEdit = (g) => { closeForms(); setClientForm({ oldClientName: g.clientName, clientName: g.clientName, radius_m: g.radius_m }); setMsg(null); };
 
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]; if (e.target) e.target.value = "";
-    if (!file) return;
-    setBusy(true); setMsg(null);
-    try {
-      const rows = await readWorkplaceSheet(file);
-      if (!rows.length) { setMsg({ text: "'근무지 추가' 시트에 데이터가 없습니다.", ok: false }); return; }
-      const r = await api.bulkWorkplaces(rows);
-      const failText = r.failed.map((f) => `${f.name}(${f.reason})`).join(", ");
-      setMsg({ text: `성공 ${r.success}건 · 실패 ${r.failed.length}건${failText ? " — " + failText : ""}`, ok: r.failed.length === 0 });
-      load();
-    } catch (err) { setMsg({ text: "업로드 실패: " + err.message, ok: false }); }
-    finally { setBusy(false); }
-  };
 
   // 근무지 행 추가/수정 폼 렌더
   const renderRowForm = () => {
@@ -323,11 +308,6 @@ function WorkplaceSection({ canEdit }) {
         <p style={{ fontWeight: 800, fontSize: 18, color: C.ink, margin: 0 }}>근무지 관리</p>
         {canEdit && !rowForm && !clientForm && (
           <div style={{ display: "flex", gap: 8 }}>
-            <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleUpload} />
-            <button onClick={() => downloadWorkplaceTemplate(list)} title="현재 등록 근무지가 채워진 최신 양식을 내려받습니다"
-              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>양식 다운로드</button>
-            <button onClick={() => fileRef.current?.click()} disabled={busy}
-              style={{ border: `1px solid ${C.lineAdmin}`, background: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 700, color: COL.blue, cursor: "pointer", whiteSpace: "nowrap" }}>엑셀 업로드</button>
             <button onClick={() => setBranchSearch({ client: "", locked: false })} title="거래처명으로 전국 지점을 검색해 일괄 등록"
               style={{ border: "none", background: COL.blue, color: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 14, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>지점 검색</button>
             <AddButton onClick={openRowAdd}>+ 근무지 추가</AddButton>
