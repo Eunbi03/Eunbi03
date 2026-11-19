@@ -117,22 +117,6 @@ export default function Employee({ user, onLogout }) {
   const activeOuting = isCheckedOut ? null : (outings.find((o) => !o.endTime) ?? null);
   const pastOutings = outings.filter((o) => o.endTime); // 종료된 외근 (일반 텍스트로 표기)
 
-  // 출근을 근무지 반경 밖에서 눌렀고 30분 이내에 외근을 기록했다면,
-  // 그 외근 목적지를 퇴근 시 '출근 장소' 기본값으로 제안한다. (외근지 출근 대응)
-  const checkInPlaceSuggestion = (() => {
-    const ci = today?.checkIn;
-    if (!ci || ci.distanceM == null) return null;
-    // 등록된 어느 근무지 반경에도 안 들어간 경우(within=false)에만 외근지 출근으로 제안
-    if (ci.within !== false) return null;
-    const ciMs = new Date(ci.time).getTime();
-    const match = outings.find((o) => {
-      if (!o.destination) return false;
-      const st = new Date(o.startTime).getTime();
-      return st >= ciMs && st - ciMs <= 30 * 60 * 1000; // 출근 후 30분 이내 시작한 외근
-    });
-    return match?.destination || null;
-  })();
-
   useRandomCheckPolling(isCheckedIn && !isCheckedOut, () => load(true));
 
   const load = async (silent = false) => {
@@ -306,7 +290,7 @@ export default function Employee({ user, onLogout }) {
   );
   if (view === "out") return chrome(
     <div style={{ padding: "16px 16px 40px", maxWidth: 500, margin: "0 auto" }}>
-      <OutForm workplaceName={schedule.workplaceName} checkInPlace={today?.checkIn?.place || null} checkInSuggestion={checkInPlaceSuggestion} initialNote={today?.noteToday || ""} outings={outings} activeOuting={activeOuting} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
+      <OutForm workplaceName={schedule.workplaceName} checkInPlace={today?.checkIn?.place || null} initialNote={today?.noteToday || ""} outings={outings} activeOuting={activeOuting} onClose={() => setView("main")} onDone={() => { setView("main"); load(true); setShowCheckoutSplash(true); }} />
     </div>
   );
   if (view === "history") return chrome(<HistoryView onBack={() => setView("main")} />);

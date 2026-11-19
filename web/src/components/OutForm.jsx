@@ -10,7 +10,21 @@ import * as api from "../api/client.js";
 //      등록 근무지면 퇴근 GPS로 거리계산, 미등록이면 거리 없음.
 //  - 외근 장소: 오늘 외근지 자동 나열.
 //  - 검증: 출근≠퇴근인데 외근 기록도 없고 외근칸도 비면 → 알림 + 퇴근 차단.
-export default function OutForm({ onClose, onDone, workplaceName, checkInPlace = null, checkInSuggestion = null, initialNote = "", outings = [], activeOuting = null }) {
+// 자동완성 드롭다운 (모듈 최상위 — 렌더마다 재생성 방지)
+function DropList({ matches, onPick }) {
+  return (
+    <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, marginTop: 4, maxHeight: 200, overflowY: "auto", boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
+      {matches.map((p) => (
+        <button key={p.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(p)}
+          style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", padding: "10px 14px", fontSize: 14, color: C.ink, cursor: "pointer", borderBottom: `1px solid ${C.line}` }}>
+          {p.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function OutForm({ onClose, onDone, workplaceName, checkInPlace = null, initialNote = "", outings = [], activeOuting = null }) {
   const dests = outings.map((o) => o.destination).filter(Boolean);
   const lastDest = activeOuting?.destination || "";
 
@@ -82,17 +96,6 @@ export default function OutForm({ onClose, onDone, workplaceName, checkInPlace =
       setBusy(false);
     }
   };
-
-  const DropList = ({ matches, onPick }) => (
-    <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, marginTop: 4, maxHeight: 200, overflowY: "auto", boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
-      {matches.map((p) => (
-        <button key={p.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(p)}
-          style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", padding: "10px 14px", fontSize: 14, color: C.ink, cursor: "pointer", borderBottom: `1px solid ${C.line}` }}>
-          {p.name}
-        </button>
-      ))}
-    </div>
-  );
 
   return (
     <div style={{ ...S.formCard, marginTop: 0 }}>

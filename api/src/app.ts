@@ -33,9 +33,10 @@ function rateKey(req: express.Request): string {
   const h = req.headers.authorization;
   if (h && h.startsWith('Bearer ')) {
     try {
-      const p = jwt.decode(h.slice(7)) as { userId?: string } | null;
+      // 서명 검증(verify)된 토큰의 userId만 키로 사용 — 위조 토큰으로 버킷을 바꿔 제한을 우회/스푸핑하는 것을 차단.
+      const p = jwt.verify(h.slice(7), process.env.JWT_SECRET as string) as { userId?: string };
       if (p && p.userId) return 'u:' + p.userId;
-    } catch { /* 토큰 파싱 실패 시 IP로 폴백 */ }
+    } catch { /* 검증 실패(만료·위조) 시 IP로 폴백 */ }
   }
   return 'ip:' + (req.ip || 'unknown');
 }
