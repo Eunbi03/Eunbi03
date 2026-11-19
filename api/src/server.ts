@@ -23,9 +23,13 @@ process.on('SIGTERM', () => { console.log('SIGTERM — 종료'); process.exit(0)
 // 전역 안전망: 요청 경로 밖(스케줄러 등)에서 처리되지 않은 Promise 거부/예외가 나도
 //  프로세스를 종료(크래시 루프)시키지 않고 로그만 남긴다. (Node 20 기본은 unhandledRejection 시 종료)
 //  — DB 커넥션 유실 등 복구 불가 상태는 별도 모니터링으로 대응하고, 여기선 가용성 우선.
+// unhandledRejection: 로그만 남기고 계속(대부분 복구 가능한 비동기 거부).
 process.on('unhandledRejection', (reason) => {
   console.error('[UNHANDLED REJECTION]', reason instanceof Error ? reason.stack : reason);
 });
+// uncaughtException: 프로세스가 이미 신뢰 불가 상태일 수 있으므로 로그 후 종료 →
+//  컨테이너(restart: unless-stopped)가 깨끗하게 재시작. (일회성 예외는 재시작 1회로 복구)
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION]', err instanceof Error ? err.stack : err);
+  process.exit(1);
 });
