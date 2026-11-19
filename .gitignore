@@ -33,4 +33,3 @@ web/ios/App/App/public/
 web/ios/App/App/capacitor.config.json
 web/ios/**/xcuserdata/
 web/ios/DerivedData/
-web/ios/App/App/GoogleService-Info.plist
