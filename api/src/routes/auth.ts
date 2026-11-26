@@ -59,12 +59,14 @@ router.post('/register-device-link',
       res.status(401).json({ error: '잘못된 링크입니다.' }); return;
     }
     const deviceId = req.body.deviceId;
-    // 이미 '같은 이름으로 승인까지 된' 기기면 변경 없이 안내(링크 소모·불필요한 재승인 방지).
-    //  이름이 다르거나 아직 승인 전이면 아래에서 갱신(재등록 반영)한다.
+    // 이미 '승인된' 기기는 (이름과 무관하게) 손대지 않고 그대로 둔다.
+    //  — 활성 관리자(특히 권한자) 기기가 다른 이름의 초대 링크 클릭만으로 승인 해제·강등되어
+    //    로그아웃되는 사고를 막는다. 이름/권한을 바꾸려면 먼저 그 기기를 삭제한 뒤 재초대한다.
+    //  승인 전(대기) 기기나 미등록 기기는 아래에서 갱신/신규 등록(재등록 반영)한다.
     const { rows: existing } = await pool.query(
       'SELECT device_name, is_approved FROM admin_devices WHERE user_id=$1 AND device_id=$2 LIMIT 1', [p.uid, deviceId]
     );
-    if (existing.length > 0 && existing[0].is_approved && existing[0].device_name === p.managerName) {
+    if (existing.length > 0 && existing[0].is_approved) {
       res.json({ alreadyRegistered: true }); return;
     }
     // 1회용 링크: nonce를 선점한다. 이미 사용된 링크면 등록하지 않는다.
