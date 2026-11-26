@@ -59,9 +59,14 @@ router.post('/register-device-link',
       res.status(401).json({ error: '잘못된 링크입니다.' }); return;
     }
     const deviceId = req.body.deviceId;
-    // 이미 등록된 기기면 안내만 (링크 소모 없이)
-    const { rows: existing } = await pool.query('SELECT id FROM admin_devices WHERE device_id=$1 LIMIT 1', [deviceId]);
-    if (existing.length > 0) { res.json({ alreadyRegistered: true }); return; }
+    // 이미 '같은 이름으로 승인까지 된' 기기면 변경 없이 안내(링크 소모·불필요한 재승인 방지).
+    //  이름이 다르거나 아직 승인 전이면 아래에서 갱신(재등록 반영)한다.
+    const { rows: existing } = await pool.query(
+      'SELECT device_name, is_approved FROM admin_devices WHERE user_id=$1 AND device_id=$2 LIMIT 1', [p.uid, deviceId]
+    );
+    if (existing.length > 0 && existing[0].is_approved && existing[0].device_name === p.managerName) {
+      res.json({ alreadyRegistered: true }); return;
+    }
     // 1회용 링크: nonce를 선점한다. 이미 사용된 링크면 등록하지 않는다.
     if (p.nonce) {
       const { rows: claim } = await pool.query(
@@ -70,12 +75,10 @@ router.post('/register-device-link',
       );
       if (claim.length === 0) { res.json({ alreadyUsed: true }); return; }
     }
-    // 같은 관리자명이 이미 있으면 권한 공유(기존 그룹 권한 상속). 그룹이 권한자면 새 기기도 권한자.
+    // 같은 관리자명이 이미 있으면 권한(역할·범위)만 상속해 그룹 동기화를 유지한다.
+    //  단, '권한자(is_authority)'는 절대 초대 링크로 자동 부여하지 않는다(권한자는 명시적 지정만).
     const { rows: grp } = await pool.query(
       'SELECT permissions, roles, scope_teams, scope_divisions, scope_corps, corp, phone, personal_phone FROM admin_devices WHERE device_name=$1 ORDER BY created_at LIMIT 1', [p.managerName]
-    );
-    const { rows: authRows } = await pool.query(
-      'SELECT 1 FROM admin_devices WHERE device_name=$1 AND is_authority=TRUE LIMIT 1', [p.managerName]
     );
     let permissions = Array.isArray(p.permissions) ? p.permissions : [];
     let roles = Array.isArray(p.roles) ? p.roles : [];
@@ -85,9 +88,7 @@ router.post('/register-device-link',
     let corp = p.corp || null;
     let phone = p.phone || null;
     let personalPhone = p.personalPhone || null;
-    let isAuthority = authRows.length > 0;   // 권한자 그룹이면 새 기기도 권한자
     if (grp[0]) {
-      // 기존 그룹이 있으면 그룹 권한·역할·범위를 상속(그룹 동기화 유지)
       permissions = grp[0].permissions || permissions;
       roles = grp[0].roles || roles;
       teams = (Array.isArray(grp[0].scope_teams) ? grp[0].scope_teams.filter((t: any) => t && t !== '전체') : teams);
@@ -96,21 +97,29 @@ router.post('/register-device-link',
       corp = grp[0].corp || corp; phone = grp[0].phone || phone;
       personalPhone = grp[0].personal_phone || personalPhone;
     }
+    // 초대 등록은 '승인 대기(is_approved=FALSE)'로 생성 → 권한자 승인 후에만 활성화(링크 한 번으로 즉시 관리자 금지).
+    //  이미 (user_id, device_id) 행이 있으면 새 이름/권한으로 '갱신'하고 다시 승인 대기로 되돌린다(재등록·개명 반영).
+    //  어떤 경우에도 is_authority는 FALSE로 둔다(권한자 자동부여 금지).
     await pool.query(
       `INSERT INTO admin_devices (user_id, device_id, device_name, corp, phone, personal_phone, is_approved, approved_at, permissions, roles, scope_teams, scope_divisions, scope_corps, is_authority)
-       VALUES ($1,$2,$3,$4,$5,$6,TRUE,now(),$7,$8,$9,$10,$11,$12) ON CONFLICT (user_id, device_id) DO NOTHING`,
-      [p.uid, deviceId, p.managerName, corp, phone, personalPhone, permissions, roles, teams, scopeDivisions, scopeCorps, isAuthority]
+       VALUES ($1,$2,$3,$4,$5,$6,FALSE,NULL,$7,$8,$9,$10,$11,FALSE)
+       ON CONFLICT (user_id, device_id) DO UPDATE SET
+         device_name=EXCLUDED.device_name, corp=EXCLUDED.corp, phone=EXCLUDED.phone, personal_phone=EXCLUDED.personal_phone,
+         permissions=EXCLUDED.permissions, roles=EXCLUDED.roles, scope_teams=EXCLUDED.scope_teams,
+         scope_divisions=EXCLUDED.scope_divisions, scope_corps=EXCLUDED.scope_corps,
+         is_approved=FALSE, approved_at=NULL, is_authority=FALSE`,
+      [p.uid, deviceId, p.managerName, corp, phone, personalPhone, permissions, roles, teams, scopeDivisions, scopeCorps]
     );
-    // 작업 기록: 해당 관리자의 등록 기기 수 변화
+    // 작업 기록: 해당 관리자의 등록 기기 수 변화(승인 대기 포함)
     try {
       const { rows: c } = await pool.query('SELECT COUNT(*)::int AS c FROM admin_devices WHERE device_name=$1', [p.managerName]);
       const after = c[0].c;
       await pool.query(
         'INSERT INTO audit_logs (admin_name, device_id, action, entity, target_name, detail) VALUES ($1,$2,$3,$4,$5,$6)',
-        [p.managerName, deviceId, '추가', '관리자', p.managerName, `(관리자 기기)${Math.max(0, after - 1)}개->${after}개`]
+        [p.managerName, deviceId, '등록요청', '관리자', p.managerName, `(관리자 기기 승인대기)${Math.max(0, after - 1)}개->${after}개`]
       );
     } catch { /* 로그 실패는 등록에 영향 없음 */ }
-    res.json({ success: true, managerName: p.managerName });
+    res.json({ success: true, managerName: p.managerName, pendingApproval: true });
   }
 );
 
@@ -244,7 +253,12 @@ router.post('/login',
           const scopeCorps = Array.isArray(req.body.scopeCorps) ? req.body.scopeCorps.filter(Boolean) : [];
           await pool.query(
             `INSERT INTO admin_devices (user_id, device_id, device_name, phone, personal_phone, is_approved, permissions, roles, scope_teams, scope_divisions, scope_corps)
-             VALUES ($1,$2,$3,$4,$5,FALSE,$6,$7,$8,$9,$10) ON CONFLICT (user_id, device_id) DO NOTHING`,
+             VALUES ($1,$2,$3,$4,$5,FALSE,$6,$7,$8,$9,$10)
+             ON CONFLICT (user_id, device_id) DO UPDATE SET
+               device_name=EXCLUDED.device_name, phone=EXCLUDED.phone, personal_phone=EXCLUDED.personal_phone,
+               permissions=EXCLUDED.permissions, roles=EXCLUDED.roles, scope_teams=EXCLUDED.scope_teams,
+               scope_divisions=EXCLUDED.scope_divisions, scope_corps=EXCLUDED.scope_corps,
+               is_approved=FALSE, approved_at=NULL, is_authority=FALSE`,
             [user.id, deviceId, managerName, phone || null, personalPhone, permissions, roles, teams, scopeDivisions, scopeCorps]
           );
           await logAttempt({ userId: user.id, email, deviceId, success: false, failReason: 'NEW_DEVICE_PENDING', req });

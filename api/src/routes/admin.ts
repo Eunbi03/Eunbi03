@@ -1434,22 +1434,16 @@ router.delete('/devices/:id', async (req: Request, res: Response): Promise<void>
   if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 삭제할 수 있습니다.' }); return; }
   const { rows } = await pool.query('SELECT is_authority, device_name FROM admin_devices WHERE id=$1', [req.params.id]);
   if (!rows[0]) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
-  // 권한자는 '기기 그룹(같은 관리자명)' 단위이며, 최소 3명(3그룹)을 유지한다.
-  // 이 기기가 권한자 그룹의 '마지막 기기'라면 삭제 시 권한자 1명이 사라지므로,
-  // 권한자 그룹이 2개 이하인 상황에서는 삭제를 막는다(먼저 다른 관리자에게 권한자 이전 필요).
+  // 권한자 기기 삭제: '완전 잠김'만 방지한다 — 이 기기를 지우면 권한자 기기가 하나도 안 남는 경우에만 차단.
+  //  (테스트 잔재·오등록 기기 정리를 막지 않도록, 삭제 경로에서는 '최소 인원' 하드블록을 두지 않는다.
+  //   최소 권장 인원 안내는 권한자 '이전' 흐름에서 처리한다.)
   if (rows[0].is_authority) {
-    const name: string = (rows[0].device_name ?? '').trim();
-    // 같은 그룹에 이 기기 말고 다른 기기가 남아 있으면, 삭제해도 권한자 그룹 수는 줄지 않음 → 허용
-    const { rows: siblings } = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM admin_devices WHERE device_name=$1 AND id<>$2', [name, req.params.id]
+    const { rows: ac } = await pool.query(
+      'SELECT COUNT(*)::int AS c FROM admin_devices WHERE is_authority=TRUE AND id<>$1', [req.params.id]
     );
-    if (siblings[0].c === 0) {
-      // 이 기기가 그룹의 마지막 → 삭제하면 권한자 그룹 1개 감소
-      const { rows: grp } = await pool.query('SELECT COUNT(DISTINCT device_name)::int AS c FROM admin_devices WHERE is_authority=TRUE');
-      if (grp[0].c <= MIN_AUTHORITY_GROUPS) {
-        res.status(400).json({ error: `권한자는 최소 ${MIN_AUTHORITY_GROUPS}명을 유지해야 합니다. 먼저 다른 관리자에게 권한자를 이전한 뒤 삭제하세요.` });
-        return;
-      }
+    if (ac[0].c === 0) {
+      res.status(400).json({ error: '마지막 권한자 기기는 삭제할 수 없습니다. 먼저 다른 관리자에게 권한자를 이전한 뒤 삭제하세요.' });
+      return;
     }
   }
   { const { rows: r } = await pool.query('DELETE FROM admin_devices WHERE id=$1 RETURNING device_name', [req.params.id]); await logAudit(req, '삭제', '관리자', r[0]?.device_name, '기기 삭제'); }

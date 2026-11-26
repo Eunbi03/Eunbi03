@@ -5,7 +5,7 @@ import * as api from "../api/client.js";
 // 관리자 기기 등록 링크(/admin/register-device?t=...) 처리 페이지.
 // 링크를 '등록하려는 기기'에서 열면 이 화면이 그 기기를 관리자 기기로 등록한다.
 export default function RegisterDevice() {
-  const [state, setState] = useState("loading"); // loading | success | already | used | error
+  const [state, setState] = useState("loading"); // loading | pending | success | already | used | error
   const [msg, setMsg] = useState("");
   const [name, setName] = useState("");
 
@@ -20,7 +20,8 @@ export default function RegisterDevice() {
         if (r.alreadyRegistered) { setState("already"); return; }
         if (r.alreadyUsed) { setState("used"); return; }
         setName(r.managerName || "");
-        setState("success");
+        // 초대 등록은 '승인 대기'로 접수된다(권한자 승인 후 로그인 가능). 구버전 서버는 pendingApproval 없이 바로 성공.
+        setState(r.pendingApproval ? "pending" : "success");
       } catch (e) {
         setState("error");
         setMsg(e.message || "기기 등록 중 오류가 발생했습니다.");
@@ -48,6 +49,16 @@ export default function RegisterDevice() {
           <>
             <p style={{ fontSize: 20, fontWeight: 800, color: "#fff", margin: 0 }}>기기 등록 중…</p>
             <p style={{ fontSize: 13, color: "#8b94a8", margin: "10px 0 0" }}>잠시만 기다려주세요.</p>
+          </>
+        )}
+        {state === "pending" && (
+          <>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>🕒</div>
+            <p style={{ fontSize: 20, fontWeight: 800, color: "#fff", margin: 0 }}>등록 요청이 접수되었습니다</p>
+            <p style={{ fontSize: 14, color: "#aab3c5", margin: "12px 0 0", lineHeight: 1.6 }}>
+              {name ? `${name}님, ` : ""}권한자의 승인 후 관리자 계정으로 로그인할 수 있습니다.
+            </p>
+            <button style={btn} onClick={() => { window.location.href = "/admin"; }}>관리자 로그인으로</button>
           </>
         )}
         {state === "success" && (
