@@ -11,8 +11,11 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     );
     if (!rows[0]) { res.status(404).send('파일을 찾을 수 없거나 만료되었습니다.'); return; }
     const f = rows[0];
+    // 저장된 content_type로 inline 제공하면 text/html 등이 같은 도메인에서 실행되어 저장형 XSS가 될 수 있다.
+    //  브라우저 렌더링을 막기 위해 nosniff + 강제 다운로드(attachment)로 제공한다.
     res.setHeader('Content-Type', f.content_type || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(f.filename || 'file')}`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(f.filename || 'file')}`);
     res.send(f.data);
   } catch {
     res.status(400).send('잘못된 요청입니다.');

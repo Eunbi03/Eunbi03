@@ -431,7 +431,7 @@ export default function AdminIndividual({ filters, currentUser }) {
   const selectedIds = new Set(selected.map((s) => s.id));
   const visibleWorkers = workers
     .filter((w) => {
-      if (w.role === "admin" || w.role === "hr") return false;
+      if (w.role !== "worker") return false; // 관리자 역할(admin/hr/teamlead/director/general 등)은 개별리포트 명단에서 제외 (AdminStaff와 동일 기준)
       // 인원 직접 입력이 있으면 그 인원만, 없으면 상단 필터 기준
       if (selected.length) return selectedIds.has(w.id);
       if (filters.corp && w.corp !== filters.corp) return false;

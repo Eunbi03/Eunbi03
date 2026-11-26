@@ -1209,7 +1209,7 @@ router.post('/send-report', async (req: Request, res: Response): Promise<void> =
   for (const uid of userIds) {
     const rep = await buildIndividualReport(uid, from, to);
     if (!rep) { results.push({ userId: uid, ok: false, reason: '대상 없음' }); continue; }
-    const token = jwt.sign({ uid, from, to, sent: sentStr }, process.env.JWT_SECRET as string, { expiresIn: '60d' });
+    const token = jwt.sign({ uid, from, to, sent: sentStr, purpose: 'report' }, process.env.JWT_SECRET as string, { expiresIn: '14d' });
     const link = `${base}/api/report?t=${token}`;
     try {
       const via = await sendReportLink({
@@ -1385,11 +1385,13 @@ router.post('/overtime-requests/:id/decision', async (req: Request, res: Respons
 
 // 내 기기 목록 + 권한자면 전체 대기 기기 목록
 router.get('/my-devices', async (req: Request, res: Response): Promise<void> => {
-  const isHolder = await reqIsAuthority(req); // 권한자만 대기 기기(승인 대상) 목록 조회
-  const { rows: myDevices } = await pool.query(
-    'SELECT id, device_id, device_name, corp, phone, personal_phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
-    [req.user.userId]
-  );
+  const isHolder = await reqIsAuthority(req); // 권한자만 전체 기기·대기 기기 목록 조회
+  const DEV_COLS = 'id, device_id, device_name, corp, phone, personal_phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at';
+  // 공용 계정이라 user_id로 조회하면 '모든 관리자' 기기가 나온다. 비권한자에게 타인의 개인정보(본인 휴대)·권한이
+  //  노출되지 않도록, 비권한자는 본인(현재) 기기만 반환한다. (UI도 기기 목록은 권한자에게만 노출)
+  const { rows: myDevices } = isHolder
+    ? await pool.query(`SELECT ${DEV_COLS} FROM admin_devices WHERE user_id=$1 ORDER BY created_at`, [req.user.userId])
+    : await pool.query(`SELECT ${DEV_COLS} FROM admin_devices WHERE user_id=$1 AND device_id=$2 ORDER BY created_at`, [req.user.userId, req.user.deviceId]);
   let pendingDevices: any[] = [];
   if (isHolder) {
     const { rows } = await pool.query(
@@ -1402,8 +1404,9 @@ router.get('/my-devices', async (req: Request, res: Response): Promise<void> => 
   res.json({ myDevices, pendingDevices, isAuthorityHolder: isHolder });
 });
 
-// 특정 관리자의 기기 목록 (모든 관리자 조회 가능 — 편집 권한은 별도)
+// 특정 관리자의 기기 목록 — 권한자만 조회 가능(타인 기기의 개인정보·권한 노출 방지)
 router.get('/admin-devices/:userId', async (req: Request, res: Response): Promise<void> => {
+  if (!(await reqIsAuthority(req))) { res.status(403).json({ error: '권한자만 조회할 수 있습니다.' }); return; }
   const { rows } = await pool.query(
     'SELECT id, device_id, device_name, corp, phone, personal_phone, is_approved, is_authority, permissions, roles, scope_teams, scope_divisions, scope_corps, is_locked, approved_at, created_at FROM admin_devices WHERE user_id=$1 ORDER BY created_at',
     [req.params.userId]

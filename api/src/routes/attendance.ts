@@ -460,13 +460,19 @@ router.get('/today', requireAuth, async (req: Request, res: Response): Promise<v
 // GET /api/attendance/weekly-summary
 router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): Promise<void> => {
   const today = todayKST();
+  // 이번 주 '일요일'(KST) ~ 오늘(KST). Postgres date_trunc('week')는 월요일 기준이라 일요일이 빠지고,
+  //  CURRENT_DATE는 DB(UTC) 기준이라 KST 이른 아침에 오늘이 누락된다. 화면이 그리는 일~토 주와 동일하게
+  //  일요일 시작일을 JS(KST)로 계산해 쿼리 범위로 넘긴다.
+  const [y, mo, dy] = today.split('-').map(Number);
+  const todayDow = new Date(Date.UTC(y, mo - 1, dy, 12)).getUTCDay(); // 0=일
+  const weekStart = new Date(Date.UTC(y, mo - 1, dy - todayDow, 12)).toISOString().slice(0, 10);
   const { rows: uRows } = await pool.query('SELECT note_exempt, flex_schedule FROM users WHERE id=$1', [req.user.userId]);
   const noteExempt = !!uRows[0]?.note_exempt;
   const flex = !!uRows[0]?.flex_schedule;
   const { rows } = await pool.query(
     `SELECT date::text AS date, check_in_time, check_out_time, work_minutes, status, leave_type, work_note_today, daily_report
-     FROM attendance_records WHERE user_id=$1 AND date>=date_trunc('week',CURRENT_DATE AT TIME ZONE 'Asia/Seoul') AND date<=CURRENT_DATE ORDER BY date`,
-    [req.user.userId]
+     FROM attendance_records WHERE user_id=$1 AND date>=$2 AND date<=$3 ORDER BY date`,
+    [req.user.userId, weekStart, today]
   );
 
   const recByDate: Record<string, any> = {};
@@ -474,13 +480,11 @@ router.get('/weekly-summary', requireAuth, async (req: Request, res: Response): 
   // 유동 근무자: 이번 주 등록 일정일을 근무일로
   const flexSet = new Set<string>();
   if (flex) {
-    const { rows: ws } = await pool.query("SELECT work_date::text AS d FROM worker_schedules WHERE user_id=$1 AND work_date>=date_trunc('week',CURRENT_DATE AT TIME ZONE 'Asia/Seoul') AND work_date<=CURRENT_DATE", [req.user.userId]);
+    const { rows: ws } = await pool.query("SELECT work_date::text AS d FROM worker_schedules WHERE user_id=$1 AND work_date>=$2 AND work_date<=$3", [req.user.userId, weekStart, today]);
     for (const x of ws) flexSet.add(x.d);
   }
 
-  // 이번 주 일~토 (KST) 7일
-  const [y, mo, dy] = today.split('-').map(Number);
-  const todayDow = new Date(Date.UTC(y, mo - 1, dy, 12)).getUTCDay(); // 0=일
+  // 이번 주 일~토 (KST) 7일 (위에서 계산한 y/mo/dy/todayDow 재사용)
   const weekDates: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d2 = new Date(Date.UTC(y, mo - 1, dy - todayDow + i, 12));

@@ -65,6 +65,9 @@ app.get('/api/report', async (req, res) => {
   if (!t || typeof t !== 'string') { res.status(400).send('잘못된 요청입니다.'); return; }
   try {
     const payload = jwt.verify(t, process.env.JWT_SECRET as string) as any;
+    // 리포트 전용 토큰만 허용 — 같은 시크릿으로 서명된 다른 용도 토큰(초대·랜덤체크 등)으로
+    //  타인의 PII를 조회하는 것을 차단한다.
+    if (payload.purpose !== 'report') { res.status(401).send('유효하지 않은 링크입니다.'); return; }
     const rep = await buildIndividualReport(payload.uid, payload.from, payload.to);
     if (!rep) { res.status(404).send('리포트를 찾을 수 없습니다.'); return; }
     res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:");
