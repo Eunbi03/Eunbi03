@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 // ▼▼ 새 버전 배포 때 이 숫자만 1씩 올리세요 (예: 2, 3, …) ▼▼
 //    versionCode / versionName / APK 파일명이 모두 자동으로 맞춰집니다.
-def appVersion = 8
+def appVersion = 9
 // ▲▲ (숫자는 낮추면 안 됩니다) ▲▲
 
 // 릴리스 서명 설정: android/keystore.properties 에서 읽는다.

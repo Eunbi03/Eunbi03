@@ -10,8 +10,19 @@ function setAccessToken(token) { accessToken = token; }
 const APP_NS = (typeof window !== "undefined" && window.location && window.location.pathname.includes("admin")) ? "admin" : "worker";
 const RT_KEY = `att_refresh_token__${APP_NS}`;
 const UID_KEY = `att_user_id__${APP_NS}`;
-// 구(공유) 키는 제거해 교차오염 원인을 없앤다. (전환 시 1회 재로그인 필요 — 의도된 동작)
-try { localStorage.removeItem("att_refresh_token"); localStorage.removeItem("att_user_id"); } catch { /* 무시 */ }
+// 구(공유) 키 → 현재 앱 네임스페이스로 1회 이관한다.
+//  - 앱 업데이트(이 코드 최초 적용) 시 기존 로그인 세션이 날아가 전 근로자가 재로그인하는 것을 방지.
+//  - 근로자 앱은 origin이 격리돼 구 키엔 근로자 토큰만 있고, 혹 잘못된 역할 토큰이 섞여도
+//    자동로그인의 역할 가드(App.jsx)가 걸러 로그아웃시키므로 안전하다.
+//  이관 후 구(공유) 키는 제거해 admin.html↔index.html 교차오염 원인을 없앤다.
+try {
+  const oldRt = localStorage.getItem("att_refresh_token");
+  const oldUid = localStorage.getItem("att_user_id");
+  if (oldRt && !localStorage.getItem(RT_KEY)) localStorage.setItem(RT_KEY, oldRt);
+  if (oldUid && !localStorage.getItem(UID_KEY)) localStorage.setItem(UID_KEY, oldUid);
+  localStorage.removeItem("att_refresh_token");
+  localStorage.removeItem("att_user_id");
+} catch { /* 무시 */ }
 const getStoredRefreshToken = () => localStorage.getItem(RT_KEY);
 const setStoredRefreshToken = (t) => t ? localStorage.setItem(RT_KEY, t) : localStorage.removeItem(RT_KEY);
 const getStoredUserId = () => localStorage.getItem(UID_KEY);
