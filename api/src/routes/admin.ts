@@ -1413,7 +1413,19 @@ router.post('/devices/:id/approve', async (req: Request, res: Response): Promise
     [req.user.userId, req.params.id]
   );
   if (!rows[0]) { res.status(404).json({ error: '승인할 기기를 찾을 수 없습니다.' }); return; }
-  await logAudit(req, '승인', '관리자', rows[0].device_name);
+  // 권한자는 '이름 그룹(같은 관리자명)' 단위다. 승인하는 순간, 같은 이름 그룹이 이미 권한자면
+  //  이 기기도 권한자로 맞춰 그룹 일관성을 유지한다(그룹에 권한자가 없는 신규 인물은 비권한자로 남음 = 자동부여 아님).
+  //  '승인' 자체가 권한자의 수동 확인 단계이므로, 초대만으로 권한자가 되던 과거 사고는 재발하지 않는다.
+  const grpName: string = (rows[0].device_name ?? '').trim();
+  if (grpName) {
+    await pool.query(
+      `UPDATE admin_devices SET is_authority = (
+         SELECT bool_or(is_authority) FROM admin_devices WHERE device_name=$1 AND is_approved=TRUE
+       ) WHERE device_name=$1 AND is_approved=TRUE`,
+      [grpName]
+    );
+  }
+  await logAudit(req, '승인', '관리자', grpName);
   res.json({ success: true });
 });
 
