@@ -69,8 +69,9 @@ router.get('/today-tokens', requireAuth, async (req: Request, res: Response): Pr
     [req.user.userId]
   );
   const slots = rows.map((r: any) => {
-    // 각 토큰은 해당 슬롯 마감(시각+5분) 직후(+6분)까지만 유효
-    const expSec = Math.floor(new Date(r.scheduled_time).getTime() / 1000) + 6 * 60;
+    // 토큰 수명이 제출 허용 창(RESPONSE_WINDOW_MS = 시각+10분)보다 짧으면, 창 안에 도착한 제출도
+    //  토큰 만료로 401 거부된다. 제출 창 + 여유 1분까지 유효하게 맞춘다.
+    const expSec = Math.floor(new Date(r.scheduled_time).getTime() / 1000) + RESPONSE_WINDOW_MS / 1000 + 60;
     const t = jwt.sign(
       { checkId: r.id, uid: req.user.userId, purpose: 'rc' },
       process.env.JWT_SECRET as string,

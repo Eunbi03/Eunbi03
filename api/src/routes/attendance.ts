@@ -125,12 +125,18 @@ router.post('/check-in', requireAuth,
         [lat, lng, status, existing.rows[0].id]
       ));
     } else {
-      ({ rows } = await pool.query(
-        `INSERT INTO attendance_records (user_id, date, check_in_time, check_in_lat, check_in_lng,
-           check_in_location_verified, check_in_distance_m, status)
-         VALUES ($1,$2,now(),$3,$4,NULL,NULL,$5) RETURNING id, check_in_time, status`,
-        [userId, date, lat, lng, status]
-      ));
+      try {
+        ({ rows } = await pool.query(
+          `INSERT INTO attendance_records (user_id, date, check_in_time, check_in_lat, check_in_lng,
+             check_in_location_verified, check_in_distance_m, status)
+           VALUES ($1,$2,now(),$3,$4,NULL,NULL,$5) RETURNING id, check_in_time, status`,
+          [userId, date, lat, lng, status]
+        ));
+      } catch (e: any) {
+        // 동시 요청 레이스: UNIQUE(user_id,date) 위반이면 이미 출근 처리된 것 → 중복 생성/500 대신 409.
+        if (e?.code === '23505') { res.status(409).json({ error: '오늘 이미 출근 처리되었습니다.' }); return; }
+        throw e;
+      }
     }
     const recordId = rows[0].id;
 
@@ -344,9 +350,11 @@ router.post('/check-out', requireAuth,
            work_note_today=COALESCE(NULLIF($7,''), work_note_today),
            daily_report=COALESCE(NULLIF($7,''), daily_report),
            status=$8, work_minutes=$9
-       WHERE id=$10 RETURNING id, check_out_time, status`,
+       WHERE id=$10 AND check_out_time IS NULL RETURNING id, check_out_time, status`,
       [lat, lng, coDist, workNoteIn || '', workNoteOut || '', workNoteField || '', workNoteToday || '', newStatus, workMinutes, record.id, coVerified, coPlace]
     );
+    // 동시 요청 레이스 방어: 위 가드와 SELECT 사이에 다른 요청이 먼저 퇴근 처리했으면 0행 → 덮어쓰지 않고 중단.
+    if (!rows[0]) { res.status(409).json({ error: '이미 퇴근 처리되었습니다.' }); return; }
     res.json({ success: true, record: rows[0], message: '오늘 하루 수고하셨습니다.' });
   }
 );

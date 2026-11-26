@@ -6,7 +6,8 @@ const pad = (n) => String(n).padStart(2, "0");
 function cellText(cell) {
   const v = cell?.value;
   if (v === null || v === undefined) return "";
-  if (v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  // ExcelJS는 날짜 전용 셀을 UTC 자정으로 준다 → 로컬시간 getter를 쓰면 비(非)KST 기기에서 하루 밀린다. UTC getter 사용.
+  if (v instanceof Date) return `${v.getUTCFullYear()}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())}`;
   if (typeof v === "object") {
     if (v.text) return String(v.text);                 // rich text
     if (v.result !== undefined) return String(v.result); // formula

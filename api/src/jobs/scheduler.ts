@@ -198,7 +198,7 @@ async function finalizeAbsentees() {
       "SELECT id FROM users WHERE role='worker' AND is_active=TRUE AND COALESCE(irregular_worker, FALSE)=FALSE AND COALESCE(flex_schedule, FALSE)=FALSE"
     );
     nReg = users.length;
-    for (const u of users) await markAbsent(u.id);
+    for (const u of users) { try { await markAbsent(u.id); } catch (e: any) { console.error('[결근 마감] 정기 사용자 처리 실패', u.id, e?.message); } }
   }
 
   // 유동 근무자: 오늘 등록한 근무 일정이 있으면 그날이 근무일 → 미출근이면 결근.
@@ -206,7 +206,7 @@ async function finalizeAbsentees() {
     `SELECT u.id FROM users u JOIN worker_schedules ws ON ws.user_id=u.id AND ws.work_date=$1
       WHERE u.role='worker' AND u.is_active=TRUE AND COALESCE(u.flex_schedule, FALSE)=TRUE`, [date]
   );
-  for (const u of flexUsers) await markAbsent(u.id);
+  for (const u of flexUsers) { try { await markAbsent(u.id); } catch (e: any) { console.error('[결근 마감] 유동 사용자 처리 실패', u.id, e?.message); } }
 
   console.log(`[결근 마감] ${date} 완료 (정기 ${nReg}명 + 유동 ${flexUsers.length}명)`);
 }

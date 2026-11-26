@@ -866,7 +866,8 @@ function HolidaySection({ canEdit }) {
       const rows = await readHolidaySheet(file);
       if (!rows.length) { setMsg({ text: "'공휴일 관리' 시트에 데이터가 없습니다.", ok: false }); return; }
       const r = await api.bulkHolidays(rows);
-      setMsg({ text: `성공 ${r.success}건 · 실패 ${r.failed.length}건${r.failed.length ? " (" + r.failed.map((f) => f.date).join(", ") + ")" : ""}`, ok: r.failed.length === 0 });
+      const failed = r?.failed || []; // failed 없을 때 크래시 방지
+      setMsg({ text: `성공 ${r?.success ?? 0}건 · 실패 ${failed.length}건${failed.length ? " (" + failed.map((f) => f.date).join(", ") + ")" : ""}`, ok: failed.length === 0 });
       load();
     } catch (err) { setMsg({ text: "업로드 실패: " + err.message, ok: false }); }
     finally { setBusy(false); }

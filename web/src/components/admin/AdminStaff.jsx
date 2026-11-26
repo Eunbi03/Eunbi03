@@ -792,7 +792,7 @@ export default function AdminStaff({ filters, currentUser }) {
       const rows = await readWorkerSheet(file);
       if (!rows.length) { setMsg("'신규 등록' 시트에 데이터가 없습니다."); return; }
       const r = await api.bulkWorkers(rows);
-      setUploadResult(r);
+      setUploadResult({ success: r?.success ?? 0, failed: r?.failed || [] }); // failed 없을 때 모달 크래시 방지
       load();
     } catch (err) { setMsg("업로드 실패: " + err.message); }
     finally { setUploading(false); }
@@ -923,6 +923,7 @@ export default function AdminStaff({ filters, currentUser }) {
       workplaceId: w?.workplace_id ? String(w.workplace_id) : "",
       noteExempt: !!w?.note_exempt,
       irregularWorker: !!w?.irregular_worker,
+      flexSchedule: !!w?.flex_schedule, // 누락 시 서버가 유동근무 플래그를 꺼버리므로 기존 값 보존
     });
     load();
   };
