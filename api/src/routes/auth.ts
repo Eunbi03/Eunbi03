@@ -342,10 +342,13 @@ router.post('/auto-login',
     if (isAdminUser) {
       // 관리자: 이 기기가 승인되어 있고, 그 기기에 저장된 refresh 토큰과 일치해야 함
       const { rows: deviceRows } = await pool.query(
-        'SELECT refresh_token_hash, refresh_token_expires_at FROM admin_devices WHERE user_id=$1 AND device_id=$2 AND is_approved=TRUE',
+        'SELECT refresh_token_hash, refresh_token_expires_at, is_locked FROM admin_devices WHERE user_id=$1 AND device_id=$2 AND is_approved=TRUE',
         [userId, deviceId]
       );
       if (deviceRows.length === 0) { res.status(403).json({ error: '기기 정보가 일치하지 않거나 승인되지 않았습니다.' }); return; }
+      // 대화형 로그인과 동일하게, '이 기기(admin_devices)'가 잠겨 있으면 자동로그인도 차단한다.
+      //  (잠긴 기기가 유효한 refresh 토큰으로 잠금을 우회해 계속 로그인하는 것을 방지)
+      if (deviceRows[0].is_locked) { res.status(403).json({ error: '이 기기가 잠겼습니다. 권한자에게 잠금 해제를 요청하세요.' }); return; }
       storedHash = deviceRows[0].refresh_token_hash;
       storedExpiry = deviceRows[0].refresh_token_expires_at;
     } else {

@@ -671,6 +671,12 @@ router.put('/workers/:id', permStaff, async (req: Request, res: Response): Promi
     if ((o.role === 'admin' || o.role === 'hr') && !(await reqIsAuthority(req))) {
       res.status(403).json({ error: '관리자 정보 수정은 권한자만 가능합니다.' }); return;
     }
+    // 쓰기 대상의 '새' 소속(팀/본부/법인)도 내 권한 범위 안이어야 한다(권한자는 제한 없음).
+    //  기존 범위만 검사(assertWorkerInScope)하면, 범위 안 근로자를 범위 밖 팀/법인으로 빼낼 수 있어 막는다.
+    //  (POST /workers 와 동일한 규칙 — 일반 근로자 대상에만 적용)
+    if (o.role === 'worker' && !workerRowInScope(req, { team, division, corp })) {
+      res.status(403).json({ error: '권한 범위 밖의 팀/본부/법인으로는 근로자를 이동/수정할 수 없습니다.' }); return;
+    }
     let newWpName = o.wp_name;
     if ((workplaceId || null) !== (o.workplace_id || null)) {
       const { rows: wr } = await pool.query('SELECT name FROM workplaces WHERE id=$1', [workplaceId || null]);

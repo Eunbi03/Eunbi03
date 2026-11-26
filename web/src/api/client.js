@@ -4,10 +4,18 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 let accessToken = null;
 
 function setAccessToken(token) { accessToken = token; }
-const getStoredRefreshToken = () => localStorage.getItem("att_refresh_token");
-const setStoredRefreshToken = (t) => t ? localStorage.setItem("att_refresh_token", t) : localStorage.removeItem("att_refresh_token");
-const getStoredUserId = () => localStorage.getItem("att_user_id");
-const setStoredUserId = (id) => id ? localStorage.setItem("att_user_id", id) : localStorage.removeItem("att_user_id");
+// 토큰 저장 키는 '앱(관리자/근로자)별'로 분리한다.
+//  같은 브라우저에서 admin.html과 index.html이 같은 키를 공유하면, 한쪽 로그인이 다른 쪽
+//  토큰/사용자 id를 덮어써 '신분이 섞이는'(근로자 탭이 관리자로 렌더되는) 사고가 난다.
+const APP_NS = (typeof window !== "undefined" && window.location && window.location.pathname.includes("admin")) ? "admin" : "worker";
+const RT_KEY = `att_refresh_token__${APP_NS}`;
+const UID_KEY = `att_user_id__${APP_NS}`;
+// 구(공유) 키는 제거해 교차오염 원인을 없앤다. (전환 시 1회 재로그인 필요 — 의도된 동작)
+try { localStorage.removeItem("att_refresh_token"); localStorage.removeItem("att_user_id"); } catch { /* 무시 */ }
+const getStoredRefreshToken = () => localStorage.getItem(RT_KEY);
+const setStoredRefreshToken = (t) => t ? localStorage.setItem(RT_KEY, t) : localStorage.removeItem(RT_KEY);
+const getStoredUserId = () => localStorage.getItem(UID_KEY);
+const setStoredUserId = (id) => id ? localStorage.setItem(UID_KEY, id) : localStorage.removeItem(UID_KEY);
 
 // access 토큰 만료(401) 시 저장된 refresh 토큰으로 재발급. 동시 요청이 몰려도 갱신은 한 번만.
 //  반환: "ok"(재발급 성공) | "invalid"(세션 진짜 만료 → 로그아웃) | "transient"(네트워크·서버다운 등 일시 실패 → 토큰 보존) | "no-token"
@@ -59,13 +67,15 @@ async function request(path, { method = "GET", body, auth = true, retry = true }
 }
 
 /* 인증 */
-export async function login({ username, password, deviceId, deviceName, managerName, phone, permissions, teams }) {
+export async function login({ username, password, deviceId, deviceName, managerName, phone, personalPhone, permissions, roles, teams, scopeDivisions, scopeCorps }) {
   const body = { username, password, deviceId };
   if (deviceName) body.deviceName = deviceName;
   // 승인요청(미등록 기기) 추가 정보 — 전달 시 서버가 승인 대기 등록을 진행한다.
+  //  서버가 필수로 쓰는 personalPhone(본인 휴대)·roles·scope(본부/법인)까지 모두 전달해야 승인요청이 성립한다.
   if (managerName !== undefined) {
-    body.managerName = managerName; body.phone = phone;
-    body.permissions = permissions; body.teams = teams;
+    body.managerName = managerName; body.phone = phone; body.personalPhone = personalPhone;
+    body.permissions = permissions; body.roles = roles; body.teams = teams;
+    body.scopeDivisions = scopeDivisions; body.scopeCorps = scopeCorps;
   }
   const data = await request("/auth/login", { method: "POST", body, auth: false });
   setAccessToken(data.accessToken); setStoredRefreshToken(data.refreshToken); setStoredUserId(data.user.id);
